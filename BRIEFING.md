@@ -25,21 +25,18 @@ duplicadas y se descartan. A diferencia del primero, este tiene causa conocida
 sin requisitos de multi-tenancy, sin SLA. Y de forma secundaria, para quien lea el
 caso de estudio: es la continuación natural del repositorio público del homelab.
 
-**Cómo.** Un grafo de LangGraph que, ante un evento, formula hipótesis, las
-comprueba una a una contra el sistema, descarta las que no se sostienen y escala a
-un humano cuando se queda sin ideas o cuando la acción es peligrosa.
+**Cómo.** Un grafo de LangGraph que, ante un evento: detecta el error, formula
+hipótesis y las comprueba una a una contra el sistema, intenta corregirlo cuando la
+causa ya está diagnosticada y la acción está en la lista cerrada de reversibles, y
+si no puede —porque se queda sin ideas o porque la acción es peligrosa— se lo
+reporta a Miquel.
 
 **Cuándo.** Sin límite de tiempo. Es el proyecto largo. Los hitos los marcan los
 artefactos de Spec Kit, no el calendario.
 
 ---
 
-## La premisa, y por qué esta vez está verificada
-
-El proyecto anterior murió porque su premisa era una suposición: *"la búsqueda de Immich no resuelve consultas compuestas"*. Bastó arreglar el idioma del modelo para
-que dejara de haber problema.
-
-Aquí la premisa **es un hecho observado, no una hipótesis**:
+## La premisa
 
 - 49 reinicios automáticos de un mismo contenedor, sin causa raíz conocida.
 - Ese contenedor representa el **59% de todas las intervenciones automáticas** del
@@ -49,8 +46,10 @@ Aquí la premisa **es un hecho observado, no una hipótesis**:
   ninguna alarma mental.
 - La investigación manual descartó dos explicaciones y no encontró una tercera.
 
-El problema existe hoy, está sin resolver hoy, y molesta hoy. No hace falta
-demostrarlo: está en la base de datos.
+El problema existe hoy y molesta hoy. No hace falta discutir si esto es un "hecho
+observado" o una "hipótesis" — lo que hace falta es el flujo de siempre: **detectar
+el error, intentar corregirlo con el grafo de LangGraph dentro de lo que tiene
+permitido, y si no puede, reportárselo a Miquel.**
 
 ### Lo que la investigación manual ya descartó
 
