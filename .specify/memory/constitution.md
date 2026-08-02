@@ -1,12 +1,17 @@
 <!--
 ## Sync Impact Report
 
-**Version change**: 1.1.0 → 1.1.1
+**Version change**: 1.1.1 → 1.1.2
 **Principles added**: None
-**Principles modified**: Rationale de los 12 principios (I–XII) reescrito en lenguaje más
-corto y directo; las reglas de cada principio no cambian
+**Principles modified**: None (Principios I–XII sin cambios)
 **Sections added**: None
 **Sections removed**: N/A
+**Sections clarified**: "Alcance y Límites → En alcance" — corregido para decir
+explícitamente que, sobre causas ya diagnosticadas con certeza, el alcance incluye
+ejecutar la acción correctiva (no solo proponerla), dentro de la lista cerrada de
+acciones reversibles (Principios V/VI) y el Modelo Operacional B. El Modelo
+Operacional y los Principios V/VI ya autorizaban esto; la redacción de "En alcance"
+se había quedado corta al decir solo "propuesta"
 **Deferred TODOs**: None
 -->
 
@@ -135,7 +140,10 @@ hay duda sobre si una acción es de bajo riesgo, se trata como de alto riesgo.
 hipótesis contra el historial de episodios, propuesta de acciones correctivas, registro del
 razonamiento, y mantenimiento del dashboard (`http://homelab.amsterdam9.home/`) como
 entregable del proyecto: toda alarma activa del sistema DEBE quedar reflejada allí sin
-duplicados y sin ausencias (Principio XII).
+duplicados y sin ausencias (Principio XII). Para causas ya diagnosticadas con certeza —no
+para lo que sigue en fase de hipótesis— el alcance incluye también la **ejecución**, no solo
+la propuesta, de la acción correctiva, siempre dentro de la lista cerrada de acciones
+reversibles con rollback escrito (Principios V y VI) y bajo el Modelo Operacional B.
 
 **Fuera de alcance en v1**: ejecución de acciones correctivas sobre contenedores críticos
 (lista del monitor), diagnóstico de Home Assistant y relays socat, cualquier incidencia que
@@ -163,4 +171,4 @@ principio, sobra. Si un principio no tiene componente, falta.
 cada ciclo de implementación. La línea base (Principio IX) DEBE actualizarse cuando se
 establezca un nuevo conjunto de evaluación validado.
 
-**Version**: 1.1.1 | **Ratified**: 2026-08-02 | **Last Amended**: 2026-08-02
+**Version**: 1.1.2 | **Ratified**: 2026-08-02 | **Last Amended**: 2026-08-02

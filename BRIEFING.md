@@ -36,8 +36,7 @@ artefactos de Spec Kit, no el calendario.
 
 ## La premisa, y por qué esta vez está verificada
 
-El proyecto anterior murió porque su premisa era una suposición: *"la búsqueda de
-Immich no resuelve consultas compuestas"*. Bastó arreglar el idioma del modelo para
+El proyecto anterior murió porque su premisa era una suposición: *"la búsqueda de Immich no resuelve consultas compuestas"*. Bastó arreglar el idioma del modelo para
 que dejara de haber problema.
 
 Aquí la premisa **es un hecho observado, no una hipótesis**:
@@ -264,8 +263,10 @@ artefacto y qué métricas anotar en el `BITACORA.md`.
 
 1. ~~`specify init --here --integration claude`~~ — hecho.
 2. ~~Leer los `SKILL.md` de `constitution`, `specify` y `clarify`~~ — hecho.
-3. ~~`speckit-constitution`~~ — hecho, v1.1.1. Incluye el Principio XII (precisión
-   del dashboard), añadido después de que se acordara la segunda premisa.
+3. ~~`speckit-constitution`~~ — hecho, v1.1.2. Incluye el Principio XII (precisión
+   del dashboard) y el alcance corregido para autorizar ejecución, no solo
+   propuesta, sobre causas ya diagnosticadas — ambos añadidos tras acordar la
+   segunda premisa.
 4. **Pendiente — sigue yendo antes que `specify`, pero acotado a la primera
    premisa**: el criterio de muerte sobre los 49 reinicios. Cinco episodios de
    `restart_history`, evidencia disponible reconstruida a mano, ¿bastaría para
