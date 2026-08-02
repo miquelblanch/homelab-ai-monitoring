@@ -172,11 +172,11 @@ Es la misma lección del proyecto anterior, aplicada antes en vez de después.
 
 ## Decisiones ya tomadas
 
-**Repositorio privado.** Va a contener rutas, nombres de contenedores y salidas de
-diagnóstico reales. La versión pública será una página de caso de estudio en
-`homelab-ai-platform`, saneada con la política de siempre: **se nombra el software,
-no la topología**. Decidirlo ahora es gratis; decidirlo tras tres meses de commits
-significa reescribir el historial.
+**Repositorio público.** Contiene rutas, nombres de contenedores y salidas de
+diagnóstico reales, saneados con la política de siempre: **se nombra el software,
+no la topología** — no van datos de seguridad física (p. ej. entidades atadas a una
+cerradura real) ni credenciales. Decidirlo ahora es gratis; decidirlo tras tres
+meses de commits significa reescribir el historial.
 
 **Acceso a los datos por consulta directa a SQLite**, que es una base de datos
 propia y no la de un tercero. No aplica aquí la regla de "la API, nunca la base de
