@@ -8,10 +8,18 @@
 
 ## Las cinco preguntas
 
-**Por qué.** Hay una causa raíz sin resolver en el homelab: un contenedor acumuló
-49 reinicios automáticos en siete semanas y nadie sabe por qué. Se investigó a mano
-durante una sesión completa, se descartaron dos hipótesis, y no salió. El sistema
-actual sabe *reiniciar*; no sabe *averiguar*.
+**Por qué.** Hay dos problemas sin resolver, y no son del mismo tipo.
+
+El primero: un contenedor acumuló 49 reinicios automáticos en siete semanas y nadie
+sabe por qué. Se investigó a mano durante una sesión completa, se descartaron dos
+hipótesis, y no salió. El sistema actual sabe *reiniciar*; no sabe *averiguar*.
+
+El segundo, encontrado en el barrido del 01-08-2026 (`BARRIDO-2026-08-01.md`): el
+dashboard (`http://homelab.amsterdam9.home/`) no mostró ninguno de los 11 problemas
+reales detectados ese día. No es un problema de ruido, es de cobertura — hay alarmas
+que el propio sistema genera y que nunca llegan a la pantalla, o que llegan
+duplicadas y se descartan. A diferencia del primero, este tiene causa conocida
+(deduplicación mal hecha, ausencia de estado esperado declarado) y arreglo directo.
 
 **Para quién.** Para Miquel, operando su propia infraestructura. Un solo usuario,
 sin requisitos de multi-tenancy, sin SLA. Y de forma secundaria, para quien lea el
@@ -64,6 +72,24 @@ intervalos por debajo de una hora.
 Cincuenta minutos es un número sospechosamente regular. Nadie ha buscado todavía qué
 tarea del sistema tiene ese periodo.
 
+### La segunda premisa: cobertura del dashboard, ya diagnosticada
+
+Este problema es de otra naturaleza y conviene no mezclarlo con el anterior. El
+barrido del 01-08-2026 no dejó ninguna pregunta abierta sobre *por qué* fallaba cada
+caso — dejó una lista de causas conocidas:
+
+- La deduplicación de alertas se come avisos reales mientras la condición persiste
+  (2.833 alertas de una sola entidad, 49 reinicios de otra, ambos silenciados).
+- No existe una capa de estado esperado: sin ella, lo intencionado (p. ej. `frigate`
+  parado) y lo roto son indistinguibles para el sistema.
+- Hay fallos latentes (plists corruptos) que no producen síntoma hasta el próximo
+  reinicio, y el dashboard solo mira el estado actual.
+
+Nada de esto requiere formular una hipótesis y contrastarla contra el sistema: la
+causa ya se conoce, está escrita en `BARRIDO-2026-08-01.md`. Es una lista de tareas
+de ingeniería, no un problema de diagnóstico. Por eso el criterio de muerte (más
+abajo) no le aplica.
+
 ---
 
 ## Verdad de campo disponible
@@ -106,8 +132,12 @@ clasifica en **CRITICAL** (alerta, no toca), **NEVER_RESTART** (ignora) y el res
 (reinicia y **verifica a los 10 segundos** que sigue corriendo). Tiene cortacircuitos:
 3 intentos en 6 horas y se detiene.
 
-**El agente se añade, no reemplaza.** El monitor seguirá siendo quien actúe. El
-agente aporta la capa que no existe: explicar *por qué* pasó.
+**El agente se añade, no reemplaza.** El monitor seguirá siendo quien reinicie
+contenedores — eso no cambia. Lo que el agente añade son dos cosas que hoy no
+existen: explicar *por qué* pasó algo (primera premisa) y remediar, dentro de una
+lista cerrada y reversible, lo que el barrido ya diagnosticó y el monitor no toca
+—dedup, plists, rotación de logs— (segunda premisa). Ninguna de las dos rutas
+sustituye al monitor ni actúa sobre contenedores críticos.
 
 Motivo: si el agente sustituye al monitor y el agente falla, se pierde la
 remediación automática que lleva meses funcionando. Un componente experimental no
@@ -146,7 +176,8 @@ puede alcanzarse con el sistema en vivo, no es evaluable y no cuenta.
 
 ## Criterio de muerte
 
-Se comprueba **antes** de escribir código de agente:
+**Aplica solo a la primera premisa** (los 49 reinicios sin causa conocida). Se
+comprueba **antes** de escribir código de agente para esa parte:
 
 > Coger cinco episodios históricos, reconstruir a mano qué evidencia había disponible
 > en cada uno, y comprobar que **la evidencia basta para distinguirlos**.
@@ -159,12 +190,33 @@ un generador de hipótesis plausibles e incontrastables, que es peor que nada.
 
 Es la misma lección del proyecto anterior, aplicada antes en vez de después.
 
+**No aplica a la segunda premisa** (cobertura del dashboard y remediación de la
+lista ya diagnosticada del barrido). Ahí no hay hipótesis que contrastar contra
+evidencia insuficiente: la causa de cada hallazgo ya está escrita. Exigir el mismo
+chequeo ahí sería aplicar la solución a un problema que no tiene.
+
 ---
+
+## En alcance ahora
+
+- **Diagnóstico de la primera premisa** (el contenedor de los 49 reinicios), sujeto
+  al criterio de muerte antes de escribir código de agente para esta parte.
+- **Cobertura y precisión del dashboard** (`http://homelab.amsterdam9.home/`): toda
+  alarma real activa, una sola vez, sin ausencias (Principio XII de la constitución).
+- **Remediación reversible de la lista ya diagnosticada del barrido** — dedup,
+  plists corruptos, rotación de logs, logs en `/tmp`, healthchecks — dentro de la
+  lista cerrada de acciones reversibles con rollback escrito (Principios V y VI).
+  Esto es nuevo respecto a la versión anterior de este briefing: antes "actuar"
+  estaba fuera de alcance sin matices; ahora lo está solo para lo que sigue sin
+  diagnosticar.
 
 ## Fuera de alcance en la primera versión
 
-- **Actuar.** La v1 diagnostica y propone. La ejecución de acciones correctivas se
-  reevalúa cuando el diagnóstico sea fiable.
+- **Actuar sobre lo que sigue sin diagnosticar.** Mientras la causa de los 49
+  reinicios no pase el criterio de muerte, el agente no actúa sobre ese contenedor:
+  solo propone.
+- **Cualquier acción sobre contenedores críticos** (lista del monitor), diagnosticada
+  o no. Ahí siempre se detiene y espera aprobación humana explícita.
 - Diagnóstico de Home Assistant y de los relays. Otro dominio, otras fuentes.
 - Cualquier incidencia que el monitor actual ya resuelva sin ayuda.
 
@@ -184,6 +236,11 @@ datos" del proyecto anterior: aquel esquema era de Immich y cambiaba con cada
 actualización; este lo controla Miquel.
 
 **Entrega por Telegram**, coherente con el resto del homelab. Sin interfaz nueva.
+
+**Dashboard existente, no interfaz nueva.** La cobertura de alarmas (segunda
+premisa) se resuelve arreglando qué llega y cómo se deduplica en
+`http://homelab.amsterdam9.home/`, que ya existe. No se construye una pantalla
+nueva.
 
 ---
 
@@ -205,12 +262,17 @@ artefacto y qué métricas anotar en el `BITACORA.md`.
 
 ## Orden inmediato
 
-1. `specify init --here --integration claude` en esta carpeta
-2. Leer los `SKILL.md` de `constitution`, `specify` y `clarify` — antes de invocarlos
-3. **El criterio de muerte primero**: cinco episodios, evidencia disponible,
-   ¿bastaría para diagnosticarlos?
-4. `speckit-constitution` con los seis principios de arriba
-5. `speckit-specify`, alimentado por este briefing
+1. ~~`specify init --here --integration claude`~~ — hecho.
+2. ~~Leer los `SKILL.md` de `constitution`, `specify` y `clarify`~~ — hecho.
+3. ~~`speckit-constitution`~~ — hecho, v1.1.1. Incluye el Principio XII (precisión
+   del dashboard), añadido después de que se acordara la segunda premisa.
+4. **Pendiente — sigue yendo antes que `specify`, pero acotado a la primera
+   premisa**: el criterio de muerte sobre los 49 reinicios. Cinco episodios de
+   `restart_history`, evidencia disponible reconstruida a mano, ¿bastaría para
+   distinguirlos? La segunda premisa (dashboard + remediación diagnosticada) no
+   necesita este paso y puede alimentar `speckit-specify` sin esperar.
+5. `speckit-specify`, alimentado por este briefing.
 
-El paso 3 va antes que el 4 a propósito. Escribir una constitución para algo que se
-va a abandonar es trabajo tirado — y ya sabemos lo barato que es descubrirlo pronto.
+Sigue sin tener sentido especificar el diagnóstico de algo que resulte
+indiagnosticable con la evidencia actual — de ahí que el paso 4 siga pendiente para
+esa mitad. La otra mitad (dashboard y remediación) no tiene esa dependencia.
