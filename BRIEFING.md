@@ -90,39 +90,6 @@ abajo) no le aplica.
 
 ---
 
-## Verdad de campo disponible
-
-Esto es lo que diferencia este proyecto del anterior: **se puede evaluar contra
-episodios reales de los que ya se conoce el desenlace, sin tocar producción.**
-
-**Base de datos:** `/Volumes/FastData/homelab/docker/homelab-orchestrator/data/homelab.db`
-
-| Tabla | Contenido | Utilidad para el agente |
-| --- | --- | --- |
-| `restart_history` | 83 eventos reales, mar–may 2026, con `result` | El conjunto de evaluación |
-| `container_metrics` | Detalle a 5 min: CPU, memoria, estado, salud. Retención 30 días | Contexto inmediato de un episodio |
-| `container_metrics_hourly` | Medias horarias, permanentes, serie continua desde 2026-04-17 | Contexto histórico y detección de anomalías |
-| `disk_metrics` / `disk_metrics_daily` | Lo mismo para los tres discos | Correlación con eventos de disco |
-| `migrations` | Migraciones aplicadas | Idempotencia |
-
-**Fuentes adicionales:** logs de los LaunchAgents en `~/Library/Logs/`, salida de
-`docker inspect` y `docker logs`, y el estado de los relays y tareas programadas.
-
-### La consecuencia de diseño más importante
-
-**El agente tiene que poder ejecutarse en diferido contra un episodio pasado.**
-
-Si solo funciona en vivo, cada iteración cuesta esperar a que algo se rompa, y no
-hay forma de comparar dos versiones del grafo sobre el mismo caso. Reproducibilidad
-sobre el histórico no es una comodidad: es la condición para poder medir.
-
-Esto obliga a separar desde el primer día **la recogida de evidencia de la fuente de
-la evidencia**. Las herramientas del agente no leen el sistema directamente: piden
-la evidencia a una capa que puede servirla desde el sistema vivo o desde el
-histórico. Si esa separación no está en el plan, el proyecto no es evaluable.
-
----
-
 ## Qué existe ya, y que el agente NO debe sustituir
 
 `docker_monitor.py` corre cada cinco minutos y funciona. Lista 41 contenedores,
