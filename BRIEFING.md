@@ -8,6 +8,16 @@
 
 ## Las cinco preguntas
 
+**Qué.** Dos entregables:
+
+1. Un agente (grafo de LangGraph) que diagnostica incidencias de contenedores y,
+   cuando la causa ya está diagnosticada, la corrige dentro de una lista cerrada de
+   acciones reversibles.
+2. **Ampliar el dashboard del homelab** (`http://homelab.amsterdam9.home/`) para
+   que muestre **todas las alarmas reales posibles**: ninguna ausente, ninguna
+   duplicada. Es el Principio XII de la constitución, y es un objetivo tan
+   importante como el primero — no un efecto secundario de diagnosticar.
+
 **Por qué.** Hay dos problemas sin resolver, y son de tipo distinto.
 
 El primero: un contenedor se ha reiniciado automáticamente 49 veces en siete
