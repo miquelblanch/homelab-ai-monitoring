@@ -1,17 +1,17 @@
 <!--
 ## Sync Impact Report
 
-**Version change**: 1.1.1 → 1.1.2
-**Principles added**: None
+**Version change**: 1.1.2 → 1.2.0
+**Principles added**: XIII. Cobertura Sistemática, No Anecdótica
 **Principles modified**: None (Principios I–XII sin cambios)
 **Sections added**: None
 **Sections removed**: N/A
-**Sections clarified**: "Alcance y Límites → En alcance" — corregido para decir
-explícitamente que, sobre causas ya diagnosticadas con certeza, el alcance incluye
-ejecutar la acción correctiva (no solo proponerla), dentro de la lista cerrada de
-acciones reversibles (Principios V/VI) y el Modelo Operacional B. El Modelo
-Operacional y los Principios V/VI ya autorizaban esto; la redacción de "En alcance"
-se había quedado corta al decir solo "propuesta"
+**Sections clarified**: "Alcance y Límites → En alcance" — ampliado de "diagnóstico
+de incidencias de contenedores" a cobertura sistemática de todo el homelab
+(contenedores, integraciones como los recordatorios de Nextcloud, y la propia
+infraestructura de monitorización). El giro lo motiva BRIEFING.md: los cuatro casos
+que dieron origen al proyecto se encontraron por casualidad, no buscándolos —lo que
+demuestra que el objetivo nunca fue esa lista de casos, sino la cobertura misma
 **Deferred TODOs**: None
 -->
 
@@ -125,6 +125,23 @@ como una alarma, no como dos.
 **Rationale**: El barrido de referencia ya encontró problemas invisibles al dashboard y
 falsos positivos. Si duplica, se deja de mirar por ruido; si omite, se deja de confiar en él.
 
+### XIII. Cobertura Sistemática, No Anecdótica
+
+Ningún componente del homelab queda sin vigilar por el simple hecho de no haber
+fallado todavía de forma visible. La cobertura se decide recorriendo
+sistemáticamente qué existe —contenedores, integraciones, la propia
+infraestructura de monitorización—, no reaccionando a lo que ya ha fallado. Todo
+lo que se añada al homelab hereda esta misma obligación desde el momento en que
+se añade.
+
+**Rationale**: Los cuatro casos que dieron origen a este proyecto —los reinicios
+de beszel, el barrido del 2026-08-01, Beszel sin vigilar bien sus propios
+sistemas monitorizados, y los recordatorios de Nextcloud que no llegan por
+Telegram— se encontraron por casualidad, en momentos y contextos distintos,
+mirando cosas distintas cada vez. Si cuatro aparecieron sin buscarlos
+activamente, parchear uno por uno nunca cierra el agujero real: hace falta un
+método que no dependa de la suerte.
+
 ## Modelo Operacional
 
 El agente opera bajo el **Modelo B**: actúa de forma autónoma únicamente en acciones
@@ -136,14 +153,17 @@ hay duda sobre si una acción es de bajo riesgo, se trata como de alto riesgo.
 
 ## Alcance y Límites
 
-**En alcance**: diagnóstico de incidencias de contenedores, formulación y contraste de
-hipótesis contra el historial de episodios, propuesta de acciones correctivas, registro del
-razonamiento, y mantenimiento del dashboard (`http://homelab.amsterdam9.home/`) como
-entregable del proyecto: toda alarma activa del sistema DEBE quedar reflejada allí sin
-duplicados y sin ausencias (Principio XII). Para causas ya diagnosticadas con certeza —no
-para lo que sigue en fase de hipótesis— el alcance incluye también la **ejecución**, no solo
-la propuesta, de la acción correctiva, siempre dentro de la lista cerrada de acciones
-reversibles con rollback escrito (Principios V y VI) y bajo el Modelo Operacional B.
+**En alcance**: cobertura sistemática de vigilancia sobre todo el homelab —no solo
+contenedores Docker: también integraciones (p. ej. los recordatorios de Nextcloud) y la
+propia infraestructura de monitorización (p. ej. qué vigila Beszel y si lo vigila bien)—,
+formulación y contraste de hipótesis contra el historial de episodios, propuesta de
+acciones correctivas, registro del razonamiento, y mantenimiento del dashboard
+(`http://homelab.amsterdam9.home/`) como entregable del proyecto: toda alarma activa del
+sistema DEBE quedar reflejada allí sin duplicados y sin ausencias (Principio XII). Para
+causas ya diagnosticadas con certeza —no para lo que sigue en fase de hipótesis— el
+alcance incluye también la **ejecución**, no solo la propuesta, de la acción correctiva,
+siempre dentro de la lista cerrada de acciones reversibles con rollback escrito
+(Principios V y VI) y bajo el Modelo Operacional B.
 
 **Fuera de alcance en v1**: ejecución de acciones correctivas sobre contenedores críticos
 (lista del monitor), diagnóstico de Home Assistant y relays socat, cualquier incidencia que
@@ -171,4 +191,4 @@ principio, sobra. Si un principio no tiene componente, falta.
 cada ciclo de implementación. La línea base (Principio IX) DEBE actualizarse cuando se
 establezca un nuevo conjunto de evaluación validado.
 
-**Version**: 1.1.2 | **Ratified**: 2026-08-02 | **Last Amended**: 2026-08-02
+**Version**: 1.2.0 | **Ratified**: 2026-08-02 | **Last Amended**: 2026-08-07
