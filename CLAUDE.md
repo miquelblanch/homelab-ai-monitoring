@@ -28,15 +28,27 @@ Lee, en este orden:
 
 ## El problema, en una frase
 
-Dos premisas distintas, con reglas distintas (ver `BRIEFING.md` para el detalle):
+El objetivo **no** es resolver un misterio concreto ni una lista fija de casos
+conocidos. Es un sistema de monitorización que cubra **sistemáticamente** todo
+el homelab — Principio XIII de la constitución — y que, para cada problema real
+que detecte, o lo corrija solo (si ya está diagnosticado y la acción es segura y
+reversible) o avise a Miquel con contexto suficiente para que lo resuelva él.
 
-- **Primera** (sin diagnosticar): un contenedor acumuló 49 reinicios automáticos sin
-  causa raíz conocida. Necesita pasar el **criterio de muerte** (5 episodios,
-  ¿basta la evidencia para distinguirlos?) antes de escribir código de agente.
-- **Segunda** (ya diagnosticada): el dashboard (`http://homelab.amsterdam9.home/`)
-  no refleja 11 problemas reales encontrados en el barrido — por deduplicación mal
-  hecha y ausencia de estado esperado, no por falta de señal. No necesita el
-  criterio de muerte: la causa ya se conoce.
+Cuatro casos motivaron el proyecto, encontrados por casualidad en momentos
+distintos — no son la lista de tareas, son la prueba de que el problema es
+sistémico (ver `BRIEFING.md` para el detalle de cada uno):
+
+1. Un contenedor (`beszel`) acumuló 49 reinicios automáticos sin causa raíz
+   conocida. El **criterio de muerte** ya se comprobó (5 episodios reales de
+   `restart_history`) y **no lo pasa**: 3 de 5 no tienen ningún dato más allá
+   de la marca de tiempo. No se persigue esta causa raíz como objetivo — se usa
+   como evidencia de que hace falta mejor cobertura, no como algo a resolver.
+2. El barrido del 01-08-2026: 11 problemas reales, 0 visibles en el dashboard.
+   Causas conocidas y escritas en `BARRIDO-2026-08-01.md`.
+3. Beszel —la propia herramienta de monitorización— no vigila bien 2 de los 3
+   sistemas que tiene a su cargo. Sin investigar todavía.
+4. Los recordatorios de Tareas/Calendario de Nextcloud no llegan por Telegram.
+   Sin investigar todavía.
 
 ## Datos disponibles para el agente
 
@@ -61,6 +73,10 @@ rompa. Es el Principio XI de la constitución (Reproducibilidad Diferida).
 
 ## Reglas operativas rápidas
 
+- **Cobertura sistemática, no lista de casos.** No se trata de arreglar los
+  cuatro casos conocidos uno por uno — se trata de recorrer todo lo que compone
+  el homelab y comprobar, de cada pieza, si tiene estado esperado declarado, si
+  se vigila, y si un fallo llegaría al dashboard (Principio XIII).
 - **No reemplaza `docker_monitor.py`.** Sigue siendo quien reinicia contenedores.
   El agente añade diagnóstico y, para causas ya diagnosticadas, remediación
   reversible — nunca sustituye la remediación existente.
