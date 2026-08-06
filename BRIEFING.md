@@ -8,14 +8,22 @@
 
 ## El objetivo, dicho sin rodeos
 
-Este proyecto no nació para explicar por qué un contenedor se reinició 49 veces.
-Nació para eso, pero al investigarlo se hizo evidente algo más grande: **la
-monitorización del homelab tiene agujeros, en más de un sitio, y nadie se entera
-hasta que mira a mano.** El objetivo real es cerrar esos agujeros — todos los que
-se puedan encontrar, no solo el primero que apareció.
+Este proyecto no nació para explicar por qué un contenedor se reinició 49 veces,
+ni para arreglar cuatro casos concretos uno por uno. Nació de investigar el
+primero, pero se hizo evidente algo más grande: **la monitorización del homelab
+tiene agujeros, y no hay forma de saber cuántos son ni dónde están todos.**
 
-El criterio de éxito no es "se resolvió el misterio de beszel". Es: **cuando algo
-falle, que se sepa. Sin duplicados, sin ausencias, lo antes posible.**
+El objetivo no es una lista de arreglos. Es un **sistema de monitorización
+avanzado que encuentre sistemáticamente TODOS los problemas reales del homelab**
+—no solo los que ya se conocen— y que, para cada uno:
+
+- si la causa ya está diagnosticada y la corrección es segura y reversible,
+  **lo resuelva solo**;
+- si no, **avise a Miquel con contexto suficiente para que lo resuelva él**.
+
+Los cuatro casos de abajo no son "la lista de tareas". Son la prueba de que el
+problema es sistémico, no anecdótico — y de que parchear caso por caso nunca va
+a ser suficiente.
 
 ---
 
@@ -32,27 +40,40 @@ rompe y el sistema no avisa.
 | **4 · Recordatorios de Nextcloud** | Los recordatorios de Tareas/Calendario de Nextcloud, que deberían avisar por Telegram, no llegan. | **Sin investigar todavía.** Reportado por Miquel. No se sabe si falla el propio Nextcloud, el puente a Telegram, o la configuración del recordatorio. |
 
 Los casos 1 y 2 ya se investigaron a fondo — el resto de este documento explica
-qué se encontró. Los casos 3 y 4 son nuevos: hace falta el mismo tipo de
-investigación manual antes de poder decir nada sobre ellos.
+qué se encontró. Los casos 3 y 4 son nuevos y todavía no se han investigado.
+
+**Importante:** esto no es una lista cerrada. Son los cuatro casos que se han
+encontrado *por casualidad*, mirando distintas cosas en distintos momentos.
+Nadie ha hecho todavía el ejercicio de recorrer sistemáticamente los 40
+contenedores y todas las integraciones del homelab preguntando, de cada uno,
+"¿esto tiene un estado esperado declarado, se vigila, y si falla se sabría?".
+Eso —no investigar los casos 3 y 4 uno por uno— es lo que de verdad hace falta
+antes de escribir ningún spec.
 
 ---
 
 ## Las cinco preguntas
 
-**Qué.** Dos entregables:
+**Qué.** Un sistema de monitorización avanzado con dos partes:
 
-1. **Cobertura total de monitorización.** Que el dashboard del homelab
-   (`http://homelab.amsterdam9.home/`) muestre todas las alarmas reales que
-   genera el sistema, sin ausencias y sin duplicados (Principio XII de la
-   constitución). Esto incluye ampliar qué se vigila, no solo arreglar cómo se
-   presenta lo que ya se vigila.
-2. Un agente (grafo de LangGraph) que, para causas ya diagnosticadas con
-   certeza, las corrige dentro de una lista cerrada de acciones reversibles — y
-   si no puede, avisa a Miquel.
+1. **Cobertura sistemática, no anecdótica.** Todo lo que forma parte del
+   homelab —los 40 contenedores, las integraciones, los recordatorios, lo que
+   se venga a añadir después— tiene un estado esperado declarado (Principio
+   III), se vigila de verdad, y si algo falla, llega al dashboard del homelab
+   (`http://homelab.amsterdam9.home/`) una vez y sin ausencias (Principio XII).
+   No es una lista de servicios elegidos a mano: es un método que se aplica a
+   todo por igual.
+2. **Dos caminos de respuesta**, según cada problema que se detecte: si la
+   causa ya está diagnosticada con certeza y la corrección es segura y
+   reversible, un agente (grafo de LangGraph) la aplica solo, dentro de una
+   lista cerrada de acciones reversibles. Si no, avisa a Miquel con contexto
+   suficiente para que lo resuelva él.
 
-**Por qué.** Cuatro casos (arriba) del mismo patrón: algo se rompe, y nadie se
-entera hasta que alguien mira a mano. Eso es lo que hay que dejar de aceptar
-como normal.
+**Por qué.** Cuatro casos encontrados por casualidad (arriba), del mismo
+patrón: algo se rompe, y nadie se entera hasta que alguien mira a mano. Si
+cuatro aparecieron sin buscarlos activamente, la pregunta real no es "¿cómo
+arreglo estos cuatro?" — es "¿cuántos más hay, y cómo dejo de depender de la
+suerte para encontrarlos?".
 
 **Para quién.** Para Miquel, que gestiona su propia infraestructura. Es un solo
 usuario: no hace falta pensar en varios usuarios ni en garantías de
@@ -61,14 +82,17 @@ este proyecto continúa el repositorio público del homelab.
 
 **Cómo.** Dos frentes, que no dependen el uno del otro:
 
-- **Encontrar y cerrar agujeros de monitorización**, ampliando el método que ya
-  funcionó una vez: el barrido manual del 01-08-2026. Los casos 3 y 4 son el
-  punto de partida de la siguiente ronda.
-- **Un grafo de LangGraph** que, cuando ocurre un evento: detecta el error,
-  formula posibles causas y las comprueba una a una contra el sistema, lo
-  corrige si la causa ya está diagnosticada y la acción está en la lista
-  cerrada de reversibles, y si no puede —porque se queda sin ideas o porque la
-  acción es peligrosa— se lo dice a Miquel.
+- **Un inventario sistemático**, no una investigación caso por caso: recorrer
+  todo lo que compone el homelab y, de cada pieza, responder "¿tiene estado
+  esperado declarado? ¿se vigila? ¿si falla, se sabría?". El barrido del
+  01-08-2026 hizo esto sobre 86 puntos del dashboard y Home Assistant; hace
+  falta extenderlo a todo lo demás (Beszel y lo que Beszel vigila, las
+  integraciones con Nextcloud, y lo que aparezca).
+- **Un grafo de LangGraph** que, cuando se detecta un problema: formula
+  posibles causas y las comprueba una a una contra el sistema, lo corrige si la
+  causa ya está diagnosticada y la acción está en la lista cerrada de
+  reversibles, y si no puede —porque se queda sin ideas o porque la acción es
+  peligrosa— se lo dice a Miquel.
 
 **Cuándo.** Sin fecha límite. Es un proyecto largo. El ritmo lo marcan los
 artefactos de Spec Kit (constitution, spec, plan, tasks), no un calendario.
@@ -176,10 +200,10 @@ NO NEGOCIABLE.**
 
 ## En alcance ahora
 
-- **Ampliar el barrido.** Investigar a mano los casos 3 y 4 (Beszel y los
-  sistemas que marca en rojo; los recordatorios de Nextcloud), con el mismo
-  método que ya funcionó el 01-08-2026, y buscar activamente más casos del
-  mismo tipo. Esto viene antes que escribir código de agente para casos nuevos.
+- **Inventario sistemático de cobertura**: recorrer todo el homelab —no solo
+  los cuatro casos conocidos— y para cada pieza comprobar si tiene estado
+  esperado declarado, si se vigila, y si un fallo llegaría al dashboard. Esto
+  viene antes que escribir código de agente para casos nuevos.
 - **Cobertura y precisión del dashboard** (`http://homelab.amsterdam9.home/`):
   que toda alarma real activa aparezca, una sola vez, sin que falte ninguna
   (Principio XII de la constitución).
@@ -188,6 +212,10 @@ NO NEGOCIABLE.**
   corruptos, rotación de logs, logs en `/tmp`, healthchecks que faltan)— dentro
   de una lista cerrada de acciones reversibles, cada una con su forma
   documentada de deshacerla (Principios V y VI).
+- **Avisar a Miquel, con contexto**, para todo lo que se detecte y no tenga
+  corrección segura y reversible ya diagnosticada. No todo problema encontrado
+  tiene que resolverlo el agente — muchos los resuelve Miquel, pero solo si se
+  entera.
 
 ## Fuera de alcance por ahora
 
@@ -246,7 +274,9 @@ artefacto y qué anotar en `BITACORA.md`.
 4. ~~Criterio de muerte sobre los 49 reinicios de beszel~~ — hecho. No lo pasa:
    confirma que perseguir esa causa raíz concreta no es el camino, y que el
    objetivo real es ampliar la cobertura de monitorización.
-5. **Pendiente, y va antes que `specify`:** investigar a mano los casos 3 y 4
-   (Beszel en rojo, recordatorios de Nextcloud) y ampliar el barrido buscando
-   más casos parecidos. El resultado alimenta directamente el spec.
-6. `speckit-specify`, usando este briefing y el barrido ampliado como base.
+5. **Pendiente, y va antes que `specify`:** el inventario sistemático de
+   cobertura — recorrer todo el homelab, no solo los casos 3 y 4, y para cada
+   pieza comprobar si tiene estado esperado, si se vigila, y si un fallo se
+   sabría. Los casos 3 y 4 son el punto de partida, no el destino: sirven para
+   validar el método antes de aplicarlo a todo lo demás.
+6. `speckit-specify`, usando este briefing y el inventario como base.
