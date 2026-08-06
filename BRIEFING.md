@@ -1,128 +1,133 @@
-# Briefing — Agente de diagnóstico de incidencias
+# Briefing — Monitorización completa del homelab
 
-> Escrito el 31-07-2026, antes de la primera línea de código.
+> Escrito el 31-07-2026, revisado el 02-08-2026, antes de la primera línea de código.
 > Material de partida para `speckit-constitution` y `speckit-specify`.
 > **Esto no es la especificación.** Es lo que se sabe antes de escribirla.
 
 ---
 
-## Los dos vectores del proyecto
+## El objetivo, dicho sin rodeos
 
-Todo lo que sigue se organiza en dos vectores. Conviene tenerlos separados desde
-el principio porque tienen reglas distintas:
+Este proyecto no nació para explicar por qué un contenedor se reinició 49 veces.
+Nació para eso, pero al investigarlo se hizo evidente algo más grande: **la
+monitorización del homelab tiene agujeros, en más de un sitio, y nadie se entera
+hasta que mira a mano.** El objetivo real es cerrar esos agujeros — todos los que
+se puedan encontrar, no solo el primero que apareció.
 
-- **Vector 1 — Diagnóstico.** El contenedor que se ha reiniciado 49 veces sin
-  causa conocida. Sigue sin diagnosticar.
-- **Vector 2 — Cobertura del dashboard.** Que `http://homelab.amsterdam9.home/`
-  muestre todas las alarmas reales, sin ausencias ni duplicados. Ya está
-  diagnosticado.
+El criterio de éxito no es "se resolvió el misterio de beszel". Es: **cuando algo
+falle, que se sepa. Sin duplicados, sin ausencias, lo antes posible.**
 
-**Qué.** Dos entregables, uno por vector:
+---
 
-1. **Vector 1:** un agente (grafo de LangGraph) que diagnostica incidencias de
-   contenedores y, cuando la causa ya está diagnosticada, la corrige dentro de una
-   lista cerrada de acciones reversibles.
-2. **Vector 2:** ampliar el dashboard del homelab para que muestre **todas las
-   alarmas reales posibles**. Es el Principio XII de la constitución, y es un
-   objetivo tan importante como el primero — no un efecto secundario de
-   diagnosticar.
+## Lo que ya sabemos que falla
 
-**Por qué.** Hay dos problemas sin resolver, y son de tipo distinto.
+Cuatro casos, encontrados en momentos distintos, con el mismo patrón: algo se
+rompe y el sistema no avisa.
 
-Vector 1: un contenedor se ha reiniciado automáticamente 49 veces en siete
-semanas, y no se sabe por qué. Se investigó a mano durante una sesión completa, se
-descartaron dos posibles causas, y no se encontró la verdadera. El sistema actual
-sabe *reiniciar* un contenedor, pero no sabe *explicar* por qué falló.
+| Caso | Qué pasó | Estado de la investigación |
+| --- | --- | --- |
+| **1 · Reinicios de beszel** | Un contenedor se reinició 49 veces en siete semanas. Cero alertas. | Investigado a fondo (ver más abajo). Causa raíz no encontrada — y con la evidencia disponible, no se puede encontrar (ver "Criterio de muerte"). |
+| **2 · Barrido del 01-08-2026** | Revisión manual de 86 puntos del dashboard y Home Assistant: 11 problemas reales, 0 visibles en el dashboard. | Investigado a fondo. Causas conocidas y escritas en `BARRIDO-2026-08-01.md`. |
+| **3 · Beszel no vigila bien lo que vigila** | El propio Beszel —la herramienta que vigila CPU/memoria/disco de otras máquinas— muestra 2 de sus 3 sistemas en rojo (`AdGuardHome`, `UptimeKuma`). Solo `Mac Mini Server` en verde. | **Sin investigar todavía.** Visto el 06-08-2026. No se sabe si es un fallo real de esos sistemas, un fallo de la propia conexión de Beszel, o algo ya sabido y sin resolver (Uptime Kuma cambió de IP el 04-08 y no tiene reserva DHCP fija). |
+| **4 · Recordatorios de Nextcloud** | Los recordatorios de Tareas/Calendario de Nextcloud, que deberían avisar por Telegram, no llegan. | **Sin investigar todavía.** Reportado por Miquel. No se sabe si falla el propio Nextcloud, el puente a Telegram, o la configuración del recordatorio. |
 
-Vector 2, encontrado en el barrido del 01-08-2026 (`BARRIDO-2026-08-01.md`): el
-dashboard no mostró ninguno de los 11 problemas reales que hubo ese día. No es un
-problema de demasiadas alertas — es que faltan alertas. El sistema genera avisos
-que nunca llegan a la pantalla, o que llegan duplicados y se descartan. A
-diferencia del Vector 1, aquí ya se sabe la causa (la deduplicación está mal
-hecha, y no hay una definición de qué es "normal") y el arreglo es directo.
+Los casos 1 y 2 ya se investigaron a fondo — el resto de este documento explica
+qué se encontró. Los casos 3 y 4 son nuevos: hace falta el mismo tipo de
+investigación manual antes de poder decir nada sobre ellos.
+
+---
+
+## Las cinco preguntas
+
+**Qué.** Dos entregables:
+
+1. **Cobertura total de monitorización.** Que el dashboard del homelab
+   (`http://homelab.amsterdam9.home/`) muestre todas las alarmas reales que
+   genera el sistema, sin ausencias y sin duplicados (Principio XII de la
+   constitución). Esto incluye ampliar qué se vigila, no solo arreglar cómo se
+   presenta lo que ya se vigila.
+2. Un agente (grafo de LangGraph) que, para causas ya diagnosticadas con
+   certeza, las corrige dentro de una lista cerrada de acciones reversibles — y
+   si no puede, avisa a Miquel.
+
+**Por qué.** Cuatro casos (arriba) del mismo patrón: algo se rompe, y nadie se
+entera hasta que alguien mira a mano. Eso es lo que hay que dejar de aceptar
+como normal.
 
 **Para quién.** Para Miquel, que gestiona su propia infraestructura. Es un solo
-usuario: no hace falta pensar en varios usuarios ni en garantías de disponibilidad.
-En segundo lugar, para quien lea el caso de estudio público: este proyecto
-continúa el repositorio público del homelab.
+usuario: no hace falta pensar en varios usuarios ni en garantías de
+disponibilidad. En segundo lugar, para quien lea el caso de estudio público:
+este proyecto continúa el repositorio público del homelab.
 
-**Cómo.** Un grafo de LangGraph que, cuando ocurre un evento:
+**Cómo.** Dos frentes, que no dependen el uno del otro:
 
-1. Detecta el error.
-2. Formula posibles causas y las comprueba una a una contra el sistema.
-3. Si la causa ya está diagnosticada y la corrección está en la lista de acciones
-   reversibles permitidas, la aplica.
-4. Si no puede —porque se queda sin ideas, o porque la acción sería peligrosa— se
-   lo dice a Miquel.
+- **Encontrar y cerrar agujeros de monitorización**, ampliando el método que ya
+  funcionó una vez: el barrido manual del 01-08-2026. Los casos 3 y 4 son el
+  punto de partida de la siguiente ronda.
+- **Un grafo de LangGraph** que, cuando ocurre un evento: detecta el error,
+  formula posibles causas y las comprueba una a una contra el sistema, lo
+  corrige si la causa ya está diagnosticada y la acción está en la lista
+  cerrada de reversibles, y si no puede —porque se queda sin ideas o porque la
+  acción es peligrosa— se lo dice a Miquel.
 
 **Cuándo.** Sin fecha límite. Es un proyecto largo. El ritmo lo marcan los
 artefactos de Spec Kit (constitution, spec, plan, tasks), no un calendario.
 
 ---
 
-## Vector 1 — Diagnóstico del contenedor
+## Caso 1, en detalle: los reinicios de beszel
 
 Los hechos:
 
-- El mismo contenedor se ha reiniciado automáticamente 49 veces, sin causa
-  conocida.
+- El mismo contenedor (`beszel`) se ha reiniciado automáticamente 49 veces, sin
+  causa conocida.
 - Esos 49 reinicios son el **59% de todas las intervenciones automáticas** del
   sistema (49 de 83 en total).
-- **Nunca llegó una alerta.** La regla era "avisar solo cuando cambia el estado",
-  así que cada reinicio se registraba como un simple mensaje de recuperación, y
-  nadie se enteraba.
+- **Nunca llegó una alerta.** La regla era "avisar solo cuando cambia el
+  estado", así que cada reinicio se registraba como un simple mensaje de
+  recuperación, y nadie se enteraba.
 - La investigación manual descartó dos explicaciones posibles y no encontró una
   tercera.
-
-El problema sigue ahí hoy. No hace falta debatir si esto es un "hecho observado" o
-una "hipótesis" — lo que hace falta es construir el flujo de siempre: **detectar
-el error, intentar corregirlo con el grafo de LangGraph dentro de lo que tiene
-permitido, y si no puede, avisar a Miquel.**
 
 ### Lo que la investigación manual ya descartó
 
 **Flapeo** (que el contenedor se caiga muy a menudo, de forma inestable).
-Descartado. No es un goteo continuo: son **seis episodios** claramente separados,
-con semanas de estabilidad total entre uno y otro. Entre el 4 y el 16 de abril no
-pasó nada.
+Descartado. No es un goteo continuo: son **cinco episodios** claramente
+separados, con semanas de estabilidad total entre uno y otro.
 
-**Falta de recursos (memoria).** Descartado. La memoria media usada era de 23 MB,
-muy poco. Además, en dos horas concretas las métricas muestran **0,0 MB durante
-doce muestras seguidas**, justo mientras el sistema registraba cuatro reinicios
-"con éxito" en ese mismo rato. Ese 0,0 no significa que el contenedor usara poca
-memoria: significa que el contenedor ni siquiera estaba ahí.
+**Falta de recursos (memoria).** Descartado. La memoria media usada era de 23
+MB, muy poco. Además, en dos horas concretas las métricas muestran **0,0 MB
+durante doce muestras seguidas**, justo mientras el sistema registraba cuatro
+reinicios "con éxito" en ese mismo rato. Ese 0,0 no significa que el contenedor
+usara poca memoria: significa que el contenedor ni siquiera estaba ahí.
 
 **La pauta en el tiempo, que sigue sin explicación.** Los reinicios llegan en
-ráfagas de tres, en ciclos seguidos del monitor (cada 5 minutos), y luego hay una
-calma de unos cincuenta minutos antes de que se repita. La mediana entre un
-reinicio y el siguiente es de 12 minutos. 44 de los 48 intervalos entre reinicios
-duran menos de una hora.
+ráfagas, separadas por calmas de entre cincuenta minutos y semanas. No hay un
+periodo regular identificado.
 
-Cincuenta minutos es un número raro, demasiado regular para ser casualidad.
-Todavía nadie ha comprobado si alguna tarea del sistema se ejecuta justo con ese
-periodo.
+### Criterio de muerte: comprobado, y no lo pasa
 
-## Vector 2 — Cobertura del dashboard, ya diagnosticada
+Antes de construir un agente que diagnostique este caso, se comprobó si la
+evidencia disponible basta:
 
-Este problema es distinto y conviene no mezclarlo con el Vector 1. El barrido del
-01-08-2026 no dejó ninguna pregunta sin responder sobre por qué fallaba cada caso:
-dejó una lista de causas ya conocidas.
+> Coger cinco episodios históricos, reconstruir a mano qué evidencia había
+> disponible en cada uno, y comprobar si esa evidencia basta para distinguir un
+> episodio de otro.
 
-- La deduplicación de alertas descarta avisos reales mientras el problema sigue
-  activo. Ejemplo: 2.833 alertas de una entidad y 49 reinicios de otra, todos
-  silenciados.
-- No existe una definición de "cómo debería estar" cada cosa. Sin eso, el sistema
-  no puede distinguir entre algo apagado a propósito (como `frigate`) y algo roto
-  de verdad.
-- Hay fallos que no dan ninguna señal hasta que ocurre otra cosa —por ejemplo,
-  unos ficheros de configuración corruptos que solo fallarán en el próximo
-  reinicio del sistema—. El dashboard solo mira el estado actual, así que no los
-  ve.
+Resultado, con los 5 episodios reales de `restart_history`: **3 de los 5 no
+tienen ningún dato más allá de la marca de tiempo** — ocurrieron antes de que
+empezara la serie de métricas horarias (2026-04-17). De los 2 que sí tienen
+contexto, uno muestra que el contenedor estuvo completamente ausente 2 horas
+justo después de varios reinicios marcados "success" (coherente con que, antes
+del 26-07-2026, "success" solo significaba que el comando de reinicio devolvió
+0, no que el contenedor siguiera vivo después); el otro no muestra ninguna
+anomalía.
 
-Nada de esto requiere formular una hipótesis y comprobarla contra el sistema: la
-causa de cada caso ya se conoce y está escrita en `BARRIDO-2026-08-01.md`. Es una
-lista de tareas de ingeniería, no un problema de diagnóstico. Por eso el criterio
-de muerte (más abajo) no le aplica a este vector.
+Con eso delante, ni una persona podría decir por qué se reinició beszel esas 49
+veces. **El problema no es de razonamiento, es de instrumentación.** Por eso
+este caso concreto no se persigue como una causa raíz que resolver: se usa como
+la prueba de que el sistema necesita vigilar mejor, que es el objetivo real de
+este proyecto.
 
 ---
 
@@ -136,102 +141,64 @@ veces en 6 horas, deja de intentarlo.
 
 **El agente se añade a esto, no lo reemplaza.** El monitor seguirá siendo quien
 reinicie los contenedores — eso no cambia. Lo que el agente aporta es lo que hoy
-no existe: explicar *por qué* pasó algo (Vector 1), y corregir —dentro de una
-lista cerrada de acciones reversibles— lo que el barrido ya diagnosticó y que el
-monitor no toca, como la deduplicación, los ficheros corruptos o la rotación de
-logs (Vector 2). Ninguna de las dos cosas sustituye al monitor, y ninguna actúa
-sobre contenedores críticos.
+no existe: ampliar qué se vigila y cómo se avisa, y corregir —dentro de una
+lista cerrada de acciones reversibles— lo que ya esté diagnosticado con
+certeza. Nada de esto sustituye al monitor, y nada actúa sobre contenedores
+críticos.
 
-Por qué importa esto: si el agente reemplazara al monitor y el agente fallara, se
-perdería la remediación automática que lleva meses funcionando bien. Un
+Por qué importa esto: si el agente reemplazara al monitor y el agente fallara,
+se perdería la remediación automática que lleva meses funcionando bien. Un
 componente nuevo y experimental no puede poner en riesgo algo que ya funciona.
 
 ---
 
 ## Principios candidatos para la constitución
 
-Escritos para que se puedan incumplir de forma comprobable — si un principio no se
-puede señalar como incumplido en el código, no sirve. No son definitivos: son el
-material de partida para `speckit-constitution`.
+Redactados en la primera versión de este briefing, antes de correr
+`speckit-constitution`. Ya están incorporados en `.specify/memory/constitution.md`
+(que hoy tiene 12 principios, no 6) y quedan aquí solo como registro histórico,
+no como fuente viva.
 
 **1 · Ninguna acción sobre un contenedor crítico sin aprobación humana explícita.
-NO NEGOCIABLE.** La lista de críticos es la que ya usa el monitor. Si toca a uno
-de esos, el grafo se detiene y espera; no pide permiso y sigue adelante por su
-cuenta.
+NO NEGOCIABLE.**
 
-**2 · El agente diagnostica; el monitor sigue actuando.** Ninguna parte del grafo
-puede dejar al sistema sin la remediación automática que ya existe.
+**2 · El agente diagnostica; el monitor sigue actuando.**
 
-**3 · Toda hipótesis se registra, con su comprobación y su resultado.** Si una
-hipótesis se descarta sin dejar constancia de cómo se descartó, se acabará
-formulando otra vez. El registro es parte del producto, no un simple log.
+**3 · Toda hipótesis se registra, con su comprobación y su resultado.**
 
-**4 · Nada cuenta como mejora hasta que se compara con la línea base.** La línea
-base es el comportamiento actual sobre los 83 episodios históricos. Sin ese
-número de referencia, ninguna afirmación de "esto ha mejorado" entra en la
-documentación.
+**4 · Nada cuenta como mejora hasta que se compara con la línea base.**
 
-**5 · Local por defecto.** Los datos son de infraestructura privada: rutas,
-nombres de host, salidas de diagnóstico. Cualquier parte que salga de la máquina
-necesita una justificación explícita, caso por caso, en el spec.
+**5 · Local por defecto.**
 
-**6 · Todo diagnóstico tiene que poder reproducirse en diferido.** Si una
-conclusión solo se puede alcanzar con el sistema en vivo, no cuenta: no es posible
-evaluarla.
-
----
-
-## Criterio de muerte
-
-**Aplica solo al Vector 1** (los 49 reinicios sin causa conocida). Hay que
-comprobarlo **antes** de escribir código de agente para este vector:
-
-> Coger cinco episodios históricos, reconstruir a mano qué evidencia había
-> disponible en cada uno, y comprobar si **esa evidencia basta para distinguir un
-> episodio de otro**.
-
-Si ni siquiera un humano, con todos los datos delante, puede decir qué pasó, el
-problema no es de razonamiento, es de **falta de instrumentación**. En ese caso lo
-que hace falta es recoger más información —logs del contenedor, eventos de
-Docker, cruzarlo con las tareas programadas— y no construir un agente. Construir
-un grafo sobre evidencia insuficiente solo produce hipótesis que suenan bien pero
-no se pueden comprobar, y eso es peor que no tener nada.
-
-Es la misma lección del proyecto anterior, aplicada esta vez antes de empezar, no
-después.
-
-**No aplica al Vector 2** (cobertura del dashboard y arreglar lo que ya
-diagnosticó el barrido). Ahí no hay ninguna hipótesis que comprobar contra
-evidencia insuficiente: la causa de cada hallazgo ya está escrita. Aplicar el
-mismo chequeo ahí sería resolver un problema que no existe.
+**6 · Todo diagnóstico tiene que poder reproducirse en diferido.**
 
 ---
 
 ## En alcance ahora
 
-- **Diagnosticar el Vector 1** (el contenedor de los 49 reinicios), pero solo
-  después de pasar el criterio de muerte.
-- **Cobertura y precisión del dashboard** (`http://homelab.amsterdam9.home/`, Vector
-  2): que toda alarma real activa aparezca, una sola vez, sin que falte ninguna
+- **Ampliar el barrido.** Investigar a mano los casos 3 y 4 (Beszel y los
+  sistemas que marca en rojo; los recordatorios de Nextcloud), con el mismo
+  método que ya funcionó el 01-08-2026, y buscar activamente más casos del
+  mismo tipo. Esto viene antes que escribir código de agente para casos nuevos.
+- **Cobertura y precisión del dashboard** (`http://homelab.amsterdam9.home/`):
+  que toda alarma real activa aparezca, una sola vez, sin que falte ninguna
   (Principio XII de la constitución).
-- **Corregir, de forma reversible, lo que el barrido ya diagnosticó** — la
-  deduplicación, los ficheros corruptos, la rotación de logs, los logs guardados
-  en `/tmp`, los healthchecks que faltan — dentro de una lista cerrada de acciones
-  reversibles, cada una con su forma documentada de deshacerla (Principios V y
-  VI). Esto es nuevo respecto a la versión anterior de este briefing: antes,
-  "actuar" estaba fuera de alcance sin excepciones; ahora lo está solo para el
-  Vector 1, que sigue sin diagnosticar.
+- **Corregir, de forma reversible, lo que ya esté diagnosticado con certeza**
+  —empezando por la lista del barrido del 01-08 (deduplicación, ficheros
+  corruptos, rotación de logs, logs en `/tmp`, healthchecks que faltan)— dentro
+  de una lista cerrada de acciones reversibles, cada una con su forma
+  documentada de deshacerla (Principios V y VI).
 
-## Fuera de alcance en la primera versión
+## Fuera de alcance por ahora
 
-- **Actuar sobre el Vector 1 mientras siga sin diagnosticar.** Mientras la causa
-  de los 49 reinicios no pase el criterio de muerte, el agente no actúa sobre ese
-  contenedor: solo propone qué podría hacerse.
+- **Perseguir la causa raíz de los 49 reinicios de beszel.** Ya se comprobó que
+  la evidencia no basta (ver más arriba). Insistir ahí sin más instrumentación
+  sería repetir el error que ya se cometió una vez.
 - **Cualquier acción sobre contenedores críticos** (la lista del monitor), esté
   diagnosticado o no el problema. Ahí siempre se detiene y espera que Miquel lo
   apruebe.
-- Diagnosticar Home Assistant y los relays. Es otro terreno, con otras fuentes de
-  información.
+- Diagnosticar Home Assistant y los relays. Es otro terreno, con otras fuentes
+  de información.
 - Cualquier incidencia que el monitor actual ya resuelve solo, sin ayuda.
 
 ---
@@ -246,30 +213,25 @@ real) ni credenciales. Decidir esto ahora no cuesta nada; decidirlo después de
 tres meses de commits significaría reescribir todo el historial de git.
 
 **Acceso a los datos consultando SQLite directamente**, porque es una base de
-datos propia, no de un tercero. Aquí no aplica la regla del proyecto anterior de
-"usar siempre la API, nunca la base de datos": aquel esquema era de Immich y
-cambiaba con cada actualización de la app; este lo controla Miquel y no va a
-cambiar por sorpresa.
+datos propia, no de un tercero.
 
 **La entrega es por Telegram**, como el resto de las automatizaciones del
 homelab. No hace falta construir una interfaz nueva.
 
-**El dashboard ya existe, no se construye uno nuevo.** El Vector 2 se resuelve
-arreglando qué llega y cómo se deduplica en `http://homelab.amsterdam9.home/`,
-que ya está ahí.
+**El dashboard ya existe, no se construye uno nuevo.** La cobertura de alarmas
+se resuelve arreglando qué llega y cómo se deduplica en
+`http://homelab.amsterdam9.home/`, que ya está ahí.
 
 ---
 
 ## Método de trabajo
 
-El mismo que en el proyecto anterior, que funcionó bien:
-
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que
   Miquel aprenda el método, no que Claude tenga el proyecto hecho.
 - **Claude revisa** y prepara el material y los criterios antes de cada paso.
-- Lo que hace que esto sea SDD de verdad es que **la especificación manda**: si el
-  spec y el código no coinciden, eso es un defecto que hay que arreglar, aunque el
-  spec lo haya escrito una persona.
+- Lo que hace que esto sea SDD de verdad es que **la especificación manda**: si
+  el spec y el código no coinciden, eso es un defecto que hay que arreglar,
+  aunque el spec lo haya escrito una persona.
 
 Ver `METODO.md`, en esta misma carpeta, para el detalle de qué revisar en cada
 artefacto y qué anotar en `BITACORA.md`.
@@ -280,17 +242,11 @@ artefacto y qué anotar en `BITACORA.md`.
 
 1. ~~`specify init --here --integration claude`~~ — hecho.
 2. ~~Leer los `SKILL.md` de `constitution`, `specify` y `clarify`~~ — hecho.
-3. ~~`speckit-constitution`~~ — hecho, versión 1.1.2. Incluye el Principio XII
-   (precisión del dashboard) y deja claro que el alcance permite ejecutar, no
-   solo proponer, sobre causas ya diagnosticadas. Los dos se añadieron después de
-   incorporar el Vector 2.
-4. **Pendiente.** Sigue yendo antes que `specify`, pero solo afecta al Vector 1:
-   el criterio de muerte sobre los 49 reinicios. Coger cinco episodios de
-   `restart_history`, reconstruir a mano qué evidencia había, y ver si basta para
-   distinguirlos. El Vector 2 (dashboard y corrección de lo diagnosticado) no
-   necesita este paso: puede alimentar `speckit-specify` ya.
-5. `speckit-specify`, usando este briefing como base.
-
-Sigue sin tener sentido escribir una especificación para diagnosticar algo que,
-con la evidencia actual, resulte imposible de diagnosticar. Por eso el paso 4
-sigue pendiente para el Vector 1. El Vector 2 no depende de eso.
+3. ~~`speckit-constitution`~~ — hecho, versión 1.1.2.
+4. ~~Criterio de muerte sobre los 49 reinicios de beszel~~ — hecho. No lo pasa:
+   confirma que perseguir esa causa raíz concreta no es el camino, y que el
+   objetivo real es ampliar la cobertura de monitorización.
+5. **Pendiente, y va antes que `specify`:** investigar a mano los casos 3 y 4
+   (Beszel en rojo, recordatorios de Nextcloud) y ampliar el barrido buscando
+   más casos parecidos. El resultado alimenta directamente el spec.
+6. `speckit-specify`, usando este briefing y el barrido ampliado como base.
