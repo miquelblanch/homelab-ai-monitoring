@@ -5,3 +5,11 @@
 *.pem
 secrets/
 .specify/**/*.local.*
+
+# Python (src/inventory)
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
