@@ -210,10 +210,6 @@ ejecuta" — es documentación de proyecto, igual que este propio `METODO.md`.
 
 ---
 
-## Orden inmediato
-
-1. Leer los `SKILL.md` de `constitution`, `specify` y `clarify`
-2. `speckit-constitution` con los principios acordados
-3. `speckit-specify`, alimentado por `NOTAS.md` y el catálogo
-
-Sobre todo es importante que Claude lea bien como es un proyecto de SDD y que siga todos los pasos con detalle uno a uno: Claude redacta los temas, Miquel revisa la documentación y ejecuta todos los comandos de SDD
+Sobre todo es importante que Claude lea bien como es un proyecto de SDD y que siga 
+todos los pasos con detalle uno a uno: Claude redacta los temas, Miquel revisa la 
+documentación y ejecuta todos los comandos de SDD

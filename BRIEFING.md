@@ -1,6 +1,5 @@
 # Briefing — Monitorización completa del homelab
 
-> Escrito el 31-07-2026, revisado el 02-08-2026, antes de la primera línea de código.
 > Material de partida para `speckit-constitution` y `speckit-specify`.
 > **Esto no es la especificación.** Es lo que se sabe antes de escribirla.
 
@@ -9,8 +8,8 @@
 ## El objetivo, dicho sin rodeos
 
 Este proyecto no nació para explicar por qué un contenedor se reinició 49 veces,
-ni para arreglar cuatro casos concretos uno por uno. Nació de investigar el
-primero, pero se hizo evidente algo más grande: **la monitorización del homelab
+ni para arreglar cuatro casos concretos uno por uno. Nació de investigar estos casos, 
+pero se hizo evidente algo más grande: **la monitorización del homelab
 tiene agujeros, y no hay forma de saber cuántos son ni dónde están todos.**
 
 El objetivo no es una lista de arreglos. Es un **sistema de monitorización
@@ -84,10 +83,7 @@ este proyecto continúa el repositorio público del homelab.
 
 - **Un inventario sistemático**, no una investigación caso por caso: recorrer
   todo lo que compone el homelab y, de cada pieza, responder "¿tiene estado
-  esperado declarado? ¿se vigila? ¿si falla, se sabría?". El barrido del
-  01-08-2026 hizo esto sobre 86 puntos del dashboard y Home Assistant; hace
-  falta extenderlo a todo lo demás (Beszel y lo que Beszel vigila, las
-  integraciones con Nextcloud, y lo que aparezca).
+  esperado declarado? ¿se vigila? ¿si falla, se sabría?". 
 - **Un grafo de LangGraph** que, cuando se detecta un problema: formula
   posibles causas y las comprueba una a una contra el sistema, lo corrige si la
   causa ya está diagnosticada y la acción está en la lista cerrada de
@@ -113,51 +109,12 @@ Los hechos:
 - La investigación manual descartó dos explicaciones posibles y no encontró una
   tercera.
 
-### Lo que la investigación manual ya descartó
-
-**Flapeo** (que el contenedor se caiga muy a menudo, de forma inestable).
-Descartado. No es un goteo continuo: son **cinco episodios** claramente
-separados, con semanas de estabilidad total entre uno y otro.
-
-**Falta de recursos (memoria).** Descartado. La memoria media usada era de 23
-MB, muy poco. Además, en dos horas concretas las métricas muestran **0,0 MB
-durante doce muestras seguidas**, justo mientras el sistema registraba cuatro
-reinicios "con éxito" en ese mismo rato. Ese 0,0 no significa que el contenedor
-usara poca memoria: significa que el contenedor ni siquiera estaba ahí.
-
-**La pauta en el tiempo, que sigue sin explicación.** Los reinicios llegan en
-ráfagas, separadas por calmas de entre cincuenta minutos y semanas. No hay un
-periodo regular identificado.
-
-### Criterio de muerte: comprobado, y no lo pasa
-
-Antes de construir un agente que diagnostique este caso, se comprobó si la
-evidencia disponible basta:
-
-> Coger cinco episodios históricos, reconstruir a mano qué evidencia había
-> disponible en cada uno, y comprobar si esa evidencia basta para distinguir un
-> episodio de otro.
-
-Resultado, con los 5 episodios reales de `restart_history`: **3 de los 5 no
-tienen ningún dato más allá de la marca de tiempo** — ocurrieron antes de que
-empezara la serie de métricas horarias (2026-04-17). De los 2 que sí tienen
-contexto, uno muestra que el contenedor estuvo completamente ausente 2 horas
-justo después de varios reinicios marcados "success" (coherente con que, antes
-del 26-07-2026, "success" solo significaba que el comando de reinicio devolvió
-0, no que el contenedor siguiera vivo después); el otro no muestra ninguna
-anomalía.
-
-Con eso delante, ni una persona podría decir por qué se reinició beszel esas 49
-veces. **El problema no es de razonamiento, es de instrumentación.** Por eso
-este caso concreto no se persigue como una causa raíz que resolver: se usa como
-la prueba de que el sistema necesita vigilar mejor, que es el objetivo real de
-este proyecto.
 
 ---
 
 ## Qué existe ya, y que el agente NO debe sustituir
 
-`docker_monitor.py` corre cada cinco minutos y funciona bien. Clasifica los 41
+`docker_monitor.py` corre cada cinco minutos y funciona bien. Clasifica todos los
 contenedores en tres grupos: **CRITICAL** (si falla, avisa, pero no lo toca),
 **NEVER_RESTART** (lo ignora) y el resto (lo reinicia y, a los 10 segundos,
 comprueba que siga funcionando). Además tiene un límite de seguridad: si falla 3
@@ -263,20 +220,3 @@ se resuelve arreglando qué llega y cómo se deduplica en
 
 Ver `METODO.md`, en esta misma carpeta, para el detalle de qué revisar en cada
 artefacto y qué anotar en `BITACORA.md`.
-
----
-
-## Orden inmediato
-
-1. ~~`specify init --here --integration claude`~~ — hecho.
-2. ~~Leer los `SKILL.md` de `constitution`, `specify` y `clarify`~~ — hecho.
-3. ~~`speckit-constitution`~~ — hecho, versión 1.1.2.
-4. ~~Criterio de muerte sobre los 49 reinicios de beszel~~ — hecho. No lo pasa:
-   confirma que perseguir esa causa raíz concreta no es el camino, y que el
-   objetivo real es ampliar la cobertura de monitorización.
-5. **Pendiente, y va antes que `specify`:** el inventario sistemático de
-   cobertura — recorrer todo el homelab, no solo los casos 3 y 4, y para cada
-   pieza comprobar si tiene estado esperado, si se vigila, y si un fallo se
-   sabría. Los casos 3 y 4 son el punto de partida, no el destino: sirven para
-   validar el método antes de aplicarlo a todo lo demás.
-6. `speckit-specify`, usando este briefing y el inventario como base.

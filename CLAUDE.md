@@ -21,10 +21,9 @@ Lee, en este orden:
    comandos de Spec Kit; **Claude revisa** y aporta material y criterios antes de
    cada paso. No ejecutes tú las skills `speckit-*` salvo que se te pida
    explícitamente lo contrario.
-4. `BARRIDO-2026-08-01.md` — el barrido que originó la segunda premisa del
-   proyecto (cobertura del dashboard).
-5. `PRINCIPIOS.md` — material de entrada histórico de la constitución. Ya
-   incorporado; queda como registro, no como fuente viva.
+4. `BARRIDO-xxxx-xx-xx.md` — los barridos previos en busca de problemas, errores 
+   o elementos no monitorizados.
+
 
 ## El problema, en una frase
 
@@ -32,7 +31,8 @@ El objetivo **no** es resolver un misterio concreto ni una lista fija de casos
 conocidos. Es un sistema de monitorización que cubra **sistemáticamente** todo
 el homelab — Principio XIII de la constitución — y que, para cada problema real
 que detecte, o lo corrija solo (si ya está diagnosticado y la acción es segura y
-reversible) o avise a Miquel con contexto suficiente para que lo resuelva él.
+reversible) o avise a Miquel con contexto suficiente y con posibles soluciones
+para que lo resuelva él.
 
 Cuatro casos motivaron el proyecto, encontrados por casualidad en momentos
 distintos — no son la lista de tareas, son la prueba de que el problema es

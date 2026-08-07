@@ -1,8 +1,8 @@
 # Principios de entrada para `speckit-constitution`
 
-> Material de entrada, 02-08-2026. No es la constitución: es lo que se le pasa a la skill.
-> Derivados del barrido del 01-08-2026 (ver `BARRIDO-2026-08-01.md`).
-> Modelo de actuación elegido: **B** — el agente actúa solo en acciones reversibles
+>No es la constitución: es lo que se le pasa a la skill.
+> Derivados de diferentes barridos.
+> Modelo de actuación elegido: el agente actúa solo en acciones reversibles
 > y de bajo riesgo; todo lo demás es propuesta.
 
 Sistema de vigilancia profunda y remediación del homelab.
