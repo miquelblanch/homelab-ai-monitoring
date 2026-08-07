@@ -56,12 +56,26 @@ def _send_raw(text: str) -> bool:
         return False
 
 
+TELEGRAM_MAX_CHARS = 4096  # límite real de la API sendMessage
+_LIMITE_SEGURO = 3500  # margen bajo el límite real, para no rozarlo
+_UMBRAL_DETALLE_POR_CATEGORIA = 15  # a partir de aquí, se resume en vez de listar
+
+
 def build_report_text(
     conn: sqlite3.Connection, ejecucion_id: int, gaps_only: bool = False
 ) -> str:
     """FR-011, FR-018. El riesgo concentrado de Telegram (Edge Case de
     FR-006) va destacado aparte, al principio — nunca mezclado en la
-    lista ordinaria de brechas (T027)."""
+    lista ordinaria de brechas (T027).
+
+    Con volúmenes reales (cientos de entidades HA) un mensaje de una
+    línea por brecha supera el límite de 4096 caracteres de la API de
+    Telegram — descubierto en la primera ejecución real contra el
+    homelab (830 componentes, 385 brechas). Por categoría: si caben
+    pocas, se listan todas; si son muchas, se resumen con el conteo y se
+    remite a `--gaps` o al dashboard para el detalle. Además hay un
+    truncado duro como red de seguridad, por si el resumen agrupado
+    todavía no cupiera."""
     ejecucion = store.get_ejecucion(conn, ejecucion_id)
     total = ejecucion["total_componentes"]
     total_brechas = ejecucion["total_brechas"]
@@ -78,12 +92,35 @@ def build_report_text(
     if gaps_only or resto:
         lineas.append("")
         lineas.append("Brechas:" if resto else "Sin más brechas.")
-        for b in resto:
-            nueva = " [NUEVA]" if b["primera_ejecucion_id"] == ejecucion_id else ""
-            conocida = f" ({b['conocida_por_barrido_previo']})" if b["conocida_por_barrido_previo"] else ""
-            lineas.append(f"- {b['contexto']}{nueva}{conocida}")
 
-    return "\n".join(lineas)
+        por_categoria: dict[str, list] = {}
+        for b in resto:
+            por_categoria.setdefault(b["categoria"], []).append(b)
+
+        for categoria, items in sorted(por_categoria.items(), key=lambda kv: -len(kv[1])):
+            if len(items) <= _UMBRAL_DETALLE_POR_CATEGORIA:
+                for b in items:
+                    nueva = " [NUEVA]" if b["primera_ejecucion_id"] == ejecucion_id else ""
+                    conocida = (
+                        f" ({b['conocida_por_barrido_previo']})"
+                        if b["conocida_por_barrido_previo"]
+                        else ""
+                    )
+                    lineas.append(f"- {b['contexto']}{nueva}{conocida}")
+            else:
+                nuevas = sum(1 for b in items if b["primera_ejecucion_id"] == ejecucion_id)
+                lineas.append(
+                    f"- {categoria}: {len(items)} brechas ({nuevas} nuevas) "
+                    "— detalle completo con --gaps o en el dashboard"
+                )
+
+    texto = "\n".join(lineas)
+    if len(texto) > _LIMITE_SEGURO:
+        texto = (
+            texto[:_LIMITE_SEGURO].rsplit("\n", 1)[0]
+            + "\n… (truncado — ver --gaps o el dashboard para el resto)"
+        )
+    return texto
 
 
 def send_telegram(conn: sqlite3.Connection, ejecucion_id: int, gaps_only: bool = False) -> bool:
