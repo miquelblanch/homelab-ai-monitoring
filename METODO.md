@@ -145,10 +145,75 @@ a plan, a tareas y a código, y cada paso multiplica el coste de arreglarlo.
 
 ---
 
+## El `CLAUDE.md` del proyecto
+
+Aparte de los artefactos de SDD (constitución, spec, plan, tareas), este repo
+mantiene un `CLAUDE.md` propio en la raíz. No es un artefacto de Spec Kit: es el
+fichero que lee cualquier instancia de Claude Code al abrir el repo en frío, así que
+tiene una función distinta a los demás — orientar, no especificar.
+
+### Por qué existe uno aquí y no basta con el general del homelab
+
+El `CLAUDE.md` general (`/Volumes/FastData/homelab/CLAUDE.md`) es privado y mezcla
+topología real de la infraestructura. Este repo es público y autocontenido: no puede
+depender de un fichero que vive fuera de él y que nunca se va a versionar aquí. De
+ahí que la primera línea del `CLAUDE.md` de este repo sea "el general no aplica, este
+es aparte".
+
+### Qué va dentro
+
+Cinco piezas, en este orden, y ninguna más larga de lo necesario:
+
+1. **Una frase de qué es el proyecto** — coherente con `BRIEFING.md`, no una copia.
+2. **Orden de lectura** — qué leer y en qué orden antes de tocar nada: la
+   constitución, `BRIEFING.md`, `METODO.md`, `BARRIDO-2026-08-01.md`,
+   `PRINCIPIOS.md`.
+3. **El problema, en una frase** — el resumen vigente del objetivo del proyecto.
+   Es la sección que más caduca: cuando la constitución o el briefing se
+   reformulan (como al pasar de una lista de dos premisas a la cobertura
+   sistemática de Principio XIII), esta sección queda desfasada primero y nadie se
+   da cuenta hasta que alguien se la lee entera.
+4. **Datos disponibles para el agente** — el esquema de la base de datos. Vive solo
+   aquí: no se duplica en `BRIEFING.md`.
+5. **Reglas operativas rápidas** — lo mínimo para no romper nada por accidente, con
+   enlace a este `METODO.md` para el reparto de trabajo.
+
+### Qué no va dentro
+
+- **Tecnología ni decisiones de plan.** Lo que pertenece al `plan.md` de una
+  feature no pertenece al `CLAUDE.md` del repo.
+- **Topología real.** Mismo criterio que en `BRIEFING.md`: se nombra el software,
+  no IPs, dispositivos ni nombres ligados a seguridad física.
+- **Contenido duplicado de otro fichero.** El `CLAUDE.md` apunta, no repite. Si una
+  sección empieza a acumular detalle que ya está en `BRIEFING.md` o en la
+  constitución, es señal de recortarla y dejar el enlace.
+
+### Cuándo se actualiza
+
+No en cada commit — solo cuando cambia el terreno que resume:
+
+- Un principio nuevo o reformulado en la constitución.
+- Un reframe del briefing (cambia qué es "el problema").
+- Un documento nuevo que debería entrar en el orden de lectura.
+
+El criterio es el mismo que para la constitución: si el `CLAUDE.md` describe un
+estado del proyecto que ya no es el vigente, es un defecto del fichero, no un
+detalle menor — es lo primero que lee cualquiera, humano o Claude, al entrar al
+repo.
+
+### Quién lo escribe
+
+Mismo reparto que el resto de la documentación del proyecto: **Claude redacta**, a
+partir de lo que cambió en la constitución o el briefing; **Miquel revisa y hace el
+commit**. No es una skill `speckit-*`, así que no aplica la regla de "Miquel
+ejecuta" — es documentación de proyecto, igual que este propio `METODO.md`.
+
+---
+
 ## Orden inmediato
 
 1. Leer los `SKILL.md` de `constitution`, `specify` y `clarify`
-2. `speckit-constitution` con los cinco principios acordados
+2. `speckit-constitution` con los principios acordados
 3. `speckit-specify`, alimentado por `NOTAS.md` y el catálogo
 
 Sobre todo es importante que Claude lea bien como es un proyecto de SDD y que siga todos los pasos con detalle uno a uno: Claude redacta los temas, Miquel revisa la documentación y ejecuta todos los comandos de SDD
