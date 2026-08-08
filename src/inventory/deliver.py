@@ -132,12 +132,14 @@ def send_telegram(conn: sqlite3.Connection, ejecucion_id: int, gaps_only: bool =
 
 def write_dashboard_json(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
     """Escribe `inventario.json` — mismo patrón que `dump_socat_status.py`
-    escribe `socat_relays.json`. El dashboard todavía no lo lee (T036,
-    fuera de este repo) — este fichero es la mitad que sí vive aquí."""
+    escribe `socat_relays.json`. `componentes` lleva el listado completo
+    (no solo las brechas) para que el dashboard pueda mostrar el
+    inventario entero, no únicamente lo que falla."""
     ejecucion = store.get_ejecucion(conn, ejecucion_id)
     if ejecucion is None:
         return False
     brechas = store.brechas_de_ejecucion(conn, ejecucion_id)
+    hallazgos = store.hallazgos_de_ejecucion(conn, ejecucion_id)
     payload = {
         "ejecucion_id": ejecucion_id,
         "fecha": ejecucion["fecha"],
@@ -153,6 +155,19 @@ def write_dashboard_json(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
                 "conocida_por_barrido_previo": b["conocida_por_barrido_previo"],
             }
             for b in brechas
+        ],
+        "componentes": [
+            {
+                "nombre": h["nombre_actual"],
+                "categoria": h["categoria"],
+                "declarado": h["estado_declarado_status"],
+                "vigilado": bool(h["esta_vigilado"]),
+                "mecanismo": h["mecanismo_vigilancia"],
+                "llega_a_dashboard": h["llega_a_dashboard"],
+                "es_brecha": bool(h["es_brecha"]),
+                "intencionado": bool(h["es_intencionadamente_no_vigilado"]),
+            }
+            for h in hallazgos
         ],
     }
     try:
