@@ -3,13 +3,15 @@ caducidad a 90 días de una declaración (FR-007, Clarification 3), y qué
 componentes están intencionadamente no vigilados (FR-012).
 
 Las reglas de "¿está vigilado?" y "¿llega al dashboard?" están basadas en
-hechos verificados durante `/speckit-plan`/`/speckit-analyze` de este
-feature (research.md, contracts/entrega.md): el dashboard
-(`docker/homelab-dashboard/scripts/app.py`) hoy solo tiene panel de
-sistema, discos, contenedores en vivo, crons, LaunchAgents y relays
-socat — nada de Home Assistant, nada de backups, nada del propio canal de
-Telegram. Ese "no llega" no es un valor por defecto pesimista: es lo que
-se comprobó leyendo el código real.
+hechos verificados leyendo el código real del dashboard
+(`docker/homelab-dashboard/scripts/app.py`), no en supuestos. Estado a
+2026-08-08: tiene panel de sistema, discos, contenedores en vivo, crons,
+LaunchAgents, relays socat, velocidad (speedtest-tracker) y un panel de
+Home Assistant — pero ese panel de HA solo muestra las ~15 entidades que
+`ha_monitor.py` vigila una a una (mismo criterio que "vigilado" para esta
+categoría), no las ~357 restantes del registro. Sigue sin haber nada de
+backups ni del propio canal de Telegram. Ese "no llega" no es un valor
+por defecto pesimista: es lo que se comprobó leyendo el código real.
 
 No hay ningún identificador de entidad de Home Assistant escrito aquí:
 qué entidades comprueba `ha_monitor.py` se lee en vivo de
@@ -150,7 +152,11 @@ def evaluate_component(
         declarado, vigilado, mecanismo, llega = _vigilancia_integracion(raw)
     elif c.categoria == "entidad_ha":
         declarado, vigilado, mecanismo = _vigilancia_entidad_ha(raw)
-        llega = "no"  # comprobado: el dashboard no tiene panel de HA
+        # El dashboard tiene panel de HA desde 2026-08-08, pero solo
+        # muestra las ~15 entidades que ha_monitor.py vigila una a una
+        # (mismo criterio que "vigilado" aquí) — el resto del registro
+        # (~357 entidades) sigue sin aparecer en ningún sitio.
+        llega = "si" if vigilado else "no"
     elif c.categoria == "host_externo":
         declarado, vigilado, mecanismo, llega = True, True, "Beszel (vía relay socat)", "no"
     elif c.categoria == "hermes":
