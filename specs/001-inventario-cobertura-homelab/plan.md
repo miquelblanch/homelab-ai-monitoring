@@ -153,7 +153,7 @@ sección nueva en `app.py`, `contracts/entrega.md`) vive en
 `docker/homelab-dashboard/scripts/app.py`, **fuera de este repositorio** —
 es un fichero de la infraestructura privada del homelab, igual que
 `docker_monitor.py` o `ha_monitor.py` ya lo son (spec, Assumptions). Este
-repo (`homelab-diagnostic-agent`, público) no incluye una copia de
+repo (`homelab-ai-monitoring`, público) no incluye una copia de
 `app.py`; `tasks.md` debe reflejar ese cambio como un parche a aplicar
 sobre la máquina del homelab, no como un fichero que viva dentro de
 `src/`.
