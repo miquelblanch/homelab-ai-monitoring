@@ -270,6 +270,72 @@ adaptar):
 
 ---
 
+## Feature 003 — material de partida (2026-08-08)
+
+Tras cerrar feature 002, quedan 2 de las 4 brechas reales originales:
+Beszel (hub) y los recordatorios de Nextcloud — Casos 3 y 4 de este
+briefing, dejados fuera de 002 a propósito porque ninguno tenía una señal
+calculada que simplemente exponer. Investigados otra vez contra el código
+y los datos reales antes de especificar, los dos han cambiado de estado
+desde que se escribieron esos casos:
+
+**Caso 4 (recordatorios de Nextcloud) — más cerca de lo que parecía.**
+El barrido del 2026-08-07 ya arregló el fallo silencioso de
+`recordatorios_hoy()` (un `""` que significaba dos cosas distintas) y
+añadió healthcheck real a los 3 contenedores de Nextcloud — la vía por la
+que "Nextcloud corriendo pero roto" podía pasar desapercibido ya está
+cerrada, y desde feature 002 ese resultado también llega al dashboard.
+Lo único que falta de verdad: **`bautista-calendar.sh` no llama a
+`heartbeat.write()` en ningún punto** — ni al éxito, ni al silencio
+intencionado (sin eventos hoy), ni al error ya distinguido. Mismo patrón
+exacto que se acaba de construir para `beszel-hosts`: un latido al final
+de cada ejecución (haya o no eventos), sumado a "Estado de los monitores".
+
+**Caso 3 (Beszel no vigila bien lo que vigila) — el síntoma original ya
+no se reproduce.** Consultada la tabla `systems` real: los 3 sistemas
+(`Mac Mini Server`, `AdGuardHome`, `UptimeKuma`) están `up`, con `updated`
+de hace un par de minutos — no los 2 en rojo que describía el caso original
+(06-08-2026, antes de los relays de Beszel del 07-08 y del lector de
+feature 002). Lo que sigue sin existir es la pregunta de fondo: **si el
+propio hub deja de reportar** (deja de escribir `updated` nuevos para
+todos, no solo para uno) **nada lo distingue de "los tres sistemas están
+bien"**. `scripts/beszel_hosts_monitor.py` ya lee la tabla `systems`
+completa (`research.md` §3 de 002) — ampliarlo para comprobar la
+antigüedad de `updated` de los 3, no solo el `status` de 2, es reutilizar
+infraestructura ya construida, no partir de cero.
+
+Los dos casos comparten forma: instrumentar un latido que hoy no existe,
+sobre infraestructura de lectura que ya existe (`heartbeat.py` para el
+primero, `beszel_hosts_monitor.py` para el segundo). Miquel ha pedido
+bundlarlos en un solo feature 003 en vez de separarlos — la objeción que
+tenía (madurez distinta) queda parcialmente resuelta: los dos resultan
+ser extensiones baratas de mecanismos ya desplegados, no dos alcances de
+tamaño distinto.
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> Dos piezas de la propia infraestructura de monitorización del homelab
+> no tienen todavía una señal que confirme que siguen funcionando de
+> verdad, más allá de que el proceso esté vivo. La primera:
+> `bautista-calendar.sh` (recordatorios de Nextcloud, cron de las 10:00)
+> no dice nunca si se ha ejecutado — ni cuando manda recordatorios, ni
+> cuando calla porque hoy no hay eventos, ni cuando ya detecta y reporta
+> un fallo real de los calendarios. La segunda: Beszel, la propia
+> herramienta que vigila los hosts físicos de Uptime Kuma y AdGuard Home
+> (y el Mac Mini), no tiene ninguna comprobación de si sigue reportando
+> datos frescos sobre los tres — si el hub se queda colgado o deja de
+> sincronizar, hoy no hay forma de saberlo salvo notarlo por casualidad
+> (es el mismo tipo de fallo que ya se investigó y no se confirmó el
+> 06-08-2026). Quiero que las dos tengan un latido propio, visible en el
+> panel "Estado de los monitores" del dashboard que ya existe, con el
+> mismo criterio de frescura que usa el resto de monitores del homelab.
+> No incluye rediseñar cómo funcionan los recordatorios de Nextcloud ni
+> la configuración de Beszel — solo instrumentar la vigilancia que les
+> falta.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que
