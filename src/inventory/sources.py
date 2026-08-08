@@ -270,13 +270,19 @@ def ha_entity_components() -> list[RawComponente]:
 def monitoring_infra_components() -> list[RawComponente]:
     # Los scripts/pipelines de monitorización en sí mismos — no lo que
     # vigilan (eso son los componentes de las otras familias).
+    #
+    # "amsterdam9.health" ya no aparece aquí: `CLAUDE.md` lo documenta como
+    # si fuera su propio LaunchAgent de 5 min, pero `launchctl list` no
+    # muestra ninguno con ese nombre exacto — solo los `health.*`
+    # (docker/ha/dns-pi/telegram). Era una imprecisión del documento
+    # general, heredada aquí sin comprobar contra el sistema real
+    # (encontrado arreglando los gaps de infra_monitorizacion, 2026-08-08).
     nombres = [
         "docker_monitor.py",
         "ha_monitor.py",
         "verify_backups.py",
         "dns_pi_monitor.py",
         "heartbeat.py",
-        "amsterdam9.health",
         "Beszel (hub)",
     ]
     return [

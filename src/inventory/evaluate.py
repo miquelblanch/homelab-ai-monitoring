@@ -42,17 +42,23 @@ class EvaluacionParcial:
     es_intencionado: bool
 
 
-# Reglas fijas por nombre de pieza de infraestructura de monitorización
-# (FR-004) — todas documentadas ya en CLAUDE.md, ninguna es un dato
-# sensible.
+# Los cuatro monitores que ya llaman a heartbeat.write() (2026-08-08, mismo
+# arreglo que telegram_monitor.py) — nombre del job y antigüedad máxima
+# tolerable, calcada de heartbeat.py::DEFAULT_MANIFEST para no tener dos
+# fuentes de verdad sobre "cada cuánto corre cada uno".
+_INFRA_HEARTBEAT_JOBS: dict[str, tuple[str, int]] = {
+    "docker_monitor.py": ("docker-monitor", 1800),      # cada 5 min
+    "ha_monitor.py": ("ha-monitor", 3600),               # cada 15 min
+    "dns_pi_monitor.py": ("dns-pi-monitor", 3600),        # cada 15 min
+    "verify_backups.py": ("verify-backups", 108000),      # diario + margen
+}
+
+# Piezas de infraestructura de monitorización sin latido propio todavía —
+# FR-004. "amsterdam9.health" ya no está: no existe como LaunchAgent real
+# (ver sources.py::monitoring_infra_components).
 _INFRA_MONITORIZACION_VIGILANCIA: dict[str, str | None] = {
-    "docker_monitor.py": "amsterdam9.health (indirecto, vía LaunchAgent)",
-    "ha_monitor.py": "amsterdam9.health (indirecto, vía LaunchAgent)",
-    "verify_backups.py": "amsterdam9.health (indirecto, vía LaunchAgent)",
-    "dns_pi_monitor.py": "amsterdam9.health (indirecto, vía LaunchAgent)",
     "heartbeat.py": "usado transitivamente por todos los monitores",
-    "amsterdam9.health": None,  # nadie vigila al vigilante — hallazgo real
-    "Beszel (hub)": None,  # Caso 3 de BRIEFING.md, sin resolver todavía
+    "Beszel (hub)": None,  # Caso 3 de BRIEFING.md — investigación aparte, aparcada a propósito
 }
 
 
@@ -89,8 +95,11 @@ def _vigilancia_integracion(raw: RawComponente) -> tuple[bool, bool, str | None,
         return True, vigilado, ("verify_backups.py" if vigilado else None), "no"
     if nombre.startswith("cron: "):
         return True, True, "heartbeat.py (manifest)", "si"
-    # Resto: LaunchAgents amsterdam9.* — labels de launchd.
-    return True, True, "amsterdam9.health", "si"
+    # Resto: LaunchAgents amsterdam9.* — labels de launchd. Cargado de
+    # verdad (comprobado por sources.py vía launchctl), pero sin un latido
+    # propio que confirme que además hace su trabajo — no hay un
+    # "amsterdam9.health" real que lo vigile (ver monitoring_infra_components).
+    return True, True, "launchctl (cargado)", "si"
 
 
 def _vigilancia_entidad_ha(raw: RawComponente) -> tuple[bool, bool, str | None]:
@@ -98,18 +107,31 @@ def _vigilancia_entidad_ha(raw: RawComponente) -> tuple[bool, bool, str | None]:
     return checked, checked, ("ha_monitor.py" if checked else None)
 
 
+def _vigilancia_por_heartbeat(
+    job: str, mecanismo_ok: str, max_age_s: int
+) -> tuple[bool, str | None]:
+    """Comprueba un latido real en vez de asumir que algo vigila — mismo
+    principio para cualquier monitor que llame a `heartbeat.write()`
+    (telegram_monitor.py, y desde 2026-08-08 también docker_monitor.py,
+    ha_monitor.py, dns_pi_monitor.py, verify_backups.py)."""
+    hb = bridge.read_heartbeat(job)
+    if hb is None:
+        return False, None
+    edad_s = time() - hb.get("epoch", 0)
+    if edad_s > max_age_s:
+        return False, None
+    return True, mecanismo_ok
+
+
 def _vigilancia_telegram() -> tuple[bool, str | None]:
     """FR-006: comprueba el latido real de `telegram_monitor.py`, no una
     suposición. Antes de que ese monitor existiera, esto era simplemente
     `False, None` — se actualizó al construirlo (2026-08-08), justo para
     que el inventario deje de reportar como abierta una brecha ya cerrada."""
-    hb = bridge.read_heartbeat("telegram-monitor")
-    if hb is None:
-        return False, None
-    edad_s = time() - hb.get("epoch", 0)
-    if edad_s > _TELEGRAM_HEARTBEAT_MAX_AGE_S:
-        return False, None
-    return True, "telegram_monitor.py (latido + Kuma/email)"
+    return _vigilancia_por_heartbeat(
+        "telegram-monitor", "telegram_monitor.py (latido + Kuma/email)",
+        _TELEGRAM_HEARTBEAT_MAX_AGE_S,
+    )
 
 
 def evaluate_component(
@@ -142,8 +164,13 @@ def evaluate_component(
         vigilado, mecanismo = _vigilancia_telegram()
         declarado, llega = vigilado, "no"  # sigue sin llegar al dashboard, solo a Kuma/email
     elif c.categoria == "infra_monitorizacion":
-        mecanismo = _INFRA_MONITORIZACION_VIGILANCIA.get(c.nombre_actual)
-        declarado, vigilado, llega = True, mecanismo is not None, "no"
+        if c.nombre_actual in _INFRA_HEARTBEAT_JOBS:
+            job, max_age_s = _INFRA_HEARTBEAT_JOBS[c.nombre_actual]
+            vigilado, mecanismo = _vigilancia_por_heartbeat(job, f"{job} (latido propio)", max_age_s)
+        else:
+            mecanismo = _INFRA_MONITORIZACION_VIGILANCIA.get(c.nombre_actual)
+            vigilado = mecanismo is not None
+        declarado, llega = True, "no"
     else:  # pragma: no cover - las categorías están cerradas en model.py
         declarado, vigilado, mecanismo, llega = False, False, None, "sin_evidencia"
 
