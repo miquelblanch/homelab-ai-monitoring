@@ -126,7 +126,10 @@ def test_vigilancia_telegram_por_latido_real() -> None:
         ev = evaluate.evaluate_component(_raw("telegram", "Canal de entrega de Telegram"))
         check("latido reciente ⇒ vigilado", ev.esta_vigilado is True)
         check("latido reciente ⇒ mecanismo informado", ev.mecanismo_vigilancia is not None)
-        check("sigue sin llegar al dashboard homelab", ev.llega_a_dashboard == "no")
+        check(
+            "llega al dashboard desde el panel 'Estado de los monitores' (2026-08-08)",
+            ev.llega_a_dashboard == "si",
+        )
 
     with patch.object(
         evaluate.bridge, "read_heartbeat",

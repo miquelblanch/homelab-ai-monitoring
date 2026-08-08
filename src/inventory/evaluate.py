@@ -5,13 +5,18 @@ componentes están intencionadamente no vigilados (FR-012).
 Las reglas de "¿está vigilado?" y "¿llega al dashboard?" están basadas en
 hechos verificados leyendo el código real del dashboard
 (`docker/homelab-dashboard/scripts/app.py`), no en supuestos. Estado a
-2026-08-08: tiene panel de sistema, discos, contenedores en vivo, crons,
-LaunchAgents, relays socat, velocidad (speedtest-tracker) y un panel de
-Home Assistant — pero ese panel de HA solo muestra las ~15 entidades que
-`ha_monitor.py` vigila una a una (mismo criterio que "vigilado" para esta
-categoría), no las ~357 restantes del registro. Sigue sin haber nada de
-backups ni del propio canal de Telegram. Ese "no llega" no es un valor
-por defecto pesimista: es lo que se comprobó leyendo el código real.
+2026-08-08: panel de sistema, discos, contenedores en vivo, crons,
+LaunchAgents, relays socat, velocidad (speedtest-tracker), un panel de
+Home Assistant y un panel "Estado de los monitores" (latido real de
+docker_monitor.py, ha_monitor.py, dns_pi_monitor.py, verify_backups.py,
+telegram_monitor.py, heartbeat.py transitivo, backup diario y los dos
+LaunchAgents de Hermes/Bautista). El panel de HA solo muestra las ~15
+entidades que `ha_monitor.py` vigila una a una (mismo criterio que
+"vigilado" para esa categoría), no las ~300 restantes del registro. Los
+hosts externos (Kuma, AdGuard) siguen sin sitio: su estado vive en la
+base de datos del hub de Beszel, que este dashboard no tiene montada.
+Ese "no llega" no es un valor por defecto pesimista: es lo que se
+comprobó leyendo el código real.
 
 No hay ningún identificador de entidad de Home Assistant escrito aquí:
 qué entidades comprueba `ha_monitor.py` se lee en vivo de
@@ -94,7 +99,9 @@ def _vigilancia_integracion(raw: RawComponente) -> tuple[bool, bool, str | None,
         return False, False, None, "no"
     if nombre.startswith("Backup diario"):
         vigilado = bool(raw.meta.get("heartbeat_existe"))
-        return True, vigilado, ("verify_backups.py" if vigilado else None), "no"
+        # El dashboard tiene panel "Estado de los monitores" desde
+        # 2026-08-08 con el latido de backup_diario_nvme.sh.
+        return True, vigilado, ("verify_backups.py" if vigilado else None), "si"
     if nombre.startswith("cron: "):
         return True, True, "heartbeat.py (manifest)", "si"
     # Resto: LaunchAgents amsterdam9.* — labels de launchd. Cargado de
@@ -158,17 +165,24 @@ def evaluate_component(
         # (~357 entidades) sigue sin aparecer en ningún sitio.
         llega = "si" if vigilado else "no"
     elif c.categoria == "host_externo":
+        # Vigilados por Beszel vía relay socat, pero ese estado sigue sin
+        # aparecer en ningún panel del dashboard — leerlo exigiría montar
+        # la base de datos del hub de Beszel, que hoy no está disponible
+        # aquí (distinto del resto: no es solo "faltaba construirlo").
         declarado, vigilado, mecanismo, llega = True, True, "Beszel (vía relay socat)", "no"
     elif c.categoria == "hermes":
         vigilado = bool(raw.meta.get("launchagent_cargado"))
         declarado, mecanismo, llega = (
             True,
             "amsterdam9.bautista.heartbeat" if vigilado else None,
-            "no",
+            # Panel "Estado de los monitores" desde 2026-08-08: muestra el
+            # estado launchctl de ambos LaunchAgents de Hermes/Bautista.
+            "si",
         )
     elif c.categoria == "telegram":
         vigilado, mecanismo = _vigilancia_telegram()
-        declarado, llega = vigilado, "no"  # sigue sin llegar al dashboard, solo a Kuma/email
+        # El mismo panel muestra el latido de telegram_monitor.py.
+        declarado, llega = vigilado, "si"
     elif c.categoria == "infra_monitorizacion":
         if c.nombre_actual in _INFRA_HEARTBEAT_JOBS:
             job, max_age_s = _INFRA_HEARTBEAT_JOBS[c.nombre_actual]
@@ -176,7 +190,12 @@ def evaluate_component(
         else:
             mecanismo = _INFRA_MONITORIZACION_VIGILANCIA.get(c.nombre_actual)
             vigilado = mecanismo is not None
-        declarado, llega = True, "no"
+        declarado = True
+        # Los 4 latidos + heartbeat.py (transitivo) están en el panel
+        # "Estado de los monitores" desde 2026-08-08. Beszel (hub) sigue
+        # sin vigilancia propia (Caso 3 de BRIEFING, aparcado) y por tanto
+        # sin sitio donde mostrarlo.
+        llega = "no" if c.nombre_actual == "Beszel (hub)" else "si"
     else:  # pragma: no cover - las categorías están cerradas en model.py
         declarado, vigilado, mecanismo, llega = False, False, None, "sin_evidencia"
 
