@@ -209,6 +209,67 @@ se resuelve arreglando qué llega y cómo se deduplica en
 
 ---
 
+## Feature 002 — material de partida (2026-08-08)
+
+Tras cerrar feature 001, la primera ejecución real del inventario dejó 322
+brechas (790 componentes). 318 son el mismo hallazgo repetido —entidades HA
+sin estado declarado— ya aparcado como su propio problema, de volumen, no de
+diseño. Las 4 restantes son las únicas "de verdad": exactamente los Casos 3
+y 4 de este briefing, más el punto que `specs/001-.../spec.md` (Assumptions,
+líneas 373-386) ya había anotado como candidato natural a feature 002:
+`docker_monitor_state.json` y `ha_monitor_state.json` calculan una alarma
+que el dashboard no muestra.
+
+Antes de especificar, se investigaron las 4 contra el código y los datos
+reales del homelab (no contra lo que decía la documentación) para separar
+dos tipos de brecha que a simple vista parecen iguales:
+
+| Brecha | ¿Ya existe la señal, solo falta mostrarla? | Evidencia |
+|---|---|---|
+| Contenedores (`docker_monitor_state.json`) | **Sí** — 50 entradas `{ok, down_since}`, cada 5 min | `app.py` no lo lee en ningún sitio; el panel de contenedores hace `docker ps` en vivo y no puede mostrar "estuvo caído y se recuperó" ni el cortacircuitos de reinicios — el mismo patrón que dejó pasar sin alerta los 49 reinicios de beszel |
+| Home Assistant (`ha_monitor_state.json`) | **Ya resuelto en gran parte** (2026-08-08) | `get_ha_monitor()` ya lo lee; cubre las ~15 entidades que vigila `ha_monitor.py` una a una. Las ~357 restantes del registro son el bulto ya aparcado, no este caso |
+| Host de Uptime Kuma / Host de AdGuard | **Sí, pero en otro sistema** | Consultado `data.db` de Beszel directamente: ambos `up`. El dato vive en el volumen `beszel_hub_data`, que el dashboard no monta ni lee |
+| Beszel (hub) | **No** | Ninguna señal calculada todavía — nada vigila si el propio hub está vivo y reportando bien |
+| Recordatorios de Nextcloud | **No** | El bug silencioso ya se arregló (`BARRIDO-2026-08-07.md`), pero sigue sin heartbeat propio |
+
+**Por qué importa la distinción:** el propio `spec.md` de feature 001
+justificó el candidato a feature 002 como "mecánicamente independiente":
+*"no necesita identidad estable, ni caducidad, ni SQLite — solo leer dos
+ficheros que ya existen y sumarlos al panel"*. Eso es cierto para
+contenedores, y ya en parte para HA. Para Kuma/AdGuard es casi igual de
+barato — un script más que escribe un JSON, mismo patrón que el resto del
+homelab, sin montar el volumen del hub de Beszel directamente en el
+dashboard. Pero Beszel (hub) y Recordatorios de Nextcloud son harina de
+otro costal: no hay nada que "mostrar" todavía, hace falta decidir qué
+significa "sano" para un monitor que se vigila a sí mismo, o instrumentar
+un heartbeat nuevo. Eso es trabajo real de `clarify`/`plan`, no una lectura
+de fichero.
+
+**Alcance propuesto para feature 002:**
+
+- **Dentro**: cerrar `docker_monitor_state.json` → panel de contenedores, y
+  Kuma/AdGuard → panel nuevo o extendido. Cierra 3 de las 4 brechas reales
+  sin abrir ninguna decisión de diseño nueva.
+- **Fuera, para un feature posterior**: Beszel (hub) y Recordatorios de
+  Nextcloud — cada uno necesita su propio `clarify` sobre qué constituye un
+  fallo, y mezclarlos aquí diluiría lo que hace barato a este feature.
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El dashboard del homelab (`http://homelab.amsterdam9.home/`) ya recibe,
+> cada 5 minutos, una alarma calculada por contenedor (`docker_monitor.py`:
+> si está caído y desde cuándo) y, para los hosts físicos distintos del Mac
+> Mini que vigila Beszel (Uptime Kuma, AdGuard Home), un estado calculado
+> por Beszel — pero ninguna de las dos llega hoy al panel. Quiero que toda
+> alarma real activa de estos dos orígenes aparezca en el dashboard, una
+> sola vez y sin ausencias, sin construir ningún portal ni interfaz nueva —
+> el dashboard ya existe. No incluye vigilar el propio Beszel ni los
+> recordatorios de Nextcloud: esos no tienen todavía una señal calculada
+> que mostrar.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que

@@ -13,10 +13,9 @@ telegram_monitor.py, heartbeat.py transitivo, backup diario y los dos
 LaunchAgents de Hermes/Bautista). El panel de HA solo muestra las ~15
 entidades que `ha_monitor.py` vigila una a una (mismo criterio que
 "vigilado" para esa categoría), no las ~300 restantes del registro. Los
-hosts externos (Kuma, AdGuard) siguen sin sitio: su estado vive en la
-base de datos del hub de Beszel, que este dashboard no tiene montada.
-Ese "no llega" no es un valor por defecto pesimista: es lo que se
-comprobó leyendo el código real.
+hosts externos (Kuma, AdGuard) tienen sitio desde feature 002
+(2026-08-08): `beszel_hosts_monitor.py` lee el estado del hub de Beszel
+vía el volumen `beszel_hub_data` y lo expone en un panel del dashboard.
 
 No hay ningún identificador de entidad de Home Assistant escrito aquí:
 qué entidades comprueba `ha_monitor.py` se lee en vivo de
@@ -165,11 +164,17 @@ def evaluate_component(
         # (~357 entidades) sigue sin aparecer en ningún sitio.
         llega = "si" if vigilado else "no"
     elif c.categoria == "host_externo":
-        # Vigilados por Beszel vía relay socat, pero ese estado sigue sin
-        # aparecer en ningún panel del dashboard — leerlo exigiría montar
-        # la base de datos del hub de Beszel, que hoy no está disponible
-        # aquí (distinto del resto: no es solo "faltaba construirlo").
-        declarado, vigilado, mecanismo, llega = True, True, "Beszel (vía relay socat)", "no"
+        # Vigilados por Beszel vía relay socat (sin cambios). Desde feature
+        # 002 (2026-08-08), scripts/beszel_hosts_monitor.py lee ese estado
+        # del volumen del hub y lo expone en el dashboard — comprobado aquí
+        # por el mismo patrón que el resto de la categoría
+        # infra_monitorizacion: latido real, no una suposición de que el
+        # mecanismo nuevo sigue vivo.
+        llega_ok, _ = _vigilancia_por_heartbeat(
+            "beszel-hosts", "beszel_hosts_monitor.py (latido propio)", 900,
+        )
+        declarado, vigilado, mecanismo = True, True, "Beszel (vía relay socat)"
+        llega = "si" if llega_ok else "no"
     elif c.categoria == "hermes":
         vigilado = bool(raw.meta.get("launchagent_cargado"))
         declarado, mecanismo, llega = (
