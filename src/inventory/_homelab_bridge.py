@@ -108,3 +108,15 @@ def record_heartbeat(job: str, status: str = "ok", detail: str = "") -> bool | N
         return _heartbeat.write(job, status=status, detail=detail)
     except Exception:
         return None
+
+
+def read_heartbeat(job: str) -> dict | None:
+    """Último latido de `job`, o `None` si nunca ha latido o el módulo no
+    está disponible. Usado para comprobar si un monitor sigue vivo de
+    verdad, no solo si existe el script (p. ej. `telegram_monitor.py`)."""
+    if _heartbeat is None:
+        return None
+    try:
+        return _heartbeat.read(job)
+    except Exception:
+        return None

@@ -21,10 +21,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from time import time
 
 from . import _homelab_bridge as bridge
 from .model import DECLARACION_CADUCA_DIAS
 from .sources import RawComponente
+
+# Un latido de telegram_monitor.py más viejo que esto cuenta como "no vigila
+# de verdad" — corre cada 5 min, así que 15 min ya son tres pasadas perdidas.
+_TELEGRAM_HEARTBEAT_MAX_AGE_S = 15 * 60
 
 
 @dataclass
@@ -93,6 +98,20 @@ def _vigilancia_entidad_ha(raw: RawComponente) -> tuple[bool, bool, str | None]:
     return checked, checked, ("ha_monitor.py" if checked else None)
 
 
+def _vigilancia_telegram() -> tuple[bool, str | None]:
+    """FR-006: comprueba el latido real de `telegram_monitor.py`, no una
+    suposición. Antes de que ese monitor existiera, esto era simplemente
+    `False, None` — se actualizó al construirlo (2026-08-08), justo para
+    que el inventario deje de reportar como abierta una brecha ya cerrada."""
+    hb = bridge.read_heartbeat("telegram-monitor")
+    if hb is None:
+        return False, None
+    edad_s = time() - hb.get("epoch", 0)
+    if edad_s > _TELEGRAM_HEARTBEAT_MAX_AGE_S:
+        return False, None
+    return True, "telegram_monitor.py (latido + Kuma/email)"
+
+
 def evaluate_component(
     raw: RawComponente, last_reviewed_at: date | None = None
 ) -> EvaluacionParcial:
@@ -120,7 +139,8 @@ def evaluate_component(
             "no",
         )
     elif c.categoria == "telegram":
-        declarado, vigilado, mecanismo, llega = False, False, None, "no"
+        vigilado, mecanismo = _vigilancia_telegram()
+        declarado, llega = vigilado, "no"  # sigue sin llegar al dashboard, solo a Kuma/email
     elif c.categoria == "infra_monitorizacion":
         mecanismo = _INFRA_MONITORIZACION_VIGILANCIA.get(c.nombre_actual)
         declarado, vigilado, llega = True, mecanismo is not None, "no"
@@ -147,8 +167,11 @@ def evaluate_component(
 def classify_gap(ev: EvaluacionParcial, categoria: str) -> str:
     """Tipo de brecha — FR-011, data-model.md `brechas.tipo`. Solo se
     llama para hallazgos donde `es_brecha(ev)` ya dio True."""
-    if categoria == "telegram":
-        # Riesgo concentrado, no una brecha más — Edge Case de FR-006.
+    if categoria == "telegram" and not ev.esta_vigilado:
+        # Riesgo concentrado de verdad: nadie vigila el canal — Edge Case
+        # de FR-006. Si ya está vigilado (telegram_monitor.py) pero sigue
+        # siendo brecha, es por otra razón (p. ej. no llega al dashboard) —
+        # se clasifica como cualquier otro componente, más abajo.
         return "riesgo_concentrado_telegram"
     if ev.estado_declarado_status == "ausente":
         return "sin_declaracion"

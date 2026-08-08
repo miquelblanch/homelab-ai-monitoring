@@ -7,6 +7,7 @@ reales: las respuestas de `_homelab_bridge` se controlan con
 from __future__ import annotations
 
 from datetime import date, timedelta
+from time import time
 from unittest.mock import patch
 
 from inventory import evaluate
@@ -71,7 +72,8 @@ def test_completitud_fr010() -> None:
     """Ninguna categoría puede devolver una respuesta vacía/None en los
     tres campos — FR-010."""
     with patch.object(evaluate.bridge, "docker_never_restart", return_value=set()), \
-         patch.object(evaluate.bridge, "ha_monitor_checked_entities", return_value=set()):
+         patch.object(evaluate.bridge, "ha_monitor_checked_entities", return_value=set()), \
+         patch.object(evaluate.bridge, "read_heartbeat", return_value=None):
         for categoria in CATEGORIAS:
             raw = _raw(categoria, f"componente-de-prueba-{categoria}")
             ev = evaluate.evaluate_component(raw)
@@ -106,6 +108,60 @@ def test_declaracion_caducada_se_refleja() -> None:
             "declaración de hace 200 días sale caducada",
             ev.estado_declarado_status == "caducada",
         )
+
+
+def test_vigilancia_telegram_por_latido_real() -> None:
+    """FR-006, actualizado el 2026-08-08 al construir telegram_monitor.py:
+    ya no es 'siempre False' — depende del latido real, con caducidad
+    propia (15 min, tres pasadas del monitor cada 5 min)."""
+    with patch.object(evaluate.bridge, "read_heartbeat", return_value=None):
+        ev = evaluate.evaluate_component(_raw("telegram", "Canal de entrega de Telegram"))
+        check("sin latido nunca ⇒ no vigilado", ev.esta_vigilado is False)
+        check("sin latido ⇒ mecanismo vacío", ev.mecanismo_vigilancia is None)
+
+    with patch.object(
+        evaluate.bridge, "read_heartbeat",
+        return_value={"epoch": time(), "status": "ok"},
+    ):
+        ev = evaluate.evaluate_component(_raw("telegram", "Canal de entrega de Telegram"))
+        check("latido reciente ⇒ vigilado", ev.esta_vigilado is True)
+        check("latido reciente ⇒ mecanismo informado", ev.mecanismo_vigilancia is not None)
+        check("sigue sin llegar al dashboard homelab", ev.llega_a_dashboard == "no")
+
+    with patch.object(
+        evaluate.bridge, "read_heartbeat",
+        return_value={"epoch": time() - 3600, "status": "ok"},  # hace 1 h
+    ):
+        ev = evaluate.evaluate_component(_raw("telegram", "Canal de entrega de Telegram"))
+        check("latido rancio (>15 min) ⇒ no cuenta como vigilado", ev.esta_vigilado is False)
+
+
+def test_clasificacion_telegram_solo_es_riesgo_si_no_vigilado() -> None:
+    vigilado = evaluate.EvaluacionParcial(
+        tiene_estado_declarado=True,
+        estado_declarado_status="vigente",
+        esta_vigilado=True,
+        mecanismo_vigilancia="telegram_monitor.py",
+        llega_a_dashboard="no",
+        es_intencionado=False,
+    )
+    check(
+        "telegram vigilado pero sin llegar al dashboard ⇒ tipo normal, no riesgo concentrado",
+        evaluate.classify_gap(vigilado, "telegram") == "no_llega_a_dashboard",
+    )
+
+    no_vigilado = evaluate.EvaluacionParcial(
+        tiene_estado_declarado=False,
+        estado_declarado_status="ausente",
+        esta_vigilado=False,
+        mecanismo_vigilancia=None,
+        llega_a_dashboard="no",
+        es_intencionado=False,
+    )
+    check(
+        "telegram sin vigilar de verdad ⇒ sigue siendo riesgo concentrado",
+        evaluate.classify_gap(no_vigilado, "telegram") == "riesgo_concentrado_telegram",
+    )
 
 
 def test_es_brecha_respeta_intencionados() -> None:
