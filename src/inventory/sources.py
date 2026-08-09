@@ -249,12 +249,57 @@ def launchagent_components() -> list[RawComponente]:
 # feature 004: excepciones de seguridad a la regla de entity_category
 # (evaluate.py::is_intentional) — fuera de alcance de ese feature, siguen
 # evaluándose como brechas normales (spec.md, Assumptions).
+# feature 006: battery_charging salió del set — confirmado con Miquel que
+# estar cargando o no no es señal de salud por sí sola (2026-08-09); vuelve
+# a caer bajo la regla general de entity_category=diagnostic.
 ENTIDAD_HA_EXCEPCIONES_SEGURIDAD = {
     "binary_sensor.cerradura_amsterdam_9_battery_critical",
-    "binary_sensor.cerradura_amsterdam_9_battery_charging",
     "binary_sensor.caseta_tapo_p115_caseta_sobrecargado",
     "binary_sensor.tapo_p115_datacenter_sobrecargado",
     "binary_sensor.tapo_p115_mac_mini_sobrecargado",
+}
+
+# feature 006: automatizaciones que Miquel controla a mano y activa/
+# desactiva a demanda — "on" no es su estado esperado, es una decisión
+# suya del momento. Confirmado uno a uno el 2026-08-09:
+#   - toldos (azimut 120°/280°, automatizacion_toldos on/off): las opera
+#     a mano, algún día quizás las active de forma permanente.
+#   - apagar_camaras: pendiente de arreglar más adelante, a propósito.
+#   - sirena_comedor: no le gusta tenerla activa, algún día la activará.
+#   - modo_vacaciones / modo_vacaciones_off: solo deben estar "on" cuando
+#     esté de vacaciones — ahora mismo no lo está.
+# ha_monitor.py sigue vigilándolas (por si su valor deja de coincidir con
+# lo que él haya puesto a mano), pero no cuentan como brecha aquí.
+ENTIDAD_HA_AUTOMATIZACIONES_MANUALES = {
+    "automation.bajar_toldo_al_azimut_de_120deg",
+    "automation.subir_toldos_en_acimut_280",
+    "automation.automatizacion_toldos",
+    "automation.automatizacion_toldos_off",
+    "automation.apagar_camaras",
+    "automation.sirena_comedor",
+    "automation.modo_vacaciones",
+    "automation.modo_vacaciones_off",
+}
+
+# feature 006: sondas de temperatura exterior del AC, "unknown" el
+# 2026-08-09 — Miquel no tiene certeza de si la sonda física está
+# instalada. Declarar disponibilidad ahora arriesgaría ruido falso
+# permanente si nunca lo estuvo. Pendiente de confirmar; no se declara
+# ningún estado esperado hasta entonces.
+ENTIDAD_HA_PENDIENTE_CONFIRMAR = {
+    "sensor.aacc_caseta_temperatura_exterior",
+    "sensor.aacc_comedor_temperatura_exterior",
+}
+
+# feature 006: dispositivos que normalmente están apagados/en reposo — no
+# tiene sentido declarar "disponible" como esperado, generaría alerta
+# falsa cada vez que estén apagados de verdad (que es su estado normal).
+# media_player.box_r_4k_plus_2 (Android TV): diagnosticado el 2026-08-09
+# — el relay socat funciona (conecta), pero el propio TV rechaza la
+# conexión en el puerto de control (unavailable desde el último reinicio
+# de HA). No es un fallo de red ni de nuestra infraestructura.
+ENTIDAD_HA_DISPOSITIVOS_NORMALMENTE_APAGADOS = {
+    "media_player.box_r_4k_plus_2",
 }
 
 # feature 004: FALLBACK, no fuente de verdad — entidad_ha_frigate() usa
@@ -316,17 +361,38 @@ def ha_entity_components() -> list[RawComponente]:
         registry = json.loads(HA_ENTITY_REGISTRY.read_text())
     except (OSError, json.JSONDecodeError):
         return []
+    entities = registry.get("data", {}).get("entities", [])
+
+    # feature 006: algunas integraciones (androidtv_remote, HACS,
+    # mobile_app) reutilizan el mismo unique_id en varias entidades del
+    # mismo dispositivo (p.ej. remote.box_r_4k_plus y
+    # media_player.box_r_4k_plus_2 comparten "22:22:15:c3:0b:83").
+    # identity.py empareja por identificador_estable — si dos entidades
+    # de esta misma lectura comparten uno, ese id no identifica de forma
+    # única a ninguna de las dos y las mezclaría en el mismo componente
+    # (hallazgo real: remote.box_r_4k_plus aparecía como "brecha zombie"
+    # sin motivo, encontrado y corregido el 2026-08-09). Para esas
+    # entidades concretas, no se propaga el unique_id — caen al
+    # emparejamiento por nombre en vez de arriesgar una mezcla.
+    conteo_unique_id: dict[str, int] = {}
+    for entity in entities:
+        uid = entity.get("unique_id")
+        if uid:
+            conteo_unique_id[uid] = conteo_unique_id.get(uid, 0) + 1
+
     items: list[RawComponente] = []
-    for entity in registry.get("data", {}).get("entities", []):
+    for entity in entities:
         entity_id = entity.get("entity_id")
         if not entity_id:
             continue
+        uid = entity.get("unique_id")
+        id_estable = uid if uid and conteo_unique_id.get(uid, 0) == 1 else None
         items.append(
             RawComponente(
                 componente=Componente(
                     categoria="entidad_ha",
                     nombre_actual=entity_id,
-                    identificador_estable=entity.get("unique_id"),
+                    identificador_estable=id_estable,
                 ),
                 meta={
                     "platform": entity.get("platform"),

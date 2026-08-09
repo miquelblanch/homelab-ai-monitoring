@@ -31,11 +31,39 @@ from time import time
 
 from . import _homelab_bridge as bridge
 from .model import DECLARACION_CADUCA_DIAS
-from .sources import ENTIDAD_HA_EXCEPCIONES_SEGURIDAD, RawComponente, entidad_ha_frigate
+from .sources import (
+    ENTIDAD_HA_AUTOMATIZACIONES_MANUALES,
+    ENTIDAD_HA_DISPOSITIVOS_NORMALMENTE_APAGADOS,
+    ENTIDAD_HA_EXCEPCIONES_SEGURIDAD,
+    ENTIDAD_HA_PENDIENTE_CONFIRMAR,
+    RawComponente,
+    entidad_ha_frigate,
+)
 
 # Un latido de telegram_monitor.py más viejo que esto cuenta como "no vigila
 # de verdad" — corre cada 5 min, así que 15 min ya son tres pasadas perdidas.
 _TELEGRAM_HEARTBEAT_MAX_AGE_S = 15 * 60
+
+# feature 006: dominios de Home Assistant sin un "estado de salud" que
+# tenga sentido vigilar — su campo `state` no representa sano/roto:
+#   - button/event: solo emiten una acción o marca de tiempo puntual, sin
+#     estado persistente.
+#   - script: on/off es "ejecutando/inactivo", no "habilitado/deshabilitado"
+#     (a diferencia de automation.*) — inactivo es lo normal, no una brecha.
+#   - input_boolean: flag manual del usuario (p.ej. modo_vacaciones DEBE
+#     cambiar según si estás de vacaciones o no).
+#   - person: presencia, cambia por diseño.
+#   - infrared/radio_frequency/remote: interfaces de control, no señal de
+#     salud propia.
+#   - tts: sin estado persistente, solo ejecuta una síntesis puntual.
+#   - weather: pronóstico, cambia por diseño, sin valor "sano" fijo.
+#   - input_number: helper genérico del usuario, no señal de salud.
+# Confirmado con Miquel el 2026-08-09 (feature 006).
+_ENTIDAD_HA_DOMINIOS_SIN_SALUD = frozenset({
+    "button", "script", "input_boolean", "person", "event",
+    "infrared", "radio_frequency", "remote", "tts", "weather",
+    "input_number",
+})
 
 
 @dataclass
@@ -93,6 +121,41 @@ def is_intentional(raw: RawComponente) -> bool:
         # cambian todo el rato. Sin lectura nueva: platform ya viaja en
         # meta desde feature 001.
         if raw.meta.get("platform") == "mobile_app":
+            return True
+        # feature 006: sensores de la integración "proximity" (distancia,
+        # sentido de la marcha, dispositivo más cercano) — metadatos de
+        # ubicación, mismo espíritu que mobile_app: no son señal de salud.
+        if raw.meta.get("platform") == "proximity":
+            return True
+        # feature 006: dominios cuyo `state` no representa sano/roto —
+        # ver _ENTIDAD_HA_DOMINIOS_SIN_SALUD.
+        if c.nombre_actual.split(".", 1)[0] in _ENTIDAD_HA_DOMINIOS_SIN_SALUD:
+            return True
+        # feature 006: automatizaciones controladas a mano, sin estado
+        # esperado fijo — ver ENTIDAD_HA_AUTOMATIZACIONES_MANUALES.
+        if c.nombre_actual in ENTIDAD_HA_AUTOMATIZACIONES_MANUALES:
+            return True
+        # feature 006: pendiente de confirmar con Miquel si la sonda
+        # física existe — ver ENTIDAD_HA_PENDIENTE_CONFIRMAR.
+        if c.nombre_actual in ENTIDAD_HA_PENDIENTE_CONFIRMAR:
+            return True
+        # feature 006: dispositivos normalmente apagados — ver
+        # ENTIDAD_HA_DISPOSITIVOS_NORMALMENTE_APAGADOS.
+        if c.nombre_actual in ENTIDAD_HA_DISPOSITIVOS_NORMALMENTE_APAGADOS:
+            return True
+        # feature 006: de las 4 entidades de platform "backup", solo
+        # sensor.backup_ultima_copia_de_seguridad_automatica_realizada_
+        # correctamente está vigilada de verdad (feature 005) — las otras
+        # 3 (estado del administrador, próxima copia programada, último
+        # intento) quedaron fuera de alcance a propósito
+        # (contracts/ficheros.md de 005). Confirmado con Miquel el
+        # 2026-08-09: se quedan fuera, marcadas explícitamente en vez de
+        # aparecer como brecha sorpresa.
+        if (
+            raw.meta.get("platform") == "backup"
+            and c.nombre_actual
+            != "sensor.backup_ultima_copia_de_seguridad_automatica_realizada_correctamente"
+        ):
             return True
         # feature 004: entidades de ajuste/diagnóstico no son señales de
         # salud — salvo las excepciones de seguridad (evaluadas como
