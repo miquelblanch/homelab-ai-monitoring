@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from .model import Componente
@@ -43,6 +44,16 @@ HERMES_CRON_JOBS = Path(
     )
 )
 HERMES_GATEWAY_LABEL = "ai.hermes.gateway-bautista"
+BESZEL_HOSTS_JSON = Path(
+    os.environ.get(
+        "BESZEL_HOSTS_JSON",
+        "/Volumes/FastData/homelab/docker/homelab-orchestrator/data/beszel_hosts.json",
+    )
+)
+# feature 003: mismo umbral que BESZEL_HOSTS_MAX_AGE_S en app.py — una sola
+# fuente de verdad duplicada a propósito, mismo patrón ya aceptado para
+# _TELEGRAM_HEARTBEAT_MAX_AGE_S en evaluate.py.
+BESZEL_HUB_MAX_AGE_S = 900
 
 
 @dataclass
@@ -267,6 +278,35 @@ def ha_entity_components() -> list[RawComponente]:
 # ── FR-004: la propia infraestructura de monitorización ─────────────────
 
 
+def _beszel_hub_sano() -> bool:
+    """Feature 003: ¿tiene el hub de Beszel al menos un sistema con dato
+    fresco en `hub_systems`? Mismo fichero y mismo umbral que ya usa
+    `app.py` (`get_beszel_hub_status()`) — duplicado a propósito, límite
+    de este repo (no se puede `import` el dashboard, que vive fuera).
+    Sin datos, sin fichero, o los tres viejos a la vez → no sano
+    (Principio II: dato ausente no cuenta como sano)."""
+    try:
+        data = json.loads(BESZEL_HOSTS_JSON.read_text())
+        hub_systems = data.get("hub_systems", {})
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    if not hub_systems:
+        return False
+
+    now = datetime.now().timestamp()
+    for updated_raw in hub_systems.values():
+        try:
+            updated_ts = datetime.fromisoformat(
+                str(updated_raw).replace(" ", "T").replace("Z", "+00:00")
+            ).timestamp()
+        except ValueError:
+            continue
+        if now - updated_ts <= BESZEL_HUB_MAX_AGE_S:
+            return True  # al menos uno fresco → el hub no está "roto"
+    return False
+
+
 def monitoring_infra_components() -> list[RawComponente]:
     # Los scripts/pipelines de monitorización en sí mismos — no lo que
     # vigilan (eso son los componentes de las otras familias).
@@ -291,7 +331,10 @@ def monitoring_infra_components() -> list[RawComponente]:
                 categoria="infra_monitorizacion",
                 nombre_actual=nombre,
             ),
-            meta={},
+            # feature 003: "Beszel (hub)" lleva su propio dato de vigilancia
+            # (hub_sano) — el resto sigue sin meta, se decide por latido
+            # en evaluate.py (_INFRA_HEARTBEAT_JOBS).
+            meta={"hub_sano": _beszel_hub_sano()} if nombre == "Beszel (hub)" else {},
         )
         for nombre in nombres
     ]

@@ -61,10 +61,11 @@ _INFRA_HEARTBEAT_JOBS: dict[str, tuple[str, int]] = {
 
 # Piezas de infraestructura de monitorización sin latido propio todavía —
 # FR-004. "amsterdam9.health" ya no está: no existe como LaunchAgent real
-# (ver sources.py::monitoring_infra_components).
+# (ver sources.py::monitoring_infra_components). "Beszel (hub)" tampoco
+# está aquí desde feature 003: se decide por `raw.meta["hub_sano"]`
+# (sources.py::_beszel_hub_sano), no por un mecanismo fijo de latido.
 _INFRA_MONITORIZACION_VIGILANCIA: dict[str, str | None] = {
     "heartbeat.py": "usado transitivamente por todos los monitores",
-    "Beszel (hub)": None,  # Caso 3 de BRIEFING.md — investigación aparte, aparcada a propósito
 }
 
 
@@ -95,7 +96,14 @@ def _vigilancia_integracion(raw: RawComponente) -> tuple[bool, bool, str | None,
     if nombre.startswith("Relay: "):
         return True, True, "dump_socat_status.py", "si"
     if nombre.startswith("Recordatorios de Nextcloud"):
-        return False, False, None, "no"
+        # Desde feature 003 (2026-08-09), bautista-calendar.sh registra su
+        # propio latido al final de cada ejecución (con o sin eventos) —
+        # mismo patrón de comprobación que el resto de latidos de este
+        # fichero, no una suposición.
+        vigilado, mecanismo = _vigilancia_por_heartbeat(
+            "bautista-calendar", "bautista-calendar.sh (latido propio)", 108000,
+        )
+        return True, vigilado, mecanismo, ("si" if vigilado else "no")
     if nombre.startswith("Backup diario"):
         vigilado = bool(raw.meta.get("heartbeat_existe"))
         # El dashboard tiene panel "Estado de los monitores" desde
@@ -192,15 +200,22 @@ def evaluate_component(
         if c.nombre_actual in _INFRA_HEARTBEAT_JOBS:
             job, max_age_s = _INFRA_HEARTBEAT_JOBS[c.nombre_actual]
             vigilado, mecanismo = _vigilancia_por_heartbeat(job, f"{job} (latido propio)", max_age_s)
+        elif c.nombre_actual == "Beszel (hub)":
+            # Desde feature 003 (2026-08-09): sources.py ya calculó si al
+            # menos uno de los sistemas que Beszel vigila tiene dato
+            # fresco (`_beszel_hub_sano`, mismo criterio que
+            # get_beszel_hub_status() en app.py) — Caso 3 de BRIEFING.md,
+            # cerrado.
+            vigilado = bool(raw.meta.get("hub_sano"))
+            mecanismo = "beszel_hosts_monitor.py (hub_systems)" if vigilado else None
         else:
             mecanismo = _INFRA_MONITORIZACION_VIGILANCIA.get(c.nombre_actual)
             vigilado = mecanismo is not None
         declarado = True
-        # Los 4 latidos + heartbeat.py (transitivo) están en el panel
-        # "Estado de los monitores" desde 2026-08-08. Beszel (hub) sigue
-        # sin vigilancia propia (Caso 3 de BRIEFING, aparcado) y por tanto
-        # sin sitio donde mostrarlo.
-        llega = "no" if c.nombre_actual == "Beszel (hub)" else "si"
+        # Los 4 latidos + heartbeat.py (transitivo) + Beszel (hub) están
+        # en el panel "Estado de los monitores" desde 2026-08-08 /
+        # 2026-08-09.
+        llega = "si"
     else:  # pragma: no cover - las categorías están cerradas en model.py
         declarado, vigilado, mecanismo, llega = False, False, None, "sin_evidencia"
 
