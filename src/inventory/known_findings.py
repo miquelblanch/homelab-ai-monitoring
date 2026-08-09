@@ -14,11 +14,22 @@ Valor: referencia corta al documento y al hallazgo.
 from __future__ import annotations
 
 KNOWN_FINDINGS: dict[tuple[str, str], str] = {
-    ("integracion", "Recordatorios de Nextcloud (Tareas/Calendario)"): (
-        "BRIEFING.md Caso 4 / BARRIDO-2026-08-07.md hallazgo 2 — un fallo "
-        "silencioso en la cadena ya se arregló, pero no está confirmado "
-        "que cierre el caso del todo."
-    ),
+    # Caso 4 (BRIEFING.md) — "los recordatorios de Tareas/Calendario de
+    # Nextcloud no llegan por Telegram" — causa real encontrada y cerrada el
+    # 2026-08-09, más profunda que las dos correcciones de
+    # BARRIDO-2026-08-07 (el "" silencioso, los healthchecks): la cuenta de
+    # automatización (admin_nc) usada por bautista-calendar.sh no tenía
+    # NINGÚN calendario propio (`occ dav:list-calendars admin_nc` → "no
+    # calendars") — el calendario real, "Personal", pertenece a miquel_nc y
+    # nunca se había compartido. El mecanismo llevaba reportando "sin
+    # eventos" fielmente cada día porque no miraba donde están los eventos
+    # reales, no porque no hubiera ninguno. Arreglado compartiendo el
+    # calendario Personal (solo lectura) con admin_nc vía el servicio interno
+    # de Nextcloud (`OCA\DAV\CalDAV\Sharing\Service::shareWith`), sin generar
+    # credenciales nuevas. Verificado en vivo: recordatorios_hoy() pasó de
+    # "sin eventos" a mostrar un evento real existente en el calendario. La
+    # app de Tareas (VTODO) no está instalada en esta instancia — nada
+    # pendiente ahí por ahora.
     # Caso 3 (BRIEFING.md) — "Beszel no vigila bien 2 de sus 3 sistemas" —
     # se investigó y se cerró el 2026-08-09: la causa de red (relays socat,
     # 2026-08-07) ya estaba arreglada, pero beszel_hosts_monitor.py y
