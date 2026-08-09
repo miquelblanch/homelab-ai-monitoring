@@ -426,6 +426,81 @@ adaptar):
 
 ---
 
+## Feature 005 — material de partida (2026-08-09)
+
+Tras cerrar 004 quedaban 150 brechas `entidad_ha` (309→190→150 en el
+propio despliegue de 004, con datos reales, no solo la estimación
+original). Investigadas por `platform` del registro de HA (mismo
+criterio que ya separó el ruido real de las señales de seguridad en
+004), salen 17 plataformas distintas. Dos son limpias, baratas y sin
+ambigüedad — el resto (`melcloud`, `esphome`, `tplink`, `script`,
+`proximity` y una cola de diez plataformas con 1-3 entidades cada una)
+necesita que Miquel aporte criterio (qué es "normal" para un
+climatizador o un ESP32) y queda fuera de este feature a propósito.
+
+**Investigación previa a especificar:**
+
+1. **`mobile_app` (53 entidades)** — localización, batería, red y
+   estado de kiosco de los iPhones de Miquel y Cécile y del MacBook Air.
+   Mismo argumento que la regla de `entity_category` de 004: metadato
+   personal variable, no una señal de salud de nada. A diferencia de
+   `entity_category`, esta información **ya viaja en el `meta` de cada
+   componente desde feature 001** (`sources.py::ha_entity_components()`
+   ya guarda `platform`) — cero lectura nueva, una condición más en
+   `is_intentional()`.
+2. **`backup` (5 entidades)** — el propio sistema de copias de
+   seguridad automáticas de Home Assistant (distinto de
+   `backup_diario_nvme.sh`, que copia todo el homelab). Comprobado en
+   vivo el 2026-08-09: la última copia correcta fue a las 03:04 UTC de
+   hoy, la próxima está programada para mañana a las 02:51 UTC — cadencia
+   diaria, mismo patrón que el resto de backups del homelab. El sensor
+   `sensor.backup_ultima_copia_de_seguridad_automatica_realizada_
+   correctamente` es un timestamp — exactamente el mismo tipo de dato
+   que ya vigila `verify_backups.py` para el backup principal, con el
+   mismo margen razonable (~30 h). No existe hoy ningún check de este
+   tipo en `ha_monitor.py` (los actuales miran `state`/`entity_available`,
+   no la antigüedad de un timestamp) — hace falta un tipo de check nuevo,
+   mismo patrón de extensión que `requires_container` en feature 004.
+
+**Alcance propuesto para este feature:**
+
+| Pieza | Cuántas | Tratamiento |
+|---|---|---|
+| Entidades `platform: mobile_app` | 53 | Declarar "no aplica" — no son señales de salud |
+| Backup automático de HA | 5 (o solo la de mayor señal: última copia correcta) | Declarar esperado: la última copia correcta tiene menos de ~30 h |
+
+**Explícitamente fuera de alcance, pendiente de que Miquel aporte
+criterio:**
+- `melcloud` (12, climatizadores) y `esphome` (5, sal/toldos) — sensores
+  físicos reales, pero "normal" depende de cada dispositivo.
+- `tplink` (15, resto de sensores de los enchufes Tapo), `script` (10),
+  `proximity` (7) y la cola de diez plataformas con 1-3 entidades cada
+  una (~17) — baja urgencia o necesitan su propio criterio, no se tocan
+  aquí para no repetir el error de tratar entidades distintas como un
+  bloque.
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El inventario de cobertura marca 150 entidades de Home Assistant como
+> brecha. De esas, 53 pertenecen a la app móvil de Home Assistant en el
+> iPhone de Miquel, el de Cécile y el MacBook Air — localización, nivel
+> de batería, red wifi, modo kiosco... — y no son señales de salud de
+> nada, son metadatos personales que cambian todo el rato. Quiero que
+> dejen de contar como brecha, igual que ya se hizo con las entidades de
+> ajuste/diagnóstico. Además, Home Assistant tiene su propio sistema de
+> copias de seguridad automáticas (distinto del backup diario del
+> homelab), y hoy nadie vigila si esas copias se siguen haciendo — si
+> dejaran de funcionar, no me enteraría hasta necesitar una copia y no
+> encontrarla. Quiero que haya un aviso si la última copia correcta de
+> Home Assistant tiene más de un día y medio. No incluye los
+> climatizadores, los ESP32, el resto de sensores de los enchufes
+> inteligentes, los scripts, ni el resto de entidades sin triar — esas
+> quedan para un feature posterior, cuando decida qué es "normal" para
+> cada una.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que

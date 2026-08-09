@@ -88,6 +88,12 @@ def is_intentional(raw: RawComponente) -> bool:
     if c.categoria == "entidad_ha":
         if raw.meta.get("disabled_by") is not None:
             return True
+        # feature 005: metadatos personales de la app móvil (localización,
+        # batería, red, modo kiosco...) — no son señal de salud de nada,
+        # cambian todo el rato. Sin lectura nueva: platform ya viaja en
+        # meta desde feature 001.
+        if raw.meta.get("platform") == "mobile_app":
+            return True
         # feature 004: entidades de ajuste/diagnóstico no son señales de
         # salud — salvo las excepciones de seguridad (evaluadas como
         # brecha normal) y las de Frigate (vigiladas por su propia
