@@ -19,18 +19,19 @@ KNOWN_FINDINGS: dict[tuple[str, str], str] = {
         "silencioso en la cadena ya se arregló, pero no está confirmado "
         "que cierre el caso del todo."
     ),
-    ("infra_monitorizacion", "Beszel (hub)"): (
-        "BRIEFING.md Caso 3 — Beszel no vigila bien 2 de sus 3 sistemas "
-        "monitorizados. Sigue sin investigar (BARRIDO-2026-08-07)."
-    ),
-    ("host_externo", "Host de Uptime Kuma"): (
-        "BRIEFING.md Caso 3 — uno de los dos sistemas que Beszel no "
-        "vigila bien."
-    ),
-    ("host_externo", "Host de AdGuard Home (DNS primario)"): (
-        "BRIEFING.md Caso 3 — uno de los dos sistemas que Beszel no "
-        "vigila bien."
-    ),
+    # Caso 3 (BRIEFING.md) — "Beszel no vigila bien 2 de sus 3 sistemas" —
+    # se investigó y se cerró el 2026-08-09: la causa de red (relays socat,
+    # 2026-08-07) ya estaba arreglada, pero beszel_hosts_monitor.py y
+    # ha_monitor.py::_container_running() llamaban a "docker" a secas, que
+    # falla bajo launchd (no hereda el PATH interactivo) — el mismo bug ya
+    # resuelto una vez en immich_album_from_paths.py, nunca aplicado aquí.
+    # beszel_hosts_monitor.py llevaba ~12h fallando el 100% de sus ciclos;
+    # los 33 checks condicionados a Frigate de ha_monitor.py (feature 004)
+    # llevaban el 100% de sus ciclos automáticos suprimidos como "parado —
+    # no aplica" desde que se desplegaron ese mismo día, pese a que Frigate
+    # estaba corriendo de verdad. Arreglado con la misma resolución de ruta
+    # absoluta que ya usaba immich_album_from_paths.py. Sin entrada nueva
+    # aquí: ya no es un hallazgo conocido, es una brecha cerrada.
 }
 
 
