@@ -31,7 +31,7 @@ from time import time
 
 from . import _homelab_bridge as bridge
 from .model import DECLARACION_CADUCA_DIAS
-from .sources import RawComponente
+from .sources import ENTIDAD_HA_EXCEPCIONES_SEGURIDAD, RawComponente, entidad_ha_frigate
 
 # Un latido de telegram_monitor.py más viejo que esto cuenta como "no vigila
 # de verdad" — corre cada 5 min, así que 15 min ya son tres pasadas perdidas.
@@ -86,7 +86,19 @@ def is_intentional(raw: RawComponente) -> bool:
     if c.categoria == "contenedor":
         return c.nombre_actual in bridge.docker_never_restart()
     if c.categoria == "entidad_ha":
-        return raw.meta.get("disabled_by") is not None
+        if raw.meta.get("disabled_by") is not None:
+            return True
+        # feature 004: entidades de ajuste/diagnóstico no son señales de
+        # salud — salvo las excepciones de seguridad (evaluadas como
+        # brecha normal) y las de Frigate (vigiladas por su propia
+        # lógica condicionada al contenedor, no por esta regla).
+        if (
+            raw.meta.get("entity_category") in ("config", "diagnostic")
+            and c.nombre_actual not in ENTIDAD_HA_EXCEPCIONES_SEGURIDAD
+            and c.nombre_actual not in entidad_ha_frigate()
+        ):
+            return True
+        return False
     return False
 
 
@@ -119,8 +131,18 @@ def _vigilancia_integracion(raw: RawComponente) -> tuple[bool, bool, str | None,
 
 
 def _vigilancia_entidad_ha(raw: RawComponente) -> tuple[bool, bool, str | None]:
-    checked = raw.componente.nombre_actual in bridge.ha_monitor_checked_entities()
-    return checked, checked, ("ha_monitor.py" if checked else None)
+    """`declarado` = ¿está en `ha_monitor.CHECKS`? `vigilado` = ¿el
+    último resultado real de ese check tiene `ok=true`? — no basta con
+    estar en la lista (feature 004, `research.md` §4: antes `vigilado`
+    era pura membresía, igual que `declarado`, así que un check
+    declarado pero fallando nunca se distinguía de uno sano)."""
+    entity_id = raw.componente.nombre_actual
+    if entity_id not in bridge.ha_monitor_checked_entities():
+        return False, False, None
+    resultado = bridge.ha_monitor_check_result(entity_id)
+    if resultado is None:
+        return True, False, "ha_monitor.py"
+    return True, bool(resultado.get("ok")), "ha_monitor.py"
 
 
 def _vigilancia_por_heartbeat(
@@ -250,6 +272,12 @@ def classify_gap(ev: EvaluacionParcial, categoria: str) -> str:
     if ev.estado_declarado_status == "caducada":
         return "declaracion_caducada"
     if not ev.esta_vigilado:
+        # feature 004: un mecanismo presente pese a no estar vigilado
+        # solo pasa cuando _vigilancia_entidad_ha() encontró el check
+        # declarado pero su último resultado real falló — distinto de
+        # "nadie lo comprueba" (research.md §4 de esa feature).
+        if ev.mecanismo_vigilancia:
+            return "condicion_incumplida"
         return "sin_vigilancia"
     return "no_llega_a_dashboard"
 
@@ -272,6 +300,16 @@ def gap_context(ev: EvaluacionParcial, nombre: str, categoria: str, tipo: str) -
         )
     if tipo == "sin_vigilancia":
         return f"'{nombre}' ({categoria}) no está vigilado por ningún mecanismo conocido."
+    if tipo == "condicion_incumplida":
+        mecanismo = ev.mecanismo_vigilancia or "un mecanismo"
+        resultado = bridge.ha_monitor_check_result(nombre)
+        detalle = resultado.get("detail") if resultado else None
+        sufijo = f": {detalle}" if detalle else "."
+        return (
+            f"'{nombre}' ({categoria}) tiene un estado esperado declarado y "
+            f"vigilado por {mecanismo}, pero su último resultado real no lo "
+            f"cumple{sufijo}"
+        )
     if tipo == "no_llega_a_dashboard":
         mecanismo = ev.mecanismo_vigilancia or "un mecanismo"
         return (

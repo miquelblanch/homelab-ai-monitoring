@@ -34,6 +34,8 @@ TIPOS_BRECHA = (
     "sin_vigilancia",
     "no_llega_a_dashboard",
     "riesgo_concentrado_telegram",
+    "condicion_incumplida",  # feature 004: declarado y vigilado, pero el
+                             # último resultado real no lo cumple
 )
 
 DISPARADORES = ("manual", "programado")

@@ -19,6 +19,7 @@ devuelven un resultado inocuo en vez de lanzar excepción — mismo principio
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -60,6 +61,47 @@ def ha_monitor_checked_entities() -> set[str]:
         return {c["entity"] for c in getattr(_ha_monitor, "CHECKS", []) if "entity" in c}
     except Exception:
         return set()
+
+
+def ha_monitor_conditional_entities() -> set[str]:
+    """Entidades de HA cuyo check en `ha_monitor.py` solo aplica si un
+    contenedor está corriendo (campo `requires_container`) — feature 004.
+    Vacío si `ha_monitor.py` no está disponible o todavía no tiene esas
+    entradas (antes de desplegar la historia de Frigate); nunca lanza."""
+    if _ha_monitor is None:
+        return set()
+    try:
+        return {
+            c["entity"] for c in getattr(_ha_monitor, "CHECKS", [])
+            if c.get("requires_container")
+        }
+    except Exception:
+        return set()
+
+
+def ha_monitor_check_result(entity_id: str) -> dict | None:
+    """Último resultado real (`{ok, down_since, label, motivo, detail}`)
+    del check de `ha_monitor.py` para `entity_id`, leído de
+    `ha_monitor_state.json` — feature 004. `None` si la entidad no está
+    en `CHECKS`, si el módulo no está disponible, o si no hay dato
+    todavía; nunca lanza."""
+    if _ha_monitor is None:
+        return None
+    try:
+        check_id = next(
+            (c["id"] for c in getattr(_ha_monitor, "CHECKS", [])
+             if c.get("entity") == entity_id),
+            None,
+        )
+        if check_id is None:
+            return None
+        state_file = getattr(_ha_monitor, "STATE_FILE", None)
+        if state_file is None:
+            return None
+        state = json.loads(Path(state_file).read_text())
+        return state.get(check_id)
+    except Exception:
+        return None
 
 
 def docker_never_restart() -> set[str]:

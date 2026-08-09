@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from . import _homelab_bridge as bridge
 from .model import Componente
 
 # ── Rutas reales del homelab (ver research.md) ──────────────────────────────
@@ -244,6 +245,68 @@ def launchagent_components() -> list[RawComponente]:
 
 
 # ── FR-003: entidades de Home Assistant, cualquier dominio ──────────────
+
+# feature 004: excepciones de seguridad a la regla de entity_category
+# (evaluate.py::is_intentional) — fuera de alcance de ese feature, siguen
+# evaluándose como brechas normales (spec.md, Assumptions).
+ENTIDAD_HA_EXCEPCIONES_SEGURIDAD = {
+    "binary_sensor.cerradura_amsterdam_9_battery_critical",
+    "binary_sensor.cerradura_amsterdam_9_battery_charging",
+    "binary_sensor.caseta_tapo_p115_caseta_sobrecargado",
+    "binary_sensor.tapo_p115_datacenter_sobrecargado",
+    "binary_sensor.tapo_p115_mac_mini_sobrecargado",
+}
+
+# feature 004: FALLBACK, no fuente de verdad — entidad_ha_frigate() usa
+# esto solo si ha_monitor.CHECKS todavía no tiene las 33 entradas de
+# Frigate (antes de desplegar la historia de Frigate de ese feature). En
+# cuanto esa lista en vivo deja de estar vacía, manda ella y esta copia
+# queda inerte (research.md de 004, nota de sincronización — hallazgo M1
+# de /speckit-analyze, 2026-08-09).
+_ENTIDAD_HA_FRIGATE_FALLBACK = {
+    "binary_sensor.camara_cocina_all_occupancy",
+    "binary_sensor.camara_cocina_motion",
+    "binary_sensor.camara_cocina_person_occupancy",
+    "binary_sensor.camara_salon_all_occupancy",
+    "binary_sensor.camara_salon_motion",
+    "binary_sensor.camara_salon_person_occupancy",
+    "camera.camara_cocina",
+    "camera.camara_salon",
+    "image.camara_cocina_person",
+    "image.camara_salon_person",
+    "sensor.camara_cocina_all_active_count",
+    "sensor.camara_cocina_all_count",
+    "sensor.camara_cocina_person_active_count",
+    "sensor.camara_cocina_person_count",
+    "sensor.camara_cocina_review_status",
+    "sensor.camara_salon_all_active_count",
+    "sensor.camara_salon_all_count",
+    "sensor.camara_salon_person_active_count",
+    "sensor.camara_salon_person_count",
+    "sensor.camara_salon_review_status",
+    "switch.camara_cocina_detect",
+    "switch.camara_cocina_motion",
+    "switch.camara_cocina_recordings",
+    "switch.camara_cocina_review_alerts",
+    "switch.camara_cocina_review_detections",
+    "switch.camara_cocina_snapshots",
+    "switch.camara_salon_detect",
+    "switch.camara_salon_motion",
+    "switch.camara_salon_recordings",
+    "switch.camara_salon_review_alerts",
+    "switch.camara_salon_review_detections",
+    "switch.camara_salon_snapshots",
+    "update.frigate_server",
+}
+
+
+def entidad_ha_frigate() -> set[str]:
+    """Entidades de Frigate para is_intentional() — prioriza la lista en
+    vivo de ha_monitor.CHECKS; cae al fallback fijo mientras esa lista
+    esté vacía, para no acoplar la regla de entity_category (User Story
+    1 de feature 004) al despliegue de la historia de Frigate (User
+    Story 3 de la misma feature)."""
+    return bridge.ha_monitor_conditional_entities() or _ENTIDAD_HA_FRIGATE_FALLBACK
 
 
 def ha_entity_components() -> list[RawComponente]:
