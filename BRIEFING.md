@@ -501,6 +501,94 @@ adaptar):
 
 ---
 
+## Feature 006 — material de partida (2026-08-09)
+
+> Nota de numeración: el triage de `entidad_ha` del commit `8e42e7d`
+> también se llamó "feature 006" en su mensaje de commit, pero nunca
+> tuvo directorio de spec propio — el numerado secuencial de Spec Kit
+> asignó `006-central-alarmas` a este feature al ejecutar
+> `/speckit-specify`. Esta sección se renombró de "Feature 007" a
+> "Feature 006" para que la numeración de la prosa coincida con la del
+> directorio real (`specs/006-central-alarmas/`), detectado como
+> inconsistencia F4 en `/speckit-analyze` (2026-08-09).
+
+**Redefinición de alcance, decidida hoy con Miquel.** El plan implícito tras
+cerrar 001-006 era seguir con el Frente 2 del proyecto (`BRIEFING.md`, "Qué",
+punto 2): el grafo de LangGraph que diagnostica y remedia. Miquel ha decidido
+acotar el siguiente paso: **de momento, nada de remediación automática ni de
+agente**. Este feature es solo el primer tramo de ese frente — detección y
+explicación, sin ninguna acción ejecutada por el sistema. La lista cerrada de
+acciones reversibles y el propio grafo (principios IV-VIII de la constitución)
+quedan para un feature posterior, cuando exista algo que remediar de verdad
+sobre lo que este feature deje construido.
+
+**Investigación previa a especificar.** El Frente 1 (cobertura sistemática,
+001-006) dejó cada pieza del homelab vigilada y llegando al dashboard
+(Principio XII) — pero repartida en 6 pestañas distintas, cada una con su
+propio formato de "esto está mal". Hoy no hay un sitio único que responda
+"¿qué está roto ahora mismo, en todo el homelab?". Nueve orígenes ya calculan
+una señal de alarma real, sin que este feature tenga que vigilar nada nuevo:
+
+| Origen | Qué calcula ya | Pestaña actual |
+|---|---|---|
+| `docker_monitor_state.json` (vía `get_containers()`) | Contenedor caído o parado sin ser intencionado | Docker |
+| `ha_monitor_state.json` (vía `get_ha_monitor()`) | 113 checks de Home Assistant, cada uno `ok`/no | Domótica |
+| `inventario.json` (vía `get_inventory()`) | Brechas de cobertura (hoy 0, pero el mecanismo ya existe) | Inventario |
+| `.backup-heartbeat` (vía `get_backup_heartbeat()`) | Backup diario atrasado (>25h) | Sistema (resumen) |
+| Latidos de monitores (vía `get_monitor_heartbeats()`) | Un monitor dejó de ejecutarse, no solo de detectar | Automatización |
+| `socat_relays.json` (vía `get_socat_relays()`) | Relay `socat` caído | Networking |
+| `beszel_hosts.json` — hosts (vía `get_external_hosts()`) | Host externo (Kuma, AdGuard) caído o "sin evidencia" | Networking |
+| `beszel_hosts.json` — hub (vía `get_beszel_hub_status()`) | El propio hub de Beszel dejó de reportar sobre todos sus sistemas | Networking |
+| LaunchAgents (vía `get_launchagents()`) | Agente crasheado (`exit_code` ≠ 0, sin PID activo) | Automatización |
+| Discos (vía `get_disks()`) | Uso ≥75%/≥90% | Sistema |
+
+La pestaña "Alarmas" no añade vigilancia nueva: **unifica** lo que el Frente 1
+ya dejó bien calculado. El trabajo real de este feature es otro: ninguno de
+estos 9 orígenes trae hoy una explicación en prosa de qué significa el fallo
+ni una remediación sugerida — eso es contenido nuevo, por *tipo* de alarma
+(no por instancia; "contenedor caído" es un tipo, no 40), y es justo el tipo
+de decisión que `clarify` tendrá que preguntar: ¿una remediación fija por
+tipo basta, o algunos tipos necesitan variar el texto según el detalle
+(por ejemplo, HA distingue ya `no_disponible` de `umbral`, ver el triage de
+entidad_ha)? ¿qué se muestra para una alarma de un tipo todavía sin texto
+escrito — se oculta, o se muestra en bruto con un aviso de "sin remediación
+documentada todavía"?
+
+**Alcance propuesto:**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Nueva pestaña "Alarmas" en el dashboard ya existente | Dentro |
+| Agregar los 9 orígenes en una lista única, ordenada por severidad/antigüedad | Dentro |
+| Por alarma: origen, componente, mensaje corto (ya existe en cada fuente) | Dentro |
+| Por *tipo* de alarma: explicación en prosa de qué significa + remediación sugerida (texto plano, manual) | Dentro — el contenido nuevo real de este feature |
+| Contador total visible (badge de la pestaña / resumen) | Dentro |
+| Ejecutar cualquier remediación automáticamente | Fuera — Frente 2, pospuesto |
+| Tocar la lógica de detección de los 9 orígenes | Fuera — ya está bien, no se toca lo que ya funciona |
+| Deduplicación/agrupación más allá de lo que cada origen ya hace | Fuera, salvo que `clarify` revele que hace falta |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El homelab ya vigila casi todo (Frente 1 del proyecto, cerrado): 9 sistemas
+> distintos calculan hoy si algo está mal — contenedores, Home Assistant,
+> backups, relays, hosts externos, el propio hub de Beszel, agentes
+> programados, discos y el inventario de cobertura. El problema es que esa
+> información vive repartida en 6 pestañas del dashboard, cada una con su
+> propio formato, y no hay ningún sitio que diga de un vistazo "esto es todo
+> lo que está roto ahora mismo". Quiero una pestaña nueva, "Alarmas", que
+> reúna en una sola lista cualquier alarma activa de cualquiera de esos 9
+> orígenes, ordenada por gravedad. Cada alarma tiene que traer, además del
+> dato en bruto que ya existe, una explicación en lenguaje sencillo de qué
+> significa ese fallo y una sugerencia de cómo solucionarlo — en texto, para
+> que yo decida y actúe, no algo que el sistema ejecute solo. No incluye
+> ninguna corrección automática ni un agente que decida por su cuenta — eso
+> es explícitamente para más adelante. Tampoco incluye vigilar nada que hoy
+> no se vigile ya: esta pestaña muestra lo que los 9 sistemas existentes ya
+> calculan, no añade una fuente de datos nueva.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que
