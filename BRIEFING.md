@@ -336,6 +336,96 @@ adaptar):
 
 ---
 
+## Feature 004 — material de partida (2026-08-09)
+
+Tras cerrar 002 y 003 solo quedaban brechas `entidad_ha` (328, luego 309
+tras la limpieza de este mismo día — ver más abajo). A diferencia de 002
+y 003, aquí no había una señal ya calculada esperando a exponerse: había
+que investigar qué son de verdad esas ~300 entidades antes de decidir
+nada, porque tratarlas como un bloque homogéneo habría escondido tanto
+ruido real como señales de seguridad genuinas.
+
+**Investigación previa a especificar — con el homelab en vivo, no solo
+con el registro de HA:**
+
+1. **Frigate encendido a propósito por Miquel** para el análisis (normalmente
+   `NEVER_RESTART`, cámaras dadas por desconectadas). Los logs mostraban
+   timeout de RTSP constante en las dos cámaras — pero comprobado desde
+   el host, las dos respondían de verdad en el puerto 554. La causa real:
+   Frigate corre en su propia red bridge de Docker, sin ruta a la LAN —
+   mismo problema exacto que Beszel/HA, nunca corregido aquí porque se
+   daba a Frigate por permanentemente apagado. **Ya resuelto y desplegado
+   en producción** (no parte de este feature, ya hecho):
+   - Relays permanentes `amsterdam9.frigate.relay-cocina`/`-salon`
+     (`192.168.4.87:5540/5541`), vigilados en `dump_socat_status.py`.
+   - `config.yaml` de Frigate apuntando a los relays en vez de a las IPs
+     directas.
+   - Confirmado con datos reales: las dos cámaras a 14 fps.
+2. **Auditoría de `entity_category`** contra las 328 brechas: 133 son
+   `config`/`diagnostic` (ajustes o telemetría interna de HA), pero 5 son
+   señales de seguridad reales que la categoría diagnostic no debería
+   esconder (batería crítica de la cerradura, enchufes "sobrecargado") y
+   12 son los switches de Frigate (mejor tratados con la lógica
+   condicional del punto 1, no con una regla genérica).
+3. **Auditoría de las 39 `automation.*`**: 17 tenían nombre de
+   contenedor/servicio (`beszel`, `frigate`, `nextcloud`, `uptime_kuma`…)
+   y resultaron ser una capa de alertas por Telegram/push redundante con
+   lo que este mismo proyecto ya vigila — creadas todas el mismo día
+   (`unique_id` correlativos), disparaban en `sensor.<servicio>_estado
+   → down`. **Ya eliminadas** (vía API de HA, con backup de
+   `automations.yaml`). De las 22 restantes, otras 5 resultaron
+   redundantes con checks que ya existen en `ha_monitor.py`/
+   `bautista-calendar.sh` (conectividad de la cerradura, batería,
+   nivel de sal, recordatorios) — **también eliminadas**, decisión
+   explícita de Miquel tras leerlas una a una. Quedan 17 automatizaciones
+   domésticas genuinas sin duplicado en ningún otro sitio.
+
+**Estado tras la limpieza (2026-08-09): 309 brechas, todas `entidad_ha`.**
+
+**Alcance cerrado para este feature:**
+
+| Pieza | Cuántas | Tratamiento |
+|---|---|---|
+| `entity_category` config/diagnostic (menos las 17 excepciones de abajo) | 115 | Declarar "no aplica" — no son señales de salud, son ajustes o telemetría interna |
+| Entidades de Frigate (cámaras, movimiento, snapshots, switches) | 33 | Vigiladas **solo si Frigate está corriendo** (estado en vivo del contenedor, ya disponible); error = entidad `unavailable`/`unknown` mientras Frigate corre; si Frigate está parado (su estado normal), intencionado — mismo trato que ya tiene el contenedor `frigate` |
+| `automation.*` domésticas restantes | 17 | Declarar esperado = activada (`on`) — una automatización que se desactiva sola y nadie se entera es el mismo tipo de fallo silencioso que motivó este proyecto |
+
+**Explícitamente fuera de alcance, pendiente aparte:**
+- Las 5 excepciones de seguridad (batería crítica/cargando de la
+  cerradura, 3 enchufes "sobrecargado") — necesitan declaración propia,
+  no la regla genérica ni el silencio actual.
+- Las ~134 entidades restantes (localización de iPhones/MacBook,
+  sensores de temperatura/energía por habitación, luces Zigbee
+  individuales, scripts, helpers, estado de backups en HA…) — cola larga
+  sin triar todavía, deliberadamente fuera de este feature para no
+  repetir el error de tratar 300 entidades distintas como un bloque.
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El inventario de cobertura marca ~165 entidades de Home Assistant como
+> brecha (sin estado esperado declarado) que en realidad no necesitan una
+> declaración individual: unas porque son ajustes o telemetría interna de
+> la propia integración (`entity_category` config/diagnostic — botones
+> "identify", niveles de log, versión de la app, opciones de color...),
+> y otras porque pertenecen a Frigate, cuyo estado esperado depende de si
+> el contenedor está corriendo o no — hoy Frigate está pensado para estar
+> permanentemente apagado, así que sus ~33 entidades no deberían contar
+> como brecha mientras esté parado, pero si algún día se enciende y algo
+> falla de verdad, sí debería avisar. Además, 17 automatizaciones
+> domésticas (toldos, cerradura, luces, proyector, sirenas...) no tienen
+> ninguna vigilancia de si siguen activadas — si una se desactiva sola,
+> nadie se entera hasta que falla el efecto que se esperaba de ella.
+> Quiero que las tres cosas se traten como corresponde: las de ajuste/
+> diagnóstico dejan de contar como brecha; las de Frigate solo cuentan
+> como brecha cuando Frigate está encendido y algo va mal de verdad; las
+> automatizaciones domésticas pasan a tener un estado esperado (activada)
+> que si se incumple sí es una brecha real. No incluye las 5 entidades de
+> seguridad (batería de la cerradura, enchufes sobrecargados) ni el resto
+> de la cola larga sin triar — esas quedan para un feature posterior.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que
