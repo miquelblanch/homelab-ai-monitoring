@@ -589,6 +589,116 @@ adaptar):
 
 ---
 
+## Feature 007 — material de partida (2026-08-09): primera pieza del Frente 2
+
+Con el feature 006 cerrado (Central de Alarmas, 0 brechas, 10 orígenes
+unificados), el Frente 1 del proyecto queda completo: todo lo que se
+sabía vigilar de antemano ya se vigila, ya se explica y ya trae una
+remediación sugerida. El Frente 2 — el agente que diagnostica causas
+que **no** se sabían de antemano (principios IV, VIII, XI de la
+constitución) — sigue en cero. Esta sección es el punto de partida
+para el primer feature de ese frente.
+
+**Por qué diagnóstico antes que remediación.** La constitución exige
+diagnóstico previo a cualquier acción (Principio IV, NO NEGOCIABLE en
+espíritu aunque el marcado formal esté en V/VI): no tiene sentido
+diseñar la lista cerrada de acciones reversibles (Principios V, VI)
+antes de tener ni un solo caso real donde el agente haya identificado
+una causa con certeza suficiente para actuar sobre ella. Este feature
+es exclusivamente diagnóstico — sin ejecutar nada, ni siquiera sugerir
+texto de remediación nueva (eso ya lo cubre el feature 006 para las
+causas que ya se conocían de antemano).
+
+**El caso de prueba ya existe y ya tiene línea base.** Los 49
+reinicios de `beszel` (Caso 1 de este briefing) son el banco de
+pruebas natural: la investigación manual ya concluyó que 3 de los 5
+episodios comprobados no tienen evidencia suficiente para diagnosticar
+nada (`restart_history` no guarda más que la marca de tiempo). El
+éxito de este feature en ese caso concreto **no es encontrar la
+causa** — es llegar a la misma conclusión honesta ("no se puede
+diagnosticar con esta evidencia") sin inventar una causa falsa por
+presión de dar una respuesta, medido contra esa línea base (Principio
+IX).
+
+**Reproducibilidad diferida desde el diseño, no como añadido.**
+Principio XI exige que toda conclusión se pueda reproducir ejecutando
+el agente en diferido contra el mismo episodio histórico. Esto no es
+negociable para *poder medir* el feature: sin ello, cada prueba exige
+esperar a que algo se rompa de verdad. El agente debe poder recibir un
+episodio de dos formas — en vivo (una alarma activa ahora mismo, del
+feature 006) o en diferido (un episodio ya cerrado de
+`restart_history`, con su ventana de `container_metrics`/`disk_metrics`
+alrededor) — y producir la misma conclusión en ambos casos si los
+datos de entrada son los mismos.
+
+**Alcance propuesto:**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Recibir un episodio (vivo o histórico) y reunir evidencia real (`container_metrics`, `disk_metrics`, logs, estado de HA/relays según el origen) | Dentro |
+| Formular varias hipótesis de causa probable con un LLM (DeepSeek) y contrastar cada una contra la evidencia reunida | Dentro |
+| Cortacircuitos de gasto diario sobre las llamadas a DeepSeek — ver más abajo | Dentro |
+| Registrar cada hipótesis con su comprobación y su desenlace (Principio VIII) — legible después, no solo en el momento | Dentro |
+| Concluir "causa probable: X (evidencia: Y)" **o** "no se puede diagnosticar con la evidencia disponible" — nunca forzar una causa | Dentro |
+| Validar contra el caso de beszel como banco de pruebas (sin perseguir su causa raíz como objetivo) | Dentro |
+| Ejecutar cualquier acción correctiva, o sugerir una nueva (fuera de lo que el feature 006 ya sugiere de forma estática) | Fuera — Principios V/VI, feature posterior |
+| Tocar contenedores críticos de cualquier forma, incluido analizarlos con intención de preparar una acción futura sobre ellos | Fuera |
+| Una pestaña nueva en el dashboard | Fuera de este feature en concreto — primero hace falta que el mecanismo funcione y se pueda validar en diferido; la superficie visible (dónde se lee un diagnóstico) es una decisión de un feature posterior, una vez que haya diagnósticos reales que mostrar |
+| RAG sobre el histórico de episodios ya resueltos, consultado antes de gastar tokens | Fuera — ver "Secuencia decidida" más abajo |
+
+**Motor de hipótesis: decidido con Miquel el 2026-08-10.** De los tres
+caminos que este documento dejaba abiertos (reglas fijas sin IA, LLM
+local, LLM en la nube), la decisión es **DeepSeek** (LLM en la nube,
+camino 3) — generar hipótesis abiertas sobre una causa que no se
+conoce de antemano es exactamente el tipo de tarea donde un LLM
+razona mejor que una tabla de reglas fijas (a diferencia del feature
+006, catálogo cerrado de ~19 tipos, resuelto sin IA a propósito,
+FR-015), y el modelo local ya tiene limitaciones documentadas en el
+propio `CLAUDE.md` general del homelab para tareas de varios turnos.
+
+Usar un LLM en la nube exige dos cosas explícitas por el Principio X
+(Local por Defecto: "lo que salga de la máquina se justifica caso por
+caso") y por el coste real de los tokens:
+
+1. **Justificación de que salgan datos de diagnóstico**: la evidencia
+   de un episodio (métricas, logs, estado de contenedores) viaja a la
+   API de DeepSeek para que el modelo razone sobre ella — igual que ya
+   hacen los crons complejos de Bautista (`dreaming`, `noticias-ia`,
+   `gbrain-weekly-purge`) con DeepSeek, mismo proveedor y mismo
+   principio de justificación ya aceptado para esos casos.
+2. **Cortacircuitos de gasto diario** — mismo patrón que ya usa
+   `docker_monitor.py` (3 reinicios en 6 h y para, con aviso), aplicado
+   a €/día en vez de a reinicios: cada respuesta de la API de DeepSeek
+   ya trae `usage.total_tokens` (prompt + completion por separado);
+   sumar el coste real con el precio conocido del modelo y acumularlo
+   en un registro diario. Al llegar al límite (a decidir en el plan;
+   la cifra de partida que planteó Miquel es 5 €/día), el agente deja
+   de invocar al LLM hasta el día siguiente y responde "no se puede
+   diagnosticar sin gastar más del límite diario" en vez de forzar una
+   llamada — nunca calcularlo contra la API de facturación de DeepSeek
+   en tiempo real (más lento, más frágil, y no hace falta: el conteo
+   local ya es exacto).
+
+**Secuencia decidida — el RAG queda para un feature posterior.**
+Miquel propuso además indexar el histórico de resoluciones ya
+aprendidas (un RAG) para consultarlo antes de gastar tokens en una
+llamada nueva — buena idea, pero prematura para este primer feature:
+sin episodios diagnosticados todavía, no hay nada que indexar. La
+secuencia acordada:
+
+1. **Este feature**: DeepSeek + cortacircuitos de gasto diario, sin
+   RAG. Validar contra beszel si el LLM aporta algo de verdad antes de
+   construir nada más encima.
+2. **Feature posterior**: con episodios reales ya resueltos y
+   registrados (Principio VIII se encarga de que existan), un RAG
+   sobre ese historial como capa de ahorro — reutilizando **GBrain**
+   (ya desplegado en el homelab: embeddings + búsqueda híbrida, puerto
+   3131) en vez de levantar un índice paralelo, mismo criterio de "no
+   construir un mecanismo nuevo si ya hay uno sirviendo" que ha guiado
+   todo el proyecto hasta ahora.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que
