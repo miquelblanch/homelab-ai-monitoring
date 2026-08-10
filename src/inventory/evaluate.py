@@ -35,6 +35,7 @@ from .sources import (
     ENTIDAD_HA_AUTOMATIZACIONES_MANUALES,
     ENTIDAD_HA_DISPOSITIVOS_NORMALMENTE_APAGADOS,
     ENTIDAD_HA_EXCEPCIONES_SEGURIDAD,
+    ENTIDAD_HA_FRIGATE_SIN_ESTADO_DE_REPOSO,
     ENTIDAD_HA_PENDIENTE_CONFIRMAR,
     RawComponente,
     entidad_ha_frigate,
@@ -126,6 +127,21 @@ def is_intentional(raw: RawComponente) -> bool:
         # sentido de la marcha, dispositivo más cercano) — metadatos de
         # ubicación, mismo espíritu que mobile_app: no son señal de salud.
         if raw.meta.get("platform") == "proximity":
+            return True
+        # 2026-08-10: media_player de la integración "jellyfin" (sesión de
+        # cast en un dispositivo personal, p. ej. media_player.iphone_2/3)
+        # — "unavailable" solo significa que nadie tiene la app abierta
+        # casteando ahora mismo, no que algo esté roto. Mismo espíritu que
+        # mobile_app: estado de uso, no señal de salud. Confirmado con
+        # Miquel: el check de ha_monitor.py para estas dos entidades se
+        # retiró a la vez que se añadió esta regla.
+        if raw.meta.get("platform") == "jellyfin":
+            return True
+        # 2026-08-10: "review_status" de Frigate no tiene valor de reposo
+        # distinto de "unknown" — ver ENTIDAD_HA_FRIGATE_SIN_ESTADO_DE_REPOSO.
+        # Diagnosticado en vivo con Miquel: cámaras conectadas y
+        # detectando de verdad, solo sin eventos que revisar todavía.
+        if c.nombre_actual in ENTIDAD_HA_FRIGATE_SIN_ESTADO_DE_REPOSO:
             return True
         # feature 006: dominios cuyo `state` no representa sano/roto —
         # ver _ENTIDAD_HA_DOMINIOS_SIN_SALUD.

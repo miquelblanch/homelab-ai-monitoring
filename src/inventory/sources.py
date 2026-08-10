@@ -302,6 +302,20 @@ ENTIDAD_HA_DISPOSITIVOS_NORMALMENTE_APAGADOS = {
     "media_player.box_r_4k_plus_2",
 }
 
+# 2026-08-10: "review_status" de Frigate no tiene un valor de reposo
+# distinto de "unknown" — solo cambia cuando se cierra un item de
+# revisión real (persona/coche detectado y confirmado). Diagnosticado en
+# vivo con Miquel: las dos cámaras estaban conectadas y detectando de
+# verdad (salón a 19.6 FPS de inferencia real, confirmado contra
+# /api/stats de Frigate), pero sin nadie pasando por delante no hay nada
+# que revisar — "unknown" persistente ahí no es un fallo, es la ausencia
+# de eventos. El check correspondiente se retiró de ha_monitor.py a la
+# vez que se añadió esta regla (mismo criterio que jellyfin más abajo).
+ENTIDAD_HA_FRIGATE_SIN_ESTADO_DE_REPOSO = {
+    "sensor.camara_cocina_review_status",
+    "sensor.camara_salon_review_status",
+}
+
 # feature 004: FALLBACK, no fuente de verdad — entidad_ha_frigate() usa
 # esto solo si ha_monitor.CHECKS todavía no tiene las 33 entradas de
 # Frigate (antes de desplegar la historia de Frigate de ese feature). En
