@@ -32,9 +32,10 @@ python3 -m diagnostico.cli diagnosticar 1
 # → conclusión #1: causa_probable | no_diagnosticable, N hipótesis consideradas
 
 python3 -m diagnostico.cli diagnosticar 1
-# → conclusión #2: debe coincidir con la #1 (mismo desenlace de cada
-#   hipótesis y misma conclusión final — no necesariamente el mismo texto
-#   literal, ver research.md §2)
+# → conclusión #2: debe coincidir con la #1 en conclusion_tipo (no
+#   necesariamente en el número o el texto de las hipótesis — ver
+#   research.md §2, aclarado el 2026-08-11 tras evidencia real de que
+#   el número de hipótesis puede variar entre llamadas)
 
 python3 -m diagnostico.cli mostrar 1
 # → episodio + ambos intentos de diagnóstico, con sus hipótesis, legible
@@ -42,16 +43,18 @@ python3 -m diagnostico.cli mostrar 1
 ```
 
 **Resultado esperado**: los dos `diagnosticar` de arriba concuerdan en
-`conclusion_tipo` y en el desenlace de cada hipótesis equivalente.
+`conclusion_tipo` (SC-001) — no se exige que coincida el número ni el
+texto de las hipótesis intermedias.
 
 ## Escenario 2 — Validación contra la línea base de `beszel` (FR-011, SC-002)
 
-De los 5 episodios de `beszel` ya investigados a mano, 3 no tienen
-evidencia suficiente. El agente debe llegar a la misma conclusión honesta
-en esos 3, no inventar una causa.
+Línea base fijada el 2026-08-11 (hallazgo U2 de `/speckit-analyze`): de
+los 6 episodios de referencia, 3 (`restart_history_id` 16, 17, 25) no
+tienen evidencia de métricas — el agente debe llegar a
+`no_diagnosticable` en esos 3, no inventar una causa.
 
 ```bash
-for id in <restart_history_id_1> <restart_history_id_2> <restart_history_id_3>; do
+for id in 16 17 25; do
   episodio=$(python3 -m diagnostico.cli congelar --historico "$id" | grep -o 'episodio [0-9]*' | cut -d' ' -f2)
   python3 -m diagnostico.cli diagnosticar "$episodio"
 done
@@ -59,10 +62,9 @@ done
 
 **Resultado esperado**: los tres intentos concluyen `no_diagnosticable`
 — ninguno presenta una causa sin evidencia real que la respalde (FR-007).
-Los identificadores concretos de `restart_history` para los 3 episodios
-"sin evidencia suficiente" ya investigados a mano están en la
-investigación manual previa a este feature (fuera de este repo — ver
-`BARRIDO-2026-08-01.md`/`BRIEFING.md`, Caso 1).
+Ya confirmado en `tasks.md` T030 con una llamada real a DeepSeek (6/6
+episodios de referencia, incluidos estos 3, concluyeron
+`no_diagnosticable`); este escenario reproduce esa validación.
 
 ## Escenario 3 — Cortacircuitos de gasto diario (US3, SC-004)
 
@@ -103,8 +105,11 @@ python3 -m diagnostico.cli --selftest
 ```
 
 Cubre (test_evidencia, test_deepseek, test_gasto, test_store,
-data-model.md): parseo de una respuesta DeepSeek simulada, cálculo de
-coste a partir de tokens fijos, cortacircuitos de presupuesto en los tres
-casos (por debajo / al límite / por encima), y el invariante FR-007
-(`causa_probable` exige al menos una hipótesis `confirmada`;
-`no_diagnosticable` exige que ninguna lo esté).
+test_reproducibilidad, test_baseline_beszel, data-model.md): parseo de
+una respuesta DeepSeek simulada, cálculo de coste a partir de tokens
+fijos, cortacircuitos de presupuesto en los tres casos (por debajo / al
+límite / por encima), el invariante FR-007 (`causa_probable` exige
+**exactamente una** hipótesis `confirmada` — ni cero ni dos o más,
+corregido el 2026-08-11; `no_diagnosticable` exige que ninguna lo esté),
+la parte determinista de la reproducibilidad (SC-001) y la línea base
+fija de `beszel` (SC-002) contra una respuesta DeepSeek simulada.

@@ -32,9 +32,11 @@ PYTHONPATH=src python3 -m inventory.cli --gaps --no-telegram --no-dashboard \
 ## 2 — El backup de HA cuenta como brecha real si está viejo (User Story 2)
 
 ```bash
-curl -s http://192.168.4.87:8123/api/states/sensor.backup_ultima_copia_de_seguridad_automatica_realizada_correctamente \
+curl -s "$HA_URL/api/states/sensor.backup_ultima_copia_de_seguridad_automatica_realizada_correctamente" \
   -H "Authorization: Bearer $HA_TOKEN" | python3 -m json.tool
 ```
+
+(`HA_URL`/`HA_TOKEN` ya existen como variables de entorno para `ha_monitor.py` — no se hardcodea la IP real, mismo criterio de "Repositorio público" que el resto del proyecto)
 
 **Esperado, con la copia reciente (caso normal)**: el inventario no
 marca `ha_backup_reciente` como brecha.

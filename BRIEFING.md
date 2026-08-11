@@ -357,7 +357,8 @@ con el registro de HA:**
    daba a Frigate por permanentemente apagado. **Ya resuelto y desplegado
    en producción** (no parte de este feature, ya hecho):
    - Relays permanentes `amsterdam9.frigate.relay-cocina`/`-salon`
-     (`192.168.4.87:5540/5541`), vigilados en `dump_socat_status.py`.
+     (`homelab.amsterdam9.home:5540/5541`), vigilados en
+     `dump_socat_status.py`.
    - `config.yaml` de Frigate apuntando a los relays en vez de a las IPs
      directas.
    - Confirmado con datos reales: las dos cámaras a 14 fps.
@@ -696,6 +697,46 @@ secuencia acordada:
    3131) en vez de levantar un índice paralelo, mismo criterio de "no
    construir un mecanismo nuevo si ya hay uno sirviendo" que ha guiado
    todo el proyecto hasta ahora.
+
+---
+
+## Feature 008 — cerrada sin llegar a `/speckit-specify` (2026-08-11): deuda técnica pendiente
+
+Este material se escribió para un feature `008-deuda-tecnica-pendiente`
+con cuatro piezas de deuda técnica ya detectadas y documentadas, pero
+nunca corregidas. Antes de escribir la descripción de partida para
+`/speckit-specify`, se decidió con Miquel volver a correr
+`/speckit-analyze` sobre `007-diagnostico-episodios` para recuperar la
+cuarta pieza (5 hallazgos cuyo contenido nunca se había guardado). Esa
+segunda pasada de análisis regeneró 6 hallazgos (U1-U3, I1-I2, C1) —
+distintos en número y etiqueta de los 5 originales (C1-C3, F1, cuyo
+contenido literal se dio por irrecuperable), pero cubriendo el mismo
+terreno — y las correcciones resultantes cerraron, de paso, las otras
+tres piezas de deuda que iban a ser el resto del alcance de este
+feature. Al llegar al punto de escribir `/speckit-specify` no quedaba
+ya nada que especificar: **este es un feature que se resolvió antes de
+nacer**, no uno que se ejecutó fuera de proceso.
+
+| Deuda original | Cómo se cerró |
+|---|---|
+| Fuga de IP LAN real en `specs/005-movil-y-backup-ha/quickstart.md` | Corregida — sustituida por `$HA_URL` (variable ya existente para `ha_monitor.py`), en vez de hardcodear la IP |
+| Ambigüedad de "confirmada" en el prompt de DeepSeek (007) | Resuelta con hallazgo **I2**: el parser solo rechazaba el caso vacío, no dos o más `confirmada` a la vez pese a que el propio prompt exige exactamente una — corregido en `deepseek.py`, con test nuevo, y la ambigüedad documentada como decisión de diseño en `research.md` §2 (**U3**) |
+| Varianza entre dos diagnósticos del mismo episodio (0 vs 3 hipótesis) | Resuelta con hallazgos **U1/I1**: `spec.md`/`research.md` exigían reproducibilidad del "desenlace de cada hipótesis", más estricto que lo que la validación real (T030) pudo sostener contra un LLM en la nube — redefinido para exigir y medir solo `conclusion_tipo`, con la varianza de hipótesis documentada como comportamiento aceptado |
+| 5 hallazgos de `/speckit-analyze` de 007 (C1-C3, F1), contenido irrecuperable | Sustituidos por los 6 de la nueva pasada (**U1-U3, I1-I2, C1**), todos resueltos — ver `specs/007-diagnostico-episodios/tasks.md`, Fase 7 (T034-T037) |
+
+**Hallazgo adicional, fuera de la lista original.** Al sanear la fuga de
+IP de `specs/005`, una búsqueda del mismo patrón (`192.168.`) en todo el
+repo encontró una segunda fuga no catalogada: los relays de Frigate en
+la sección "Feature 004" de este mismo `BRIEFING.md` citaban
+`192.168.4.87:5540/5541` en vez de `homelab.amsterdam9.home` — corregida
+también.
+
+**Nota de método.** Esta sesión completa (re-análisis de 007 +
+correcciones + esta nota) la ejecutó Claude de principio a fin, a
+petición explícita de Miquel ("lo ejecutas tú esta vez" /
+"hazlo tú mismo") — rompe a propósito la regla de `METODO.md` de que
+Miquel ejecuta los comandos de Spec Kit. Ver `BITACORA.md` para el
+registro completo.
 
 ---
 

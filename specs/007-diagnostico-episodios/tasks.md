@@ -17,6 +17,16 @@ E1 y E2 de `/speckit-analyze` (2026-08-10) — ver el detalle en cada tarea
 nueva. El resto de tareas conserva su contenido, solo cambia su número
 donde hizo falta hueco.
 
+**Nota de versión 2 (2026-08-11)**: T030 dejó dos hallazgos reales sin
+resolver en su momento (varianza del número de hipótesis; ambigüedad de
+"confirmada"), y nunca se fijaron los `restart_history_id` concretos de
+la línea base de `beszel` que exige FR-011. Una segunda pasada de
+`/speckit-analyze` sobre este mismo feature (2026-08-11, ya con el
+feature implementado y en uso, motivada por el material de partida de
+`008-deuda-tecnica-pendiente` en `BRIEFING.md`) encontró 6 hallazgos
+(U1-U3, I1-I2, C1) y los cierra la Fase 7 de abajo — ver el detalle en
+cada tarea nueva.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: se puede hacer en paralelo (ficheros distintos, sin dependencia)
@@ -326,6 +336,57 @@ controlado por una cifra concreta, no una estimación vaga).
   `src/diagnostico/__init__.py` explicando el alcance (solo contenedores,
   sin remediación — ver spec.md), mismo estilo que
   `inventory/store.py`/`inventory/deliver.py`
+
+---
+
+## Phase 7: Correcciones de `/speckit-analyze` (2026-08-11)
+
+**Purpose**: cerrar los 6 hallazgos de la segunda pasada de análisis —
+ninguno CRITICAL, pero tres HIGH tocaban directamente lo que este
+feature promete medir (reproducibilidad y línea base). Ver "Nota de
+versión 2" arriba.
+
+- [X] T034 [P] Resolver **I2**: `parsear_respuesta` en
+  `src/diagnostico/deepseek.py` solo rechazaba `causa_probable` con
+  cero hipótesis `confirmada`, aceptando en silencio dos o más pese a
+  que el propio prompt exige "exactamente una". Corregido a
+  `len(confirmadas) != 1`. Nuevo caso en
+  `tests/selftest/test_deepseek.py`
+  (`test_parsear_respuesta_rechaza_mas_de_una_confirmada`). Cierra
+  también **C1** (no había forma de vigilar si la ambigüedad de
+  "confirmada" reaparecía en uso real): con este fix, cualquier
+  respuesta real que vuelva a caer en la ambigüedad y marque más de una
+  hipótesis como causa se rechaza automáticamente, igual que ya pasaba
+  con el caso vacío — deja de depender de una revisión manual
+  (independiente del resto de esta fase)
+- [X] T035 [P] Resolver **U1/I1**: `spec.md` (Edge Cases, FR-002,
+  SC-001) y `research.md` §2 exigían reproducibilidad del "desenlace de
+  cada hipótesis", un criterio más estricto que el que T030 validó de
+  verdad contra DeepSeek real (mismo `conclusion_tipo`, 0 vs 3
+  hipótesis). Reescritos los tres para exigir y medir solo
+  `conclusion_tipo` — el campo que de verdad usa Miquel para decidir —
+  y para documentar la varianza de hipótesis como comportamiento
+  aceptado, no como regresión pendiente (fichero distinto de T034)
+- [X] T036 [P] Resolver **U2**: FR-011/SC-002 citaban "los 5 episodios
+  de `beszel` ya investigados a mano" sin que ningún artefacto del repo
+  registrara nunca esos `restart_history_id` — `quickstart.md` (Escenario
+  2) incluso usaba placeholders sin resolver
+  (`<restart_history_id_1>`...). Corregido citando el conjunto real que
+  T030 validó (`restart_history_id` 4, 16, 17, 25, 79, 81), con nota
+  explícita de que no se afirma que sea el mismo conjunto de la
+  investigación manual original — solo que es el conjunto real,
+  documentado y reproducible vigente desde ahora (fichero distinto de
+  T034/T035)
+- [X] T037 Resolver **U3**: la aclaración de "confirmada" que corrigió
+  el hallazgo de T030 vivía solo como docstring en `deepseek.py` y como
+  nota de cierre en T030 — invisible para quien edite el prompt sin
+  leer el historial de tareas. Documentada ahora en `research.md` §2
+  como decisión de diseño explícita, con su causa raíz (depende de
+  T035, mismo fichero)
+
+**Checkpoint**: los 6 hallazgos de la segunda pasada de análisis están
+cerrados. `python3 -m diagnostico.cli --selftest` sigue en verde
+(incluido el caso nuevo de T034).
 
 ---
 

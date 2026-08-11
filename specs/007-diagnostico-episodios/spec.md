@@ -165,11 +165,23 @@ modos.
   conclusión sin las hipótesis del LLM; registra el fallo y concluye
   que no pudo diagnosticar en ese intento.
 - ¿Qué pasa si dos ejecuciones en diferido del mismo episodio producen
-  conclusiones distintas (por ejemplo, porque el LLM varía su
-  respuesta entre llamadas)? Rompe la garantía de reproducibilidad de
-  la User Story 1 — es un hallazgo a registrar y resolver (por ejemplo,
-  fijando la temperatura del modelo), no un comportamiento aceptable
-  de este feature.
+  distinto `conclusion_tipo` (causa_probable en una, no_diagnosticable
+  en la otra)? Rompe la garantía de reproducibilidad de la User Story 1
+  — es un fallo real, no un comportamiento aceptable de este feature.
+- ¿Qué pasa si dos ejecuciones en diferido del mismo episodio coinciden
+  en `conclusion_tipo` pero varían en el número o el detalle de las
+  hipótesis formuladas (por ejemplo, 0 hipótesis en un intento y 3 en
+  otro)? **Resuelto el 2026-08-11** (hallazgos U1/I1 de
+  `/speckit-analyze`, con evidencia real de T030: mismo episodio,
+  mismo `conclusion_tipo`, distinto número de hipótesis): esto **sí**
+  es un comportamiento aceptado de este feature, no una regresión que
+  perseguir. `temperature=0` reduce pero no elimina la variación de un
+  LLM en la nube en el texto y número de hipótesis que formula
+  (research.md §2); SC-001 y FR-002 exigen reproducibilidad de la
+  **conclusión** (`conclusion_tipo`), que es el resultado que de verdad
+  usa Miquel para decidir — no la composición exacta de hipótesis
+  intermedias. La variante de la User Story 1 sobre un
+  `conclusion_tipo` distinto sigue siendo un fallo real; esta, no.
 - ¿Qué pasa con un episodio sobre un contenedor crítico? El agente
   DEBE reunir evidencia y formular hipótesis igual que con cualquier
   otro contenedor (FR-013) — no es opcional, es precisamente el caso
@@ -191,11 +203,13 @@ modos.
 - **FR-002**: El sistema DEBE, al elegir diagnosticar un episodio en
   vivo, congelar un snapshot de su evidencia en ese momento — el
   contenedor, la ventana de tiempo y las métricas asociadas. Para un
-  mismo snapshot (en vivo ya congelado, o histórico) DEBE producir la
-  misma conclusión en ejecuciones distintas (Principio XI,
-  Reproducibilidad Diferida). La reproducibilidad se exige contra el
-  snapshot guardado, no contra el estado en vivo del homelab, que puede
-  cambiar entre una ejecución y otra.
+  mismo snapshot (en vivo ya congelado, o histórico) DEBE producir el
+  mismo `conclusion_tipo` en ejecuciones distintas (Principio XI,
+  Reproducibilidad Diferida) — no se exige que el número o el detalle
+  de las hipótesis intermedias coincida entre ejecuciones (ver SC-001,
+  Edge Cases). La reproducibilidad se exige contra el snapshot
+  guardado, no contra el estado en vivo del homelab, que puede cambiar
+  entre una ejecución y otra.
 - **FR-003**: El sistema DEBE reunir evidencia real del homelab
   asociada al episodio (métricas de contenedores/disco, logs, estado
   de otros componentes relevantes) antes de formular ninguna hipótesis.
@@ -223,11 +237,26 @@ modos.
   que haga superar el límite de gasto diario configurado; al
   alcanzarlo, DEBE concluir que no puede diagnosticar ese episodio sin
   superar el límite, en vez de realizar la llamada de todos modos.
-- **FR-011**: El sistema DEBE poder validarse contra los episodios
-  históricos de `beszel` ya investigados manualmente, incluidos los 3
-  de 5 sin evidencia suficiente — el diagnóstico automático DEBE
-  coincidir con esa conclusión para esos 3 episodios (Principio IX,
-  medida contra la línea base).
+- **FR-011**: El sistema DEBE poder validarse contra episodios
+  históricos reales de `beszel` (`restart_history.container_name =
+  'beszel'`, 49 filas en total), incluidos los que no tengan evidencia
+  de métricas suficiente — el diagnóstico automático DEBE concluir
+  `no_diagnosticable` para esos, nunca inventar una causa (Principio
+  IX, medida contra la línea base). **Corregido el 2026-08-11**
+  (hallazgo U2 de `/speckit-analyze`): la formulación original citaba
+  "los 5 episodios ya investigados a mano, 3 sin evidencia suficiente"
+  de la investigación manual descrita en `BRIEFING.md` (Caso 1) — pero
+  ningún artefacto de este repo llegó a registrar nunca los
+  `restart_history_id` concretos de esos 5, así que no se podían usar
+  como línea base verificable. El conjunto de referencia vigente desde
+  esta corrección es el que T030 validó de verdad contra DeepSeek real
+  (`tasks.md`): `restart_history_id` 16, 17, 25 (evidencia de métricas
+  totalmente vacía — coincide con el patrón "sin evidencia suficiente"
+  de la investigación original) y 4, 79, 81 (con 2 muestras horarias
+  cada uno). No se afirma que estos sean los mismos 5 de la
+  investigación manual original — solo que son el conjunto real,
+  documentado y reproducible que este feature usa como línea base a
+  partir de ahora (ver SC-002).
 - **FR-012**: El sistema NO DEBE ejecutar ninguna acción correctiva
   sobre el homelab, ni proponer una remediación nueva más allá de lo
   que el feature 006 ya sugiere de forma estática para causas conocidas
@@ -286,12 +315,19 @@ modos.
 ### Measurable Outcomes
 
 - **SC-001**: Ejecutar el agente dos veces contra el mismo episodio
-  (histórico, o un snapshot ya congelado de uno en vivo) produce la
-  misma conclusión las dos veces, el 100% de las veces que se prueba.
-- **SC-002**: De los 5 episodios históricos de `beszel` ya investigados
-  a mano, el agente llega a la misma conclusión que la investigación
-  manual en los 3 casos sin evidencia suficiente — no inventa una causa
-  donde la investigación manual ya determinó que no la hay.
+  (histórico, o un snapshot ya congelado de uno en vivo) produce el
+  mismo `conclusion_tipo` (causa_probable / no_diagnosticable) las dos
+  veces, el 100% de las veces que se prueba. No exige que el número o
+  el texto de las hipótesis intermedias coincida entre las dos
+  ejecuciones (aclarado el 2026-08-11 tras `/speckit-analyze`, hallazgo
+  I1 — ver Edge Cases).
+- **SC-002**: De los 6 episodios históricos de referencia de `beszel`
+  fijados en FR-011 (`restart_history_id` 4, 16, 17, 25, 79, 81), el
+  agente concluye `no_diagnosticable` en los 3 sin evidencia de
+  métricas (16, 17, 25) — no inventa una causa donde no hay datos que
+  la respalden (corregido el 2026-08-11, hallazgo U2 — ver FR-011 para
+  el porqué de este conjunto concreto en vez de "los 5 investigados a
+  mano").
 - **SC-003**: El 100% de los diagnósticos producidos incluyen más de
   una hipótesis registrada con su comprobación, salvo que la evidencia
   disponible sea tan escasa que no permita formular más de una.

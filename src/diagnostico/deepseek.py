@@ -155,8 +155,13 @@ def parsear_respuesta(respuesta: dict) -> dict | None:
                 return None
 
         confirmadas = [h for h in hipotesis if h["desenlace"] == "confirmada"]
-        if conclusion_tipo == "causa_probable" and not confirmadas:
-            return None  # invariante FR-007: causa_probable exige >=1 confirmada
+        if conclusion_tipo == "causa_probable" and len(confirmadas) != 1:
+            return None  # invariante FR-007: causa_probable exige EXACTAMENTE
+            # una confirmada, igual que le exige el prompt (_PROMPT_INSTRUCCIONES)
+            # — no solo "al menos una". Antes de /speckit-analyze 2026-08-11
+            # (hallazgo I2) esto solo rechazaba el caso vacío, aceptando en
+            # silencio una respuesta con dos o más "confirmada" a la vez pese
+            # a que el prompt pide una sola causa.
         if conclusion_tipo == "no_diagnosticable" and confirmadas:
             return None  # invariante FR-007: no_diagnosticable exige ninguna
 

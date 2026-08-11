@@ -70,12 +70,36 @@ práctica el modelo demuestra que contrastar en el mismo turno que propone
 da peor resultado que hacerlo aparte.
 
 **Determinismo real**: `temperature=0` reduce pero no garantiza
-matemáticamente el mismo texto en dos llamadas (Edge Case ya recogido en
-el spec como hallazgo a registrar, no a asumir resuelto). FR-002 exige
-reproducibilidad de la **conclusión** (causa probable / no diagnosticable),
-no del texto literal — el criterio de comparación para SC-001 es el
-desenlace de cada hipótesis y la conclusión final, no una comparación de
-cadenas.
+matemáticamente el mismo texto, ni el mismo número de hipótesis, en dos
+llamadas. FR-002 exige reproducibilidad de `conclusion_tipo` (causa
+probable / no diagnosticable) — el criterio de comparación para SC-001
+es exclusivamente ese campo, no el número, el texto ni el orden de las
+hipótesis intermedias. **Decidido así explícitamente el 2026-08-11**
+(`/speckit-analyze`, hallazgos U1/I1) tras evidencia real de T030: un
+mismo episodio, diagnosticado dos veces, dio el mismo `conclusion_tipo`
+pero 0 y 3 hipótesis respectivamente. Antes de esa fecha, este mismo
+párrafo pedía además que coincidiera "el desenlace de cada hipótesis" —
+un criterio más estricto que nunca se validó de verdad contra DeepSeek
+real y que la propia naturaleza de un LLM en la nube no puede sostener
+sin perder valor (forzar determinismo total de hipótesis intermedias
+exigiría fijar el propio texto que el modelo genera, no solo la
+temperatura). Se corrige aquí para que el documento diga lo que de
+verdad se exige y se mide.
+
+**La ambigüedad de "confirmada" (documentada aquí desde 2026-08-11,
+antes solo en `tasks.md` T030)**: la validación real contra DeepSeek
+encontró que el modelo, al diagnosticar un contenedor crítico sano sin
+ningún episodio real que explicar, marcaba una hipótesis `"confirmada"`
+en la misma respuesta que concluía `no_diagnosticable` — violando el
+invariante FR-007. Causa raíz: el prompt no distinguía "esta
+comprobación se completó" de "esta hipótesis ES la causa" para la
+palabra "confirmada". Corregido en `_PROMPT_INSTRUCCIONES`
+(`deepseek.py`) con una aclaración explícita de que `"confirmada"`
+significa específicamente que esa hipótesis es la causa, nunca que una
+comprobación individual haya terminado. Cualquier cambio futuro al
+prompt debe conservar esa distinción explícita — es la causa raíz real
+del único fallo de FR-007 observado hasta ahora, no una nota de
+implementación desechable.
 
 ## §3 — Formato de la llamada a DeepSeek: HTTP puro, mismo patrón que `deliver.py`
 

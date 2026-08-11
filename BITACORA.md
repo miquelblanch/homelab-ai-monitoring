@@ -135,6 +135,59 @@ Miquel.
   tenía esta misma fuga desde antes, sin corregir — deuda preexistente,
   no de esta sesión, anotada aquí para no perderla de vista.
 
+## 2026-08-11 — Sesión fuera de proceso: Claude ejecuta, no solo revisa; feature 008 se cierra antes de nacer
+
+**Ruptura deliberada de `METODO.md`.** A petición explícita de Miquel
+("lo ejecutas tú esta vez", luego "hazlo tú mismo"), esta sesión la
+ejecutó Claude de principio a fin — algo que `METODO.md` reserva a
+Miquel precisamente para que aprenda el método y para que las métricas
+de proceso sean reales. Se anota aquí en vez de en silencio: los
+números de esta sesión (abajo) no son comparables a los de una sesión
+normal del proyecto, y no deberían usarse para medir el método en sí.
+
+- **Qué se pidió**: preparar el feature 008 (deuda técnica pendiente:
+  4 piezas ya detectadas — ver la sesión de feature 006/007 más abajo y
+  `BRIEFING.md`). Antes de escribir `/speckit-specify`, Miquel decidió
+  recuperar la cuarta pieza (5 hallazgos de `/speckit-analyze` de 007
+  cuyo contenido nunca se guardó) volviendo a correr `/speckit-analyze`
+  sobre `007-diagnostico-episodios`, en vez de reconstruirlos de
+  memoria.
+- **Lo que pasó en vez de un ciclo de Spec Kit para 008**: la segunda
+  pasada de `/speckit-analyze` sobre 007 encontró 6 hallazgos nuevos
+  (U1-U3, I1-I2, C1 — distintos en número y contenido de los 5
+  originales, dados por irrecuperables). Al pedir Miquel "prepáralos
+  tú", se resolvieron los 6 directamente: un fix de código real
+  (`deepseek.py` — el parser aceptaba en silencio más de una hipótesis
+  `confirmada` a la vez, pese a que el propio prompt exige exactamente
+  una), un test nuevo, y reescritura de `spec.md`/`research.md`/
+  `data-model.md`/`quickstart.md` de 007 para que el criterio de
+  reproducibilidad (SC-001/FR-002) documentado coincida con lo que de
+  verdad se puede sostener contra un LLM en la nube, y para fijar por
+  fin los `restart_history_id` concretos de la línea base de `beszel`
+  (nunca se habían registrado en ningún artefacto). Esas correcciones
+  cerraron, de paso, las otras tres piezas de deuda que iban a formar
+  el alcance de 008. Al llegar al punto de escribir la descripción de
+  partida para `/speckit-specify`, no quedaba nada que especificar.
+- **Hallazgo fuera de todo artefacto de Spec Kit**: al sanear la fuga
+  de IP conocida (`specs/005-movil-y-backup-ha/quickstart.md`), un
+  barrido del mismo patrón por todo el repo encontró una segunda fuga
+  no catalogada — los relays de Frigate en la sección "Feature 004" de
+  `BRIEFING.md` citaban la IP real en vez de `homelab.amsterdam9.home`.
+  Mismo patrón que el hallazgo de la sesión de feature 006
+  (2026-08-09): ninguna skill de Spec Kit comprueba esto, sigue a
+  criterio de la revisión manual.
+- **¿El spec de 007 sigue describiendo lo que hay al cerrar esta
+  sesión?**: sí — es precisamente lo que esta sesión restauró. Antes de
+  ella, `spec.md`/`research.md` de 007 describían un criterio de
+  reproducibilidad más estricto del que el código y la validación real
+  (T030) podían sostener; ahora coinciden.
+- **Dato para el método, no para el proyecto**: esta sesión demuestra
+  que "recuperar hallazgos perdidos re-ejecutando `/speckit-analyze`"
+  funciona — no reprodujo los mismos 5 hallazgos literales (imposible,
+  nunca se guardaron), pero encontró una cobertura equivalente o mejor
+  del mismo terreno real. Vale como precedente para la próxima vez que
+  se encuentre un hueco de proceso similar.
+
 ## 2026-08-10 — Feature 007, ciclo completo (specify → implement) + validación real con DeepSeek
 
 Primer feature de Frente 2: diagnóstico de episodios de contenedor con

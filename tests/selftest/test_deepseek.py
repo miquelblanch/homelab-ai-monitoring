@@ -100,6 +100,26 @@ def test_parsear_respuesta_rechaza_invariante_fr007_violado() -> None:
     )
 
 
+def test_parsear_respuesta_rechaza_mas_de_una_confirmada() -> None:
+    # hallazgo I2 (/speckit-analyze 2026-08-11): el prompt exige EXACTAMENTE
+    # una "confirmada" para causa_probable — dos a la vez contradice al
+    # propio prompt y la semántica singular de FR-007 ("una causa probable").
+    # Antes de esta corrección, parsear_respuesta solo rechazaba el caso
+    # vacío y aceptaba dos o más en silencio.
+    respuesta = _respuesta_deepseek({
+        "conclusion_tipo": "causa_probable",
+        "conclusion_texto": "algo",
+        "hipotesis": [
+            {"descripcion": "a", "comprobacion": "b", "desenlace": "confirmada"},
+            {"descripcion": "c", "comprobacion": "d", "desenlace": "confirmada"},
+        ],
+    })
+    check(
+        "causa_probable con dos hipótesis confirmada a la vez viola FR-007 ⇒ se rechaza",
+        deepseek.parsear_respuesta(respuesta) is None,
+    )
+
+
 def test_parsear_respuesta_rechaza_desenlace_invalido() -> None:
     respuesta = _respuesta_deepseek({
         "conclusion_tipo": "causa_probable",

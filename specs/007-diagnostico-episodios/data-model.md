@@ -86,8 +86,13 @@ intentos es precisamente cómo se comprueba SC-001).
 | `creado_en` | TEXT (ISO 8601) | |
 
 **Invariante (FR-007)**: si `conclusion_tipo = 'causa_probable'`, debe
-existir al menos una fila en `hipotesis` con `desenlace = 'confirmada'`
-para ese `diagnostico_id`. Si `conclusion_tipo = 'no_diagnosticable'`,
+existir **exactamente una** fila en `hipotesis` con
+`desenlace = 'confirmada'` para ese `diagnostico_id` — ni cero ni dos o
+más (corregido el 2026-08-11, hallazgo I2 de `/speckit-analyze`: antes
+de esta fecha `parsear_respuesta` solo rechazaba el caso vacío,
+aceptando en silencio una respuesta con varias hipótesis `confirmada`
+a la vez, pese a que el propio prompt en `deepseek.py` ya le pide al
+modelo "exactamente una"). Si `conclusion_tipo = 'no_diagnosticable'`,
 ninguna hipótesis del intento tiene `desenlace = 'confirmada'` (pueden
 existir hipótesis `descartada`/`sin_evidencia_suficiente`, o ninguna en
 absoluto si el límite de gasto cortó la llamada antes de proponer nada).
