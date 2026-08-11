@@ -740,6 +740,83 @@ registro completo.
 
 ---
 
+## Feature 008 — material de partida (2026-08-11): superficie del diagnóstico en el dashboard
+
+Con 007 cerrado y endurecido (sesión de arriba), el mecanismo de
+diagnóstico funciona pero solo se puede leer por CLI (`mostrar
+EPISODIO_ID`) — exactamente lo que `spec.md` de 007 dejó fuera a
+propósito en sus Assumptions: *"la superficie visible de un
+diagnóstico... queda fuera de este feature — se decide en uno
+posterior, una vez que haya diagnósticos reales que mostrar"*. Ya los
+hay: hoy `diagnostico.db` tiene 8 episodios, 16 diagnósticos y 26
+hipótesis reales (todos de la validación de `beszel` + un caso de
+`homeassistant` crítico) — pocos, pero reales, no un mock.
+
+**Lo que ya existe y no hay que construir.** `diagnostico.db` vive en
+`docker/homelab-orchestrator/data/`, la misma carpeta que
+`inventario.db`/`homelab.db`, que ya está montada en el contenedor del
+dashboard en `/data` (`docker-compose.yml` de `homelab-dashboard`) —
+sin volumen nuevo que añadir. `app.py` ya sabe leer SQLite de solo
+lectura (`mode=ro`, ver el patrón de `speedtest.db`) para otra base de
+ese mismo directorio; sería el segundo caso, no el primero.
+
+**Dato real a tener en cuenta al diseñar.** Los 16 diagnósticos
+existentes son **todos** `no_diagnosticable` — ningún `causa_probable`
+real todavía. Cualquier vista debe poder mostrar bien las dos
+conclusiones aunque solo una tenga datos reales hoy; no diseñar
+mirando solo la muestra disponible.
+
+**Decidido con Miquel (2026-08-11), las dos preguntas que este material
+dejaba abiertas:**
+
+1. **Solo visor de lectura, sin disparador.** Nada de botón en el
+   dashboard que llame a `diagnosticar` — eso sigue siendo solo por
+   línea de comandos. El dashboard sigue siendo, como hasta ahora, de
+   solo lectura sobre ficheros/bases que otro proceso ya escribió;
+   este feature no le añade la primera acción que ejecuta código de
+   otro paquete ni gasta dinero en una API externa por un clic.
+2. **Cuelga de la pestaña "Correcciones" ya existente** (feature 006),
+   no una pestaña nueva — cuando una alarma de esa pestaña tenga un
+   episodio diagnosticado asociado, se muestra su diagnóstico como
+   detalle. Acopla dos features hasta ahora independientes
+   (`alarm_history.json` no sabe nada de `diagnostico.db`) — el cómo
+   se resuelve ese acoplamiento (¿por contenedor+ventana de tiempo?
+   ¿un campo nuevo en algún sitio?) es trabajo real de `/speckit-plan`,
+   no algo que este material deba resolver.
+
+**Alcance propuesto:**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Leer `diagnostico.db` (episodios, diagnósticos, hipótesis) desde `app.py` | Dentro |
+| Mostrar, por episodio, su conclusión y el detalle de cada hipótesis (descripción, comprobación, desenlace) | Dentro |
+| Mostrar el acumulado de gasto diario de DeepSeek (`gasto_diario`) | Dentro — visibilidad del cortacircuitos de FR-010, no solo su existencia |
+| Colgarlo de la pestaña "Correcciones" ya existente (feature 006), no una pestaña nueva | Dentro |
+| Disparar un diagnóstico nuevo desde el dashboard (botón "diagnosticar") | Fuera — solo visor de lectura, decidido con Miquel |
+| Cambiar cómo `diagnostico.cli` congela o diagnostica episodios | Fuera — este feature es de lectura, no toca 007 |
+| Generalizar a las otras 9 alarmas de la Central de Alarmas | Fuera — sigue acotado a contenedores, mismo alcance que 007 |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El motor de diagnóstico de episodios de contenedor (feature 007) ya
+> funciona y ya tiene diagnósticos reales guardados, pero solo se
+> pueden leer por línea de comandos — no hay ningún sitio en el
+> dashboard del homelab donde ver qué se ha diagnosticado. Quiero que
+> la pestaña "Correcciones" que ya existe en el dashboard (feature 006,
+> unifica las alarmas activas del homelab) muestre, para una alarma de
+> contenedor que ya tenga un episodio diagnosticado asociado, su
+> conclusión (una causa probable con evidencia, o que no se pudo
+> diagnosticar) y el detalle de cada hipótesis que se consideró — qué
+> se propuso, cómo se contrastó, y en qué quedó. También quiero ver
+> cuánto llevo gastado hoy en el presupuesto de DeepSeek. Es solo un
+> visor de solo lectura: no incluye poder lanzar un diagnóstico nuevo
+> desde el navegador, eso sigue siendo solo por línea de comandos. No
+> incluye diagnosticar nada que no sean contenedores, ni una pestaña
+> nueva en el dashboard.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que
