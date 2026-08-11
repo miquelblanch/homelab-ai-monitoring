@@ -31,7 +31,8 @@ def db_path() -> Path:
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS episodios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    contenedor TEXT NOT NULL,
+    componente TEXT NOT NULL,
+    origen TEXT NOT NULL DEFAULT 'contenedor',
     es_critico INTEGER NOT NULL,
     en_vivo INTEGER NOT NULL,
     restart_history_id INTEGER,
@@ -72,6 +73,23 @@ CREATE TABLE IF NOT EXISTS gasto_diario (
 """
 
 
+def _migrar_episodios_contenedor_a_componente(conn: sqlite3.Connection) -> None:
+    """feature 009: `episodios.contenedor` → `componente` + `origen`
+    nuevo. Idempotente — solo actúa sobre una base ya existente de
+    antes de este feature (comprobado con `PRAGMA table_info`, research.md
+    §1 de specs/009-diagnostico-discos/). Sobre una base nueva, `_SCHEMA`
+    ya crea las columnas correctas y esta función no tiene nada que
+    hacer."""
+    columnas = {row["name"] for row in conn.execute("PRAGMA table_info(episodios)")}
+    if "origen" in columnas or "contenedor" not in columnas:
+        return
+    conn.execute("ALTER TABLE episodios RENAME COLUMN contenedor TO componente")
+    conn.execute(
+        "ALTER TABLE episodios ADD COLUMN origen TEXT NOT NULL DEFAULT 'contenedor'"
+    )
+    conn.commit()
+
+
 @contextmanager
 def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
     """Conexión con las cuatro tablas garantizadas. No falla si el
@@ -84,6 +102,7 @@ def connect(path: Path | None = None) -> Iterator[sqlite3.Connection]:
     try:
         conn.executescript(_SCHEMA)
         conn.commit()
+        _migrar_episodios_contenedor_a_componente(conn)
         yield conn
     finally:
         conn.close()
@@ -106,11 +125,12 @@ def insert_episodio(conn: sqlite3.Connection, episodio: Episodio) -> int:
     creado_en = episodio.creado_en or _now_iso()
     cur = conn.execute(
         """INSERT INTO episodios
-           (contenedor, es_critico, en_vivo, restart_history_id,
+           (componente, origen, es_critico, en_vivo, restart_history_id,
             ventana_inicio, ventana_fin, snapshot_evidencia, creado_en)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            episodio.contenedor,
+            episodio.componente,
+            episodio.origen,
             int(episodio.es_critico),
             int(episodio.en_vivo),
             episodio.restart_history_id,
@@ -127,7 +147,8 @@ def insert_episodio(conn: sqlite3.Connection, episodio: Episodio) -> int:
 def _episodio_from_row(row: sqlite3.Row) -> Episodio:
     return Episodio(
         id=row["id"],
-        contenedor=row["contenedor"],
+        componente=row["componente"],
+        origen=row["origen"],
         es_critico=bool(row["es_critico"]),
         en_vivo=bool(row["en_vivo"]),
         restart_history_id=row["restart_history_id"],

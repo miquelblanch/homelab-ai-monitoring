@@ -19,13 +19,20 @@ CONCLUSION_TIPOS = ("causa_probable", "no_diagnosticable")
 @dataclass
 class Episodio:
     """Unidad de trabajo del agente — spec.md Key Entities. Una vez
-    creado, `snapshot_evidencia` no se vuelve a tocar (FR-002)."""
+    creado, `snapshot_evidencia` no se vuelve a tocar (FR-002).
 
-    contenedor: str
+    Generalizado en feature 009 (specs/009-diagnostico-discos/) para
+    poder representar también un episodio de disco, no solo de
+    contenedor — `componente` es el nombre genérico (nombre de
+    contenedor, o `label` de disco), `origen` distingue cuál de los
+    dos es."""
+
+    componente: str
     es_critico: bool
     en_vivo: bool
     ventana_inicio: str
     ventana_fin: str
+    origen: str = "contenedor"
     snapshot_evidencia: dict = field(default_factory=dict)
     restart_history_id: int | None = None
     creado_en: str | None = None

@@ -6,6 +6,80 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-11 — Feature 009, ciclo completo (specify → implement), tercera vez fuera de proceso
+
+**Ruptura deliberada de `METODO.md`, tercera vez en la misma sesión
+larga.** Mismo patrón que 008: Miquel decidió el qué ("Pues hagamos
+1" — generalizar el diagnóstico a un segundo origen), Claude ejecutó
+todo el ciclo. Mismo aviso de siempre: estos números miden qué
+encuentra el método sin Miquel al mando, no el método en sí.
+
+- **Qué se pidió**: generalizar el motor de diagnóstico (007) más allá
+  de contenedores. Antes de escribir nada, investigación real: de los 9
+  orígenes restantes de la Central de Alarmas, solo discos tiene datos
+  históricos de verdad en `homelab.db` (`disk_metrics`, 13.992 filas) —
+  los otros 7 no tienen ninguna tabla propia. Decidido con Miquel:
+  empezar por discos, uno a la vez, no los 9 de golpe (mismo criterio
+  que ya usaron los features 004/005 para no tratar entidades distintas
+  como un bloque).
+- **Segundo hallazgo de la investigación previa**: a diferencia de
+  `beszel` (49 reinicios reales para 007), no existe ningún incidente
+  real de disco que usar como línea base — los tres discos del homelab
+  llevan tiempo sanos. Aceptado como limitación conocida en el propio
+  `plan.md` (Principio IX), no ocultada.
+- **Ambigüedades detectadas por `clarify`**: 1 — qué pasa si el disco
+  diagnosticado es el mismo donde vive `diagnostico.db` y no queda
+  espacio para escribir el resultado (un riesgo que no existía para
+  contenedores, cuya evidencia y registro viven en sitios
+  independientes). Miquel aceptó el riesgo tal cual, sin mecanismo de
+  respaldo nuevo.
+- **`/speckit-analyze` encontró 3 hallazgos reales**: una inconsistencia
+  de formato (`T002` marcada `[P]` pese a depender de `T001`), un hueco
+  de cobertura (SC-002 — varias hipótesis para un episodio de disco —
+  sin ninguna tarea que lo comprobara), y una infraespecificación real
+  (la convención horaria de `MOMENTO_ISO` en `--disco-historico` no
+  estaba escrita en ningún sitio — exactamente la categoría de fallo
+  que ya costó una sesión de depuración entera en 008 sobre este mismo
+  paquete). Los tres se corrigieron antes de implementar.
+- **Tareas implementadas sin intervención real: 19 de 19** — ninguna
+  falló, pero la implementación sí encontró trabajo no anticipado en
+  ningún artefacto: renombrar `episodios.contenedor` a `componente`
+  exigió tocar 5 sitios de `tests/selftest/*.py` que construían
+  `Episodio(contenedor=...)` con el nombre antiguo — no estaban en
+  `tasks.md` porque son consecuencia mecánica de T001/T002, no trabajo
+  nuevo de diseño.
+- **Migración de esquema sobre datos de producción, con cautela
+  explícita**: `episodios.contenedor` → `componente` + `origen` nuevo,
+  aplicada primero contra una **copia** de `diagnostico.db` real (9
+  episodios, 17 diagnósticos, 26 hipótesis — verificados intactos byte
+  a byte en los campos que no debían cambiar) antes de tocar el
+  fichero de producción. Tareas T014/T015 separadas a propósito por
+  esto mismo.
+- **Validación real con DeepSeek, no solo selftest simulado**: los tres
+  discos reales del homelab (FastData, Storage, Sistema), sanos,
+  diagnosticados de verdad — los tres concluyeron `no_diagnosticable`
+  con 3-4 hipótesis contrastadas cada uno (el modelo razonó sobre
+  tendencia de crecimiento del uso, backups sin rotar, fallo de
+  hardware — sin inventar ninguna causa). Reproducibilidad (SC-001)
+  confirmada con dos diagnósticos reales del mismo episodio histórico.
+  Gasto compartido (FR-007) confirmado por aritmética exacta contra
+  `gasto_diario` real: coste de contenedor + coste de disco = acumulado
+  del día, sin discrepancia.
+- **¿El spec sigue describiendo lo que hay al cerrar el hito?**: sí —
+  ninguna decisión de `research.md` tuvo que revisarse tras la
+  validación real, a diferencia de 008 (que sí encontró un bug de
+  diseño real en implementación). La investigación previa a especificar
+  (qué orígenes tienen datos reales, qué convención horaria usar) pagó
+  aquí: menos sorpresas en `implement` que en las dos sesiones
+  anteriores.
+- **Dato para el método**: tercera sesión seguida donde `/speckit-analyze`
+  encuentra algo real (008: 1 hallazgo sobre 007 + 1 sobre 008 propio;
+  009: 3 hallazgos). La categoría que más se repite — convención
+  horaria sin documentar — ya apareció en 008 como bug de
+  implementación y en 009 como hallazgo de análisis antes de llegar a
+  implementar; la disciplina de escribirlo explícitamente en
+  `research.md`/`contracts/` esta vez evitó repetir el mismo bug.
+
 ## 2026-08-11 — Feature 008, ciclo completo (specify → implement), otra vez fuera de proceso
 
 **Ruptura deliberada de `METODO.md`, segunda vez en la misma sesión

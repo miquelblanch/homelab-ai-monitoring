@@ -36,6 +36,44 @@ def test_construir_prompt_incluye_clausula_sin_accion_si_es_critico() -> None:
     )
 
 
+def test_construir_prompt_disco_nunca_lleva_clausula_de_critico() -> None:
+    """feature 009: es_critico siempre False para un episodio de disco
+    (research.md §4 de specs/009-diagnostico-discos/) — el prompt debe
+    comportarse exactamente igual que para un contenedor no crítico."""
+    snapshot_disco = {
+        "disco": {"label": "FastData", "path": "/Volumes/FastData"},
+        "disk_metrics": [],
+    }
+    prompt = deepseek.construir_prompt(snapshot_disco, es_critico=False)
+    check(
+        "prompt de episodio de disco no lleva la cláusula de contenedor crítico",
+        "NO propongas ninguna acción correctiva" not in prompt,
+    )
+
+
+def test_parsear_respuesta_disco_con_varias_hipotesis() -> None:
+    """hallazgo U1 de /speckit-analyze (2026-08-11, SC-002 de
+    specs/009-diagnostico-discos/): el motor generalizado debe seguir
+    aceptando más de una hipótesis también para un episodio de disco,
+    no solo para uno de contenedor (ya cubierto por el test de abajo)."""
+    respuesta = _respuesta_deepseek({
+        "conclusion_tipo": "causa_probable",
+        "conclusion_texto": "el disco crece por backups sin rotar",
+        "hipotesis": [
+            {"descripcion": "backups acumulados sin rotación",
+             "comprobacion": "used_percent sube de forma sostenida en la ventana",
+             "desenlace": "confirmada"},
+            {"descripcion": "logs sin rotar",
+             "comprobacion": "no hay proceso de logrotate reciente en la evidencia",
+             "desenlace": "descartada"},
+        ],
+    })
+    parsed = deepseek.parsear_respuesta(respuesta)
+
+    check("respuesta de disco bien formada se acepta", parsed is not None)
+    check("SC-002: más de una hipótesis registrada para un episodio de disco", len(parsed["hipotesis"]) > 1)
+
+
 def test_parsear_respuesta_bien_formada_con_varias_hipotesis() -> None:
     respuesta = _respuesta_deepseek({
         "conclusion_tipo": "causa_probable",

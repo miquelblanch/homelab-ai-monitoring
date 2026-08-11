@@ -3,6 +3,7 @@ hipótesis, varios intentos por episodio)."""
 
 from __future__ import annotations
 
+import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -24,7 +25,7 @@ def test_insert_y_lectura_de_episodio() -> None:
         db = Path(tmp) / "diagnostico.db"
         with store.connect(db) as conn:
             episodio = Episodio(
-                contenedor="beszel",
+                componente="beszel",
                 es_critico=False,
                 en_vivo=False,
                 ventana_inicio="2026-03-29T12:00:00",
@@ -37,7 +38,7 @@ def test_insert_y_lectura_de_episodio() -> None:
             inexistente = store.get_episodio(conn, 999)
 
         check("insert_episodio devuelve un id", episodio_id is not None)
-        check("get_episodio recupera el mismo contenedor", leido.contenedor == "beszel")
+        check("get_episodio recupera el mismo contenedor", leido.componente == "beszel")
         check(
             "snapshot_evidencia se conserva como dict de ida y vuelta (JSON)",
             leido.snapshot_evidencia["restart_history"]["id"] == 16,
@@ -52,7 +53,7 @@ def test_insert_diagnostico_e_hipotesis_de_ida_y_vuelta() -> None:
             episodio_id = store.insert_episodio(
                 conn,
                 Episodio(
-                    contenedor="beszel", es_critico=False, en_vivo=False,
+                    componente="beszel", es_critico=False, en_vivo=False,
                     ventana_inicio="a", ventana_fin="b", snapshot_evidencia={},
                 ),
             )
@@ -106,7 +107,7 @@ def test_varios_diagnosticos_sobre_el_mismo_episodio_conviven() -> None:
             episodio_id = store.insert_episodio(
                 conn,
                 Episodio(
-                    contenedor="beszel", es_critico=False, en_vivo=False,
+                    componente="beszel", es_critico=False, en_vivo=False,
                     ventana_inicio="a", ventana_fin="b", snapshot_evidencia={},
                 ),
             )
@@ -123,6 +124,52 @@ def test_varios_diagnosticos_sobre_el_mismo_episodio_conviven() -> None:
 
         check("dos intentos de diagnóstico coexisten para el mismo episodio", len(diagnosticos) == 2)
         check("ambos con id distinto", diagnosticos[0]["id"] != diagnosticos[1]["id"])
+
+
+def test_migracion_contenedor_a_componente_es_idempotente_y_no_pierde_datos() -> None:
+    """feature 009 (research.md §1 de specs/009-diagnostico-discos/):
+    una base ya escrita por 007, con el esquema antiguo (`contenedor`,
+    sin `origen`), debe migrarse sola al conectar — sin perder la fila
+    ya persistida, y sin fallar si se conecta dos veces."""
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "diagnostico_viejo.db"
+        # Esquema tal cual lo dejó 007, antes de este feature.
+        conn_raw = sqlite3.connect(db)
+        conn_raw.execute(
+            """CREATE TABLE episodios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contenedor TEXT NOT NULL,
+                es_critico INTEGER NOT NULL,
+                en_vivo INTEGER NOT NULL,
+                restart_history_id INTEGER,
+                ventana_inicio TEXT NOT NULL,
+                ventana_fin TEXT NOT NULL,
+                snapshot_evidencia TEXT NOT NULL,
+                creado_en TEXT NOT NULL
+            )"""
+        )
+        conn_raw.execute(
+            "INSERT INTO episodios (contenedor, es_critico, en_vivo, "
+            "ventana_inicio, ventana_fin, snapshot_evidencia, creado_en) "
+            "VALUES ('beszel', 0, 0, 'a', 'b', '{}', '2026-08-10T00:00:00+00:00')"
+        )
+        conn_raw.commit()
+        conn_raw.close()
+
+        with store.connect(db) as conn:
+            episodio = store.get_episodio(conn, 1)
+        with store.connect(db) as conn:  # segunda conexión no debe fallar
+            episodio_otra_vez = store.get_episodio(conn, 1)
+
+        check(
+            "el episodio ya escrito por 007 se lee tras migrar, mismo componente",
+            episodio is not None and episodio.componente == "beszel",
+        )
+        check("origen por defecto = contenedor tras migrar", episodio.origen == "contenedor")
+        check(
+            "conectar dos veces tras la migración no falla ni duplica",
+            episodio_otra_vez is not None and episodio_otra_vez.id == episodio.id,
+        )
 
 
 def test_upsert_gasto_diario_acumula_sin_pisar() -> None:

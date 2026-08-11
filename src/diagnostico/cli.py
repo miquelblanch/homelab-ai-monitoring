@@ -1,9 +1,12 @@
 """cli — Punto de entrada del diagnóstico de episodios. Contrato:
-contracts/cli.md.
+specs/007-diagnostico-episodios/contracts/cli.md, generalizado a discos
+en specs/009-diagnostico-discos/contracts/cli.md.
 
 Uso:
     python3 -m diagnostico.cli congelar --historico RESTART_HISTORY_ID
     python3 -m diagnostico.cli congelar --vivo CONTENEDOR
+    python3 -m diagnostico.cli congelar --disco-historico LABEL@MOMENTO_ISO
+    python3 -m diagnostico.cli congelar --disco-vivo LABEL
     python3 -m diagnostico.cli diagnosticar EPISODIO_ID
     python3 -m diagnostico.cli mostrar EPISODIO_ID [--diagnostico DIAGNOSTICO_ID]
     python3 -m diagnostico.cli --selftest
@@ -54,6 +57,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="CONTENEDOR",
         help="Congela el estado actual de un contenedor en vivo.",
     )
+    origen.add_argument(
+        "--disco-vivo",
+        metavar="LABEL",
+        help="Congela el estado actual de un disco en vivo (feature 009).",
+    )
+    origen.add_argument(
+        "--disco-historico",
+        metavar="LABEL@MOMENTO_ISO",
+        help="Congela un momento pasado concreto de un disco (feature 009).",
+    )
 
     diagnosticar_parser = subparsers.add_parser(
         "diagnosticar", help="Diagnostica un episodio ya congelado (FR-003 a FR-011)."
@@ -82,7 +95,12 @@ def main(argv: list[str] | None = None) -> int:
         return _run_selftest()
 
     if args.comando == "congelar":
-        return _run_congelar(historico=args.historico, vivo=args.vivo)
+        return _run_congelar(
+            historico=args.historico,
+            vivo=args.vivo,
+            disco_vivo=args.disco_vivo,
+            disco_historico=args.disco_historico,
+        )
     if args.comando == "diagnosticar":
         return _run_diagnosticar(args.episodio_id)
     if args.comando == "mostrar":
@@ -101,18 +119,42 @@ def _run_selftest() -> int:
     return run_all()
 
 
-def _run_congelar(*, historico: int | None, vivo: str | None) -> int:
+def _run_congelar(
+    *,
+    historico: int | None,
+    vivo: str | None,
+    disco_vivo: str | None,
+    disco_historico: str | None,
+) -> int:
+    from datetime import datetime
+
     from . import evidencia, store
 
     with store.connect() as conn:
         if historico is not None:
             episodio = evidencia.congelar_historico(conn, historico)
-        else:
+            modo = "histórico"
+        elif vivo is not None:
             episodio = evidencia.congelar_vivo(conn, vivo)
+            modo = "en vivo"
+        elif disco_vivo is not None:
+            episodio = evidencia.congelar_disco_vivo(conn, disco_vivo)
+            modo = "en vivo"
+        else:
+            label, _, momento_str = disco_historico.partition("@")
+            if not momento_str:
+                print(
+                    f"--disco-historico espera LABEL@MOMENTO_ISO, no {disco_historico!r}",
+                    file=sys.stderr,
+                )
+                return 1
+            episodio = evidencia.congelar_disco_historico(
+                conn, label, datetime.fromisoformat(momento_str)
+            )
+            modo = "histórico"
 
-    origen = "histórico" if historico is not None else "en vivo"
     print(
-        f"episodio {episodio.id} congelado ({episodio.contenedor}, {origen}, "
+        f"episodio {episodio.id} congelado ({episodio.componente}, {modo}, "
         f"crítico={'sí' if episodio.es_critico else 'no'})"
     )
     return 0
@@ -148,7 +190,7 @@ def _run_mostrar(episodio_id: int, *, diagnostico_id: int | None) -> int:
             return 1
 
         print(
-            f"episodio {episodio.id} — {episodio.contenedor} "
+            f"episodio {episodio.id} — {episodio.componente} ({episodio.origen}) "
             f"({'en vivo' if episodio.en_vivo else 'histórico'}, "
             f"crítico={'sí' if episodio.es_critico else 'no'})"
         )

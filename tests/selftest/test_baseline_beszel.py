@@ -49,7 +49,7 @@ def test_los_tres_episodios_sin_evidencia_concluyen_no_diagnosticable() -> None:
                 episodio_id = store.insert_episodio(
                     conn,
                     Episodio(
-                        contenedor=caso["contenedor"], es_critico=False, en_vivo=False,
+                        componente=caso["contenedor"], es_critico=False, en_vivo=False,
                         ventana_inicio=caso["ventana_inicio"], ventana_fin=caso["ventana_fin"],
                         snapshot_evidencia=caso["snapshot_evidencia"],
                         restart_history_id=caso["restart_history_id"],

@@ -33,11 +33,13 @@ DIAGNOSTICO_DEEPSEEK_MAX_TOKENS = int(
 )
 
 _PROMPT_INSTRUCCIONES = """\
-Eres un diagnosticador de causas probables para episodios de contenedores
-Docker en un homelab doméstico. A continuación tienes la evidencia real
-congelada de un episodio (métricas, logs, estado del contenedor). No
-tienes ninguna fuente de evidencia adicional a la que acudir — toda la
-evidencia disponible ya está aquí.
+Eres un diagnosticador de causas probables para episodios de un homelab
+doméstico — puede ser un contenedor Docker caído o un disco con uso
+alto (feature 009: specs/009-diagnostico-discos/). A continuación
+tienes la evidencia real congelada de un episodio (métricas, logs,
+estado del contenedor o del disco, según cuál sea). No tienes ninguna
+fuente de evidencia adicional a la que acudir — toda la evidencia
+disponible ya está aquí.
 
 Formula varias hipótesis de causa probable (más de una si la evidencia lo
 permite) y contrasta cada una contra la evidencia dada en este mismo

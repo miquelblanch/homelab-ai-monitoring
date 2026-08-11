@@ -43,7 +43,7 @@ def test_dos_diagnosticos_sobre_el_mismo_episodio_coinciden() -> None:
             episodio_id = store.insert_episodio(
                 conn,
                 Episodio(
-                    contenedor="beszel", es_critico=False, en_vivo=False,
+                    componente="beszel", es_critico=False, en_vivo=False,
                     ventana_inicio="a", ventana_fin="b",
                     snapshot_evidencia={"restart_history": None, "container_metrics": []},
                 ),
