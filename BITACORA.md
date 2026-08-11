@@ -6,6 +6,86 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-11 — Feature 008, ciclo completo (specify → implement), otra vez fuera de proceso
+
+**Ruptura deliberada de `METODO.md`, segunda vez en la misma sesión
+larga.** A petición explícita de Miquel ("Sigo tú", "Ejecuta tú el
+specify", "Implement ya"), Claude ejecutó el ciclo completo —
+`specify` → `clarify` → `plan` → `tasks` → `analyze` → `implement` —
+de principio a fin. Mismo aviso que la sesión anterior: los números de
+abajo no miden el método con Miquel al mando, miden qué encuentra el
+método cuando se sigue igual de disciplinado sin él.
+
+- **Qué se pidió**: exponer en el dashboard los diagnósticos que ya
+  produce el motor de 007, solo lectura, colgado de una pestaña ya
+  existente — visto en la sesión anterior como feature 008 (el hueco
+  que dejó cerrarse la deuda técnica sin necesitar spec).
+- **El spec cambió de sitio dos veces antes de llegar a `/speckit-plan`
+  y otra vez durante `/speckit-plan`**. Primera: el material de partida
+  decía "pestaña Correcciones"; al escribirlo, Miquel decidió que fuera
+  solo visor y colgado de Correcciones. Segunda (real, encontrada al
+  preparar `/speckit-plan`, no al escribir el spec): "Correcciones" no
+  es la lista de alarmas activas — es el historial de alarmas ya
+  **resueltas**; la lista activa es la pestaña "Alarmas", separada.
+  Tercera: puesto a elegir entre las dos con la distinción ya clara,
+  Miquel cambió el destino a "Alarmas" — más accionable, coincide con
+  el caso de uso que 007 ya había validado de verdad (diagnóstico en
+  vivo de un contenedor crítico). El spec, `research.md`, `data-model.md`,
+  `contracts/` y `quickstart.md` se reescribieron enteros la segunda
+  vez — la única reescritura completa de un artefacto en todo el
+  proyecto hasta ahora.
+- **Ambigüedades detectadas por `clarify`**: 1 — cuándo un diagnóstico
+  de una caída anterior no debe mostrarse como si fuera de la actual.
+  Miquel confirmó el valor por defecto y añadió un requisito no
+  anticipado: las fechas del episodio y del diagnóstico deben estar
+  siempre visibles, nunca solo la conclusión sola.
+- **`/speckit-analyze` encontró 1 hallazgo real** (I1, HIGH): el
+  contrato decía que la clave `diagnostico` no aparecía en absoluto
+  para alarmas ajenas/agrupadas; `data-model.md` y `tasks.md` ya
+  asumían que sí aparecía, como `null`. Resuelto unificando en la
+  segunda convención (más simple de implementar).
+- **Tareas implementadas sin intervención real: 13 de 16.** Las otras
+  3 no fallaron por error de tarea — revelaron problemas de diseño que
+  ninguna revisión de código podía encontrar:
+  1. El desempate entre dos episodios a la misma distancia no seguía
+     "el más reciente" que el propio `research.md` había decidido —
+     encontrado releyendo el código ya escrito, antes de desplegar.
+  2. Un `SyntaxWarning` real por un escape sin duplicar en el JS
+     embebido, más una lógica de formateo de euros confusa —
+     encontrado en los logs del contenedor al reconstruirlo.
+  3. **El más importante**: el algoritmo de emparejamiento comparaba
+     `down_since` contra un único punto (`ventana_inicio`). Probado
+     contra un episodio real (`congelar --vivo` de un contenedor
+     parado a propósito para la prueba), falló exactamente el caso de
+     uso central del feature — diagnosticar en vivo poco después de la
+     caída — porque `ventana_inicio` de un episodio `--vivo` es el
+     principio de toda una hora de contexto de métricas, no el inicio
+     real de la caída. Ninguna de las 16 tareas de `tasks.md`, ni la
+     revisión de `/speckit-analyze`, podía haber encontrado esto sin
+     ejecutar el código contra un caso real — se corrigió comparando
+     contra el **rango** `[ventana_inicio, ventana_fin]` en vez de un
+     punto.
+- **Validación real, no solo selftest simulado**: contenedor
+  reconstruido y desplegado en producción; funciones probadas dentro
+  del contenedor real contra `diagnostico.db` real; **captura de
+  pantalla con un navegador real** (Playwright/Chromium, instalado
+  para la ocasión) confirmando visualmente el bloque de diagnóstico,
+  las dos fechas y el gasto diario. El entorno de pruebas (un
+  contenedor parado a propósito, `docker_monitor_state.json` alterado
+  temporalmente para simular una alarma) se restauró exactamente al
+  estado previo — diff vacío confirmado contra la copia de seguridad.
+- **¿El spec sigue describiendo lo que hay al cerrar el hito?**: sí,
+  incluida la corrección del algoritmo de emparejamiento, documentada
+  en `research.md` §3 con la fecha y el caso real que la motivó, no
+  como una discrepancia silenciosa entre el spec y el código.
+- **Dato para el método**: de los tres problemas reales encontrados en
+  esta sesión (el pivote Correcciones→Alarmas, el hallazgo I1, y el
+  bug del rango de fechas), **ninguno lo encontró la revisión de
+  código ni `/speckit-analyze` — los tres aparecieron al ejecutar
+  contra datos y contenedores reales**. Coincide con lo que ya apuntó
+  la sesión de 007 (T030): en este proyecto, la validación real sigue
+  encontrando categorías de fallo que ninguna revisión estática cubre.
+
 ## 2026-08-07/08 — Feature 001, ciclo completo (specify → implement)
 
 Primer feature del proyecto. Una sola sesión cubrió el ciclo entero:
