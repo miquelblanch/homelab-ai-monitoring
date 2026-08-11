@@ -817,6 +817,96 @@ adaptar):
 
 ---
 
+## Feature 009 — material de partida (2026-08-11): generalizar el diagnóstico a discos
+
+Con 007 (motor de diagnóstico) y 008 (visor en Alarmas) cerrados, el
+siguiente paso del Frente 2 es generalizar el diagnóstico más allá de
+contenedores — el propio `spec.md` de 007 lo dejó explícitamente
+acotado a un solo origen (Clarification 1) "para poder validar el
+enfoque antes de generalizar".
+
+**Investigación previa — por qué discos y no los otros 8.** Antes de
+elegir, se comprobó qué orígenes de la Central de Alarmas (feature 006)
+tienen datos históricos reales en `homelab.db`, no solo el estado
+actual:
+
+| Origen | ¿Tabla de series temporales en `homelab.db`? |
+|---|---|
+| Contenedores | Sí — `container_metrics` (30 días) + `container_metrics_hourly` (permanente). Ya usado por 007. |
+| **Discos** | **Sí** — `disk_metrics` (13.992 filas reales, ~5 min de cadencia) + `disk_metrics_daily` (pensada como agregado permanente, pero **vacía hoy** — el job de agregación no la está rellenando, sin investigar por qué). |
+| HA, backup, monitores, relays, hosts externos, hub de Beszel, agentes, inventario | **No.** Ninguna tabla propia — solo el fichero de estado actual (que se sobrescribe en cada ciclo) más el registro fino de `alarm_history.json` (feature 006: cuándo empezó y acabó cada alarma, sin ningún detalle intermedio). |
+
+Generalizar a los otros 7 de golpe habría significado tratar orígenes
+con evidencia real y orígenes con evidencia casi vacía como si fueran
+equivalentes — el mismo error que los features 004/005 ya evitaron
+explícitamente ("tratar entidades distintas como un bloque"). Discos es
+el único segundo candidato con datos comparables a los de contenedores.
+Decidido con Miquel: empezar por discos; los otros 7 quedan para
+features posteriores, uno a uno, cuando cada uno tenga su propia
+investigación de qué constituye evidencia real.
+
+**Segundo hallazgo: no hay ningún incidente real de disco que usar como
+línea base.** El caso de prueba de 007 fueron los 49 reinicios reales de
+`beszel`. Para discos, `alarm_history.json` tiene **0** alarmas de
+origen `discos` ya resueltas — los tres discos del homelab llevan tiempo
+por debajo del umbral de aviso (75%) de forma continuada (comprobado en
+vivo: 14,6% / 17,0% / 61,9% de uso). A diferencia de 007, este feature
+**no tiene un FR-011 equivalente que exigir** ("debe coincidir con la
+conclusión de una investigación manual ya hecha") — no existe esa
+investigación manual porque no ha habido ningún incidente real de disco
+todavía. La validación tendrá que apoyarse en `congelar --vivo` contra
+el estado sano actual (como ya hizo 007 con `homeassistant` sano,
+Escenario 4 de su quickstart) y, si aparece un aviso real de disco
+mientras se desarrolla este feature, usarlo como caso real.
+
+**Lo que esto exige cambiar de la arquitectura de 007 (para
+`/speckit-plan`, no para el spec).** `Episodio.contenedor` es un campo
+obligatorio hoy, usado por `evidencia.py` (`docker inspect`/`logs`,
+`container_metrics`), por `es_critico()` (`docker_critical()`), y por
+el propio contrato del CLI (`congelar --historico/--vivo CONTENEDOR`).
+Generalizar a un segundo origen implica que el modelo deje de asumir
+"todo episodio es de un contenedor" — un cambio de diseño real, no solo
+código nuevo añadido al lado. Igual de importante: el prompt a DeepSeek
+(`_PROMPT_INSTRUCCIONES` de `deepseek.py`) habla explícitamente de
+"reinicio del contenedor" y "episodios de contenedores Docker" — tendrá
+que dejar de asumir ese lenguaje sin perder la claridad que le costó
+conseguir a 007 (la ambigüedad de "confirmada", ver `BITACORA.md`).
+
+**Alcance propuesto:**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Generalizar `Episodio` (y el resto del modelo) para que un episodio pueda ser de un disco, no solo de un contenedor | Dentro |
+| Evidencia de un episodio de disco: `disk_metrics` alrededor del momento, mismo criterio de tolerancia que ya usa `disk_metrics_near()` | Dentro |
+| Ajustar el prompt de DeepSeek para que no asuma "contenedor" como único tipo de episodio | Dentro |
+| Validar contra `congelar --vivo` de los 3 discos reales en su estado sano actual (no hay incidente histórico que usar) | Dentro |
+| Generalizar a los otros 7 orígenes (HA, backup, monitores, relays, hosts externos, hub de Beszel, agentes, inventario) | Fuera — cada uno necesita su propia investigación de qué es "evidencia real" para él, igual que se acaba de hacer aquí para discos |
+| Cualquier acción correctiva sobre el disco (liberar espacio, etc.) | Fuera — sigue siendo solo diagnóstico, mismo alcance que 007 |
+| Mostrar el diagnóstico de un disco en el dashboard (equivalente a 008) | Fuera de este feature — primero el mecanismo, después la superficie, mismo orden que 007→008 |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El motor de diagnóstico de episodios (feature 007) hoy solo sabe
+> diagnosticar contenedores caídos — se limitó a propósito a un solo
+> origen para validar el enfoque antes de generalizar. Quiero que
+> también pueda diagnosticar episodios de disco: cuando un disco cruza
+> el umbral de aviso o crítico de uso, quiero poder pedirle al motor
+> que reúna la evidencia real alrededor de ese momento (uso del disco
+> en la ventana de tiempo relevante) y formule hipótesis de causa
+> probable, con el mismo rigor y las mismas garantías que ya tiene para
+> contenedores: varias hipótesis contrastadas, nunca inventar una causa
+> sin evidencia, un límite de gasto diario compartido con el resto del
+> motor. No incluye generalizar a ningún otro origen de la Central de
+> Alarmas (Home Assistant, backups, relays, hosts externos, el hub de
+> Beszel, agentes, inventario de cobertura) — eso queda para features
+> posteriores, uno a uno. No incluye ninguna acción correctiva sobre el
+> disco, ni mostrar este diagnóstico nuevo en el dashboard — sigue
+> siendo solo por línea de comandos, mismo alcance que tuvo 007 antes
+> de que 008 le diera superficie visible.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que
