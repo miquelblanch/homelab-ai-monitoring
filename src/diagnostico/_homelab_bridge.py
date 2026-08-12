@@ -3,8 +3,12 @@
 Copia mínima deliberada de `inventory/_homelab_bridge.py` (research.md
 §7): `diagnostico` e `inventory` son dos paquetes hermanos
 independientes bajo `src/`, sin que ninguno dependa del otro. Solo lleva
-lo que este feature necesita — ni siquiera las funciones de `ha_monitor`,
-que `inventory` sí tiene y este feature no usa (no toca HA).
+lo que este feature necesita.
+
+Desde feature 010 (specs/010-diagnostico-ha/) sí incluye las funciones
+de `ha_monitor` — mismo patrón que `inventory/_homelab_bridge.py` ya
+usa para ese módulo (research.md §3 de 010), añadido aquí porque hasta
+ahora ningún feature de `diagnostico` tocaba HA.
 
 Mismo contrato que el original: si los scripts no están disponibles
 (repo público clonado fuera del homelab), las funciones devuelven un
@@ -38,6 +42,11 @@ try:
 except ImportError:
     _docker_monitor = None
 
+try:
+    import ha_monitor as _ha_monitor  # type: ignore[import-not-found]
+except ImportError:
+    _ha_monitor = None
+
 
 def get_secret(key: str, default: str = "") -> str:
     if _homelab_secrets is None:
@@ -70,3 +79,71 @@ def docker_never_restart() -> set[str]:
         return set(getattr(_docker_monitor, "NEVER_RESTART", set()))
     except Exception:
         return set()
+
+
+# ── Home Assistant (feature 010: specs/010-diagnostico-ha/) ────────────────
+
+
+def ha_checks() -> list[dict]:
+    """`ha_monitor.CHECKS` tal cual, nunca copiado a este repo público
+    (research.md §3 de 010) — `[]` si `ha_monitor.py` no está
+    disponible."""
+    if _ha_monitor is None:
+        return []
+    try:
+        return list(getattr(_ha_monitor, "CHECKS", []))
+    except Exception:
+        return []
+
+
+def ha_history(entity_id: str, inicio_iso: str, fin_iso: str) -> list[dict] | None:
+    """Historial de cambios de estado de `entity_id` en `[inicio_iso,
+    fin_iso]`, vía `ha_monitor.ha_get_detallado()` (research.md §4 —
+    reutiliza credenciales, timeout y distinción de errores ya resueltos
+    por ese módulo, sin reimplementar la llamada HTTP). `None` si
+    `ha_monitor.py` no está disponible o la llamada falla."""
+    if _ha_monitor is None:
+        return None
+    try:
+        datos, _motivo = _ha_monitor.ha_get_detallado(
+            f"/api/history/period/{inicio_iso}"
+            f"?filter_entity_id={entity_id}&end_time={fin_iso}"
+        )
+        if datos is None:
+            return None
+        return datos[0] if datos else []
+    except Exception:
+        return None
+
+
+def ha_check_status(check: dict) -> dict | None:
+    """Resultado ya calculado de `ha_monitor.check_status(check)` — el
+    mismo veredicto (ok/fallo, detalle, motivo) que ese módulo ya
+    computa cada 15 minutos para el informe real (research.md §10 de
+    010, hallazgo real de validación en vivo, 2026-08-12). Sin esto, el
+    modelo tiene que reconstruir por su cuenta si el check está
+    fallando ahora mismo a partir de logs ruidosos compartidos por 111
+    checks, o de aritmética de fechas — y a veces lo hace mal o se
+    pierde razonando. `None` si `ha_monitor.py` no está disponible o la
+    llamada falla; nunca lanza."""
+    if _ha_monitor is None:
+        return None
+    try:
+        ok, detalle, motivo = _ha_monitor.check_status(check)
+        return {"ok": ok, "detalle": detalle, "motivo": motivo}
+    except Exception:
+        return None
+
+
+def ha_recorder_corrupt_files(contenedor: str, ruta: str) -> list[str]:
+    """Ficheros `*.corrupt.*` presentes ahora mismo en `ruta` dentro de
+    `contenedor`, vía `ha_monitor._recorder_corrupt_files()` (función
+    privada, reutilizada igual que `ha_monitor_check_result()` ya lee el
+    `STATE_FILE` "privado" de ese mismo módulo, research.md §4 de 010).
+    `[]` si `ha_monitor.py` no está disponible."""
+    if _ha_monitor is None:
+        return []
+    try:
+        return _ha_monitor._recorder_corrupt_files(contenedor, ruta)
+    except Exception:
+        return []

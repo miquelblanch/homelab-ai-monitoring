@@ -7,6 +7,8 @@ Uso:
     python3 -m diagnostico.cli congelar --vivo CONTENEDOR
     python3 -m diagnostico.cli congelar --disco-historico LABEL@MOMENTO_ISO
     python3 -m diagnostico.cli congelar --disco-vivo LABEL
+    python3 -m diagnostico.cli congelar --ha-historico CHECK_ID@MOMENTO_ISO
+    python3 -m diagnostico.cli congelar --ha-vivo CHECK_ID
     python3 -m diagnostico.cli diagnosticar EPISODIO_ID
     python3 -m diagnostico.cli mostrar EPISODIO_ID [--diagnostico DIAGNOSTICO_ID]
     python3 -m diagnostico.cli --selftest
@@ -67,6 +69,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="LABEL@MOMENTO_ISO",
         help="Congela un momento pasado concreto de un disco (feature 009).",
     )
+    origen.add_argument(
+        "--ha-vivo",
+        metavar="CHECK_ID",
+        help="Congela el estado actual de un check de Home Assistant en vivo (feature 010).",
+    )
+    origen.add_argument(
+        "--ha-historico",
+        metavar="CHECK_ID@MOMENTO_ISO",
+        help="Congela un momento pasado concreto de un check de Home Assistant (feature 010).",
+    )
 
     diagnosticar_parser = subparsers.add_parser(
         "diagnosticar", help="Diagnostica un episodio ya congelado (FR-003 a FR-011)."
@@ -100,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
             vivo=args.vivo,
             disco_vivo=args.disco_vivo,
             disco_historico=args.disco_historico,
+            ha_vivo=args.ha_vivo,
+            ha_historico=args.ha_historico,
         )
     if args.comando == "diagnosticar":
         return _run_diagnosticar(args.episodio_id)
@@ -125,33 +139,57 @@ def _run_congelar(
     vivo: str | None,
     disco_vivo: str | None,
     disco_historico: str | None,
+    ha_vivo: str | None,
+    ha_historico: str | None,
 ) -> int:
     from datetime import datetime
 
     from . import evidencia, store
 
-    with store.connect() as conn:
-        if historico is not None:
-            episodio = evidencia.congelar_historico(conn, historico)
-            modo = "histórico"
-        elif vivo is not None:
-            episodio = evidencia.congelar_vivo(conn, vivo)
-            modo = "en vivo"
-        elif disco_vivo is not None:
-            episodio = evidencia.congelar_disco_vivo(conn, disco_vivo)
-            modo = "en vivo"
-        else:
-            label, _, momento_str = disco_historico.partition("@")
-            if not momento_str:
-                print(
-                    f"--disco-historico espera LABEL@MOMENTO_ISO, no {disco_historico!r}",
-                    file=sys.stderr,
+    try:
+        with store.connect() as conn:
+            if historico is not None:
+                episodio = evidencia.congelar_historico(conn, historico)
+                modo = "histórico"
+            elif vivo is not None:
+                episodio = evidencia.congelar_vivo(conn, vivo)
+                modo = "en vivo"
+            elif disco_vivo is not None:
+                episodio = evidencia.congelar_disco_vivo(conn, disco_vivo)
+                modo = "en vivo"
+            elif disco_historico is not None:
+                label, _, momento_str = disco_historico.partition("@")
+                if not momento_str:
+                    print(
+                        f"--disco-historico espera LABEL@MOMENTO_ISO, no {disco_historico!r}",
+                        file=sys.stderr,
+                    )
+                    return 1
+                episodio = evidencia.congelar_disco_historico(
+                    conn, label, datetime.fromisoformat(momento_str)
                 )
-                return 1
-            episodio = evidencia.congelar_disco_historico(
-                conn, label, datetime.fromisoformat(momento_str)
-            )
-            modo = "histórico"
+                modo = "histórico"
+            elif ha_vivo is not None:
+                episodio = evidencia.congelar_ha_vivo(conn, ha_vivo)
+                modo = "en vivo"
+            else:
+                check_id, _, momento_str = ha_historico.partition("@")
+                if not momento_str:
+                    print(
+                        f"--ha-historico espera CHECK_ID@MOMENTO_ISO, no {ha_historico!r}",
+                        file=sys.stderr,
+                    )
+                    return 1
+                episodio = evidencia.congelar_ha_historico(
+                    conn, check_id, datetime.fromisoformat(momento_str)
+                )
+                modo = "histórico"
+    except ValueError as e:
+        # FR-010: los checks de la cerradura se rechazan explícitamente
+        # (evidencia.CHECKS_HA_EXCLUIDOS_CERRADURA) — mismo tratamiento
+        # que un restart_history_id inexistente, ya usado por --historico.
+        print(str(e), file=sys.stderr)
+        return 1
 
     print(
         f"episodio {episodio.id} congelado ({episodio.componente}, {modo}, "

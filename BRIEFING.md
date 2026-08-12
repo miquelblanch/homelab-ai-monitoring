@@ -907,6 +907,133 @@ adaptar):
 
 ---
 
+## Feature 010 — material de partida (2026-08-12): generalizar el diagnóstico a Home Assistant
+
+Con 007 (motor), 008 (visor) y 009 (discos) cerrados, toca elegir el
+tercer origen a generalizar de los 7 que quedaban fuera de 009 (HA,
+backup, monitores, relays, hosts externos, hub de Beszel, agentes,
+inventario). Se investiga HA primero.
+
+**Por qué HA ahora y no antes.** La tabla de 009 decía que HA no tenía
+"ninguna tabla propia" de series temporales, solo el fichero de estado
+actual (se sobrescribe cada ciclo) más el registro grueso de
+`alarm_history.json`. Eso ha cambiado esta misma sesión: al investigar
+y corregir la corrupción repetida del recorder de HA (bind mount +
+WAL de SQLite sobre OrbStack, 3 corrupciones reales entre abril y
+agosto), el recorder se movió a un volumen Docker nativo
+(`ha_recorder_db`) y se le añadió un check de monitorización nuevo
+(`ha_recorder_corrupto` en `ha_monitor.py`). Consecuencia directa para
+este feature: **el propio recorder de HA es una fuente de series
+temporales reales, por entidad**, comprobado en vivo justo ahora — solo
+en los ~14 min desde el último reinicio del contenedor ya había 1.583
+filas en `states` (`event_data`, `event_types`, `states_meta`,
+`statistics`, `statistics_short_term` completan el esquema). Es más
+fina que `container_metrics` (cadencia de 5 min): un estado nuevo por
+cada cambio real de cualquier entidad. **Con una condición**: solo es
+fiable desde el 2026-08-11 (fecha del fix); antes de eso el recorder se
+corrompía y se reiniciaba solo periódicamente, así que la profundidad
+histórica hacia atrás es irregular por diseño, no un bug de este
+feature.
+
+**Segundo hallazgo, corregido tras una comprobación en vivo (2026-08-12):
+`alarm_history.json` NO tiene ningún incidente real de recorder
+corrupto que usar como línea base.** La primera versión de este
+material daba por bueno un registro "Resuelta | Recorder de Home
+Assistant (SQLite)" en `alarm_history.json` como si fuera un incidente
+real equivalente a `beszel` en 007. No lo era: al revisar sus
+timestamps (`aparecio_en`/`resuelta_en`, 13 segundos de diferencia)
+quedó claro que era un artefacto de la prueba de integración de ayer —
+inyecté un estado falso para comprobar que el dashboard clasificaba
+bien la alarma, lo restauré segundos después, y esa transición se
+grabó como si fuera una alarma real. **Se ha eliminado de
+`alarm_history.json`** (dato de producción, no debía quedar un
+incidente fabricado en el historial). Del origen `ha`, lo que queda
+tras la limpieza:
+
+| Estado | Componente | Naturaleza |
+|---|---|---|
+| Resuelta | Desbloqueo Cerradura | Cerradura Nuki — dispositivo físico |
+| Resuelta | Bloqueo Cerradura | Cerradura Nuki — dispositivo físico |
+| Activa | Batería crítica cerradura Amsterdam 9 | Cerradura Nuki — investigado esta sesión, concluido hardware/batería del dispositivo, fuera del control del homelab, cerrado explícitamente ("Dejemos el tema de la cerradura") |
+| Activa | Batería cerradura Amsterdam 9 | Igual que la anterior |
+| Activa | Cerradura Amsterdam 9 | Igual que la anterior |
+
+Es decir: **los 5 incidentes reales de origen `ha` son todos la misma
+cerradura**, con causa ya investigada a mano y no corregible desde el
+homelab. A diferencia de 009 (que al menos tenía `disk_metrics` con
+13.992 filas reales aunque sin ningún incidente que analizar), aquí
+**tampoco hay un equivalente a `restart_history` para el check
+`ha_recorder_corrupto`** — es un check nuevo (de ayer), las 3
+corrupciones reales conocidas (20 abr, 9 y 11 ago) ocurrieron antes de
+que existiera, y no dejaron ningún registro con timestamp reutilizable.
+La validación de línea base de este feature queda, por tanto, más
+limitada que la de 007 (que sí tuvo 49 reinicios reales de `beszel`):
+solo `congelar --vivo` contra el estado sano actual de cada tipo de
+check, más lo que aparezca de verdad mientras se desarrolla — mismo
+tipo de limitación que 009 ya aceptó para discos, documentada en vez de
+inventar un caso sintético que aparente ser real.
+
+**Lo que esto exige cambiar de la arquitectura de 009 (para
+`/speckit-plan`, no para el spec).** Menos que en 009: `Episodio` ya
+tiene `origen` como campo genérico (`"contenedor"` / `"disco"` hoy);
+añadir `"ha"` es un valor nuevo, no un rediseño del modelo. Lo que sí
+hace falta construir de cero es la evidencia — no hay
+`disk_metrics_near()` equivalente para HA todavía. La evidencia de un
+episodio de HA tendría que salir de dos sitios distintos según el tipo
+de comprobación que falló: (a) para checks sobre una entidad concreta
+(batería, disponibilidad), consultar el `states` del recorder filtrado
+por `entity_id` y ventana de tiempo, igual patrón que
+`disk_metrics_window()` pero contra una base distinta a `homelab.db`;
+(b) para el check `ha_recorder_corrupto` en sí, no hay serie temporal
+que consultar — la evidencia es el propio fichero `.corrupt.*` y los
+logs del contenedor, más parecido a `docker_logs_tail()` que a una
+consulta de métricas.
+
+**Alcance propuesto (a confirmar en `/speckit-clarify`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Generalizar `Episodio.origen` para admitir `"ha"` | Dentro |
+| Evidencia por entidad: consultar `states` del recorder de HA alrededor del momento del episodio | Dentro |
+| Evidencia para `ha_recorder_corrupto`: ficheros `.corrupt.*` + logs del contenedor `homeassistant` | Dentro |
+| Validar con `congelar --vivo` contra el estado sano actual de cada tipo de check (entidad y recorder), y contra cualquier episodio real de cualquiera de los dos tipos que aparezca mientras se desarrolla | Dentro — sin línea base histórica equivalente a `beszel`, ver hallazgo corregido arriba |
+| Diagnosticar los episodios de la cerradura (batería/conectividad) | **Fuera.** Decidido con Miquel (2026-08-12): la causa ya se investigó a mano esta sesión y es hardware/batería de un dispositivo físico (Nuki), no infraestructura del homelab — no aporta nada nuevo validar el motor contra un caso ya resuelto sin él |
+| Generalizar a los otros 6 orígenes restantes (backup, monitores, relays, hosts externos, hub de Beszel, agentes, inventario) | Fuera — uno a uno, misma razón que 009 |
+| Cualquier acción correctiva sobre HA o la cerradura | Fuera — sigue siendo solo diagnóstico |
+| Mostrar el diagnóstico de HA en el dashboard | Fuera de este feature — mecanismo primero, superficie después, mismo orden que 007→008 |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El motor de diagnóstico de episodios (feature 007, generalizado a
+> discos en 009) hoy no sabe diagnosticar nada de Home Assistant.
+> Quiero que también pueda diagnosticar episodios de HA: cuando un
+> check de `ha_monitor.py` sobre una entidad falla (batería, entidad
+> no disponible, estado inesperado) o cuando falla el check del
+> recorder de HA corrupto, quiero poder pedirle al motor que reúna la
+> evidencia real alrededor de ese momento — para checks de entidad, el
+> historial de esa entidad en el recorder de Home Assistant; para el
+> recorder corrupto, los ficheros de corrupción y los logs del
+> contenedor — y formule hipótesis de causa probable, con el mismo
+> rigor que ya tiene para contenedores y discos: varias hipótesis
+> contrastadas, nunca inventar una causa sin evidencia, el mismo límite
+> de gasto diario compartido con el resto del motor. No existe hoy
+> ningún incidente histórico real de ninguno de los dos tipos de check
+> que usar como línea base (a diferencia de los 49 reinicios de
+> `beszel` en 007) — la validación se apoya en `congelar --vivo` contra
+> el estado sano actual de cada tipo, y contra cualquier episodio real
+> que aparezca mientras se desarrolla. No incluye diagnosticar los
+> episodios de la cerradura de la puerta (batería/conectividad): su
+> causa ya se investigó a mano esta sesión y es un problema del
+> dispositivo físico, no del homelab, así que no hay nada nuevo que
+> validar ahí. No incluye generalizar a ningún otro origen de la
+> Central de Alarmas (backups, relays, hosts externos, el hub de
+> Beszel, agentes, inventario de cobertura) — eso queda para features
+> posteriores, uno a uno. No incluye ninguna acción correctiva sobre
+> HA, ni mostrar este diagnóstico nuevo en el dashboard — sigue siendo
+> solo por línea de comandos, mismo alcance que tuvo 007 antes de que
+> 008 le diera superficie visible.
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que

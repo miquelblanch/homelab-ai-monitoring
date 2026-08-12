@@ -34,12 +34,14 @@ DIAGNOSTICO_DEEPSEEK_MAX_TOKENS = int(
 
 _PROMPT_INSTRUCCIONES = """\
 Eres un diagnosticador de causas probables para episodios de un homelab
-doméstico — puede ser un contenedor Docker caído o un disco con uso
-alto (feature 009: specs/009-diagnostico-discos/). A continuación
-tienes la evidencia real congelada de un episodio (métricas, logs,
-estado del contenedor o del disco, según cuál sea). No tienes ninguna
-fuente de evidencia adicional a la que acudir — toda la evidencia
-disponible ya está aquí.
+doméstico — puede ser un contenedor Docker caído, un disco con uso alto
+(feature 009: specs/009-diagnostico-discos/), o un check de Home Assistant
+(feature 010: specs/010-diagnostico-ha/) — una entidad con batería baja o
+estado inesperado, su recorder corrupto, o su API sin responder. A
+continuación tienes la evidencia real congelada de un episodio (métricas,
+logs, estado del contenedor, del disco, o de Home Assistant, según cuál
+sea). No tienes ninguna fuente de evidencia adicional a la que acudir —
+toda la evidencia disponible ya está aquí.
 
 Formula varias hipótesis de causa probable (más de una si la evidencia lo
 permite) y contrasta cada una contra la evidencia dada en este mismo
@@ -79,11 +81,27 @@ ni la menciones en "conclusion_texto" ni en ninguna "comprobacion" —
 limítate a describir la causa probable o la falta de evidencia.
 """
 
+_PROMPT_CLAUSULA_HA_ESTADO = """\
+
+El campo "ha_check_status" es el veredicto YA CALCULADO de si este check
+concreto de Home Assistant está fallando ahora mismo (mismo cálculo que
+ya hace ha_monitor.py cada 15 minutos) — no lo recalcules tú a partir
+del resto de la evidencia. Si "ha_check_status.ok" es true, este check
+está sano: concluye "no_diagnosticable" — no hay ningún episodio real de
+ESTE check que explicar, aunque el resto de la evidencia (logs del
+contenedor, compartidos por otros muchos checks e integraciones de Home
+Assistant) muestre problemas reales de otras partes del sistema. Esos
+problemas pueden ser reales, pero no son la causa de este check en
+concreto, que no está fallando.
+"""
+
 
 def construir_prompt(snapshot: dict, es_critico: bool) -> str:
     prompt = _PROMPT_INSTRUCCIONES
     if es_critico:
         prompt += _PROMPT_CLAUSULA_CRITICO
+    if snapshot.get("ha_check_status") is not None:
+        prompt += _PROMPT_CLAUSULA_HA_ESTADO
     prompt += "\nEvidencia del episodio:\n"
     prompt += json.dumps(snapshot, ensure_ascii=False, default=str, indent=2)
     return prompt
@@ -136,9 +154,25 @@ def parsear_respuesta(respuesta: dict) -> dict | None:
     """Valida el invariante FR-007 antes de devolver nada. `None` si el
     contenido no es JSON válido o no cumple el invariante — se trata
     igual que "DeepSeek no responde" en los Edge Cases del spec, nunca
-    como una tercera categoría sin definir."""
+    como una tercera categoría sin definir.
+
+    `content` vacío con `reasoning_content` poblado (hallazgo real al
+    validar specs/010-diagnostico-ha/ en vivo, 2026-08-12): el modelo de
+    razonamiento a veces escribe la respuesta completa en
+    `reasoning_content` y nunca la vuelve a escribir en `content`, pese
+    a `finish_reason: "stop"` — el mismo síntoma que el CLAUDE.md general
+    del homelab ya documenta para el backend local de los crons de
+    Bautista (`qwen/qwen3.5-9b`), aquí en el propio DeepSeek de la nube.
+    Sin este respaldo, esas respuestas —completas y válidas, solo en el
+    campo equivocado— se descartaban como "inconsistentes" y quemaban
+    gasto real sin producir ningún diagnóstico. Si `reasoning_content`
+    tampoco es JSON válido (p. ej. narrativa de razonamiento sin la
+    respuesta final, o la generación se cortó por `max_tokens` antes de
+    llegar a ella), `json.loads` falla igual que antes y se devuelve
+    `None` — este respaldo nunca empeora el caso ya manejado."""
     try:
-        contenido = respuesta["choices"][0]["message"]["content"]
+        mensaje = respuesta["choices"][0]["message"]
+        contenido = mensaje.get("content") or mensaje.get("reasoning_content") or ""
         usage = respuesta.get("usage", {})
         tokens_entrada = int(usage.get("prompt_tokens", 0))
         tokens_salida = int(usage.get("completion_tokens", 0))
