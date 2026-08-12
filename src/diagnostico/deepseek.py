@@ -18,7 +18,7 @@ import urllib.error
 import urllib.request
 
 from . import _homelab_bridge as bridge
-from . import gasto, store
+from . import evidencia, gasto, store
 from .model import CONCLUSION_TIPOS, DESENLACES, Diagnostico, Episodio, Hipotesis
 
 _ENDPOINT = "https://api.deepseek.com/chat/completions"
@@ -37,14 +37,15 @@ Eres un diagnosticador de causas probables para episodios de un homelab
 doméstico — puede ser un contenedor Docker caído, un disco con uso alto
 (feature 009: specs/009-diagnostico-discos/), un check de Home Assistant
 (feature 010: specs/010-diagnostico-ha/) — una entidad con batería baja o
-estado inesperado, su recorder corrupto, o su API sin responder — o un
+estado inesperado, su recorder corrupto, o su API sin responder — un
 backup nocturno fallido o parcial (feature 011:
 specs/011-diagnostico-backups/) — el rsync general, o algún dump de base
-de datos. A continuación tienes la evidencia real congelada de un
-episodio (métricas, logs, estado del contenedor, del disco, de Home
-Assistant, o del backup, según cuál sea). No tienes ninguna fuente de
-evidencia adicional a la que acudir — toda la evidencia disponible ya
-está aquí.
+de datos —, o un relay `socat` caído (feature 012:
+specs/012-diagnostico-relays/). A continuación tienes la evidencia real
+congelada de un episodio (métricas, logs, estado del contenedor, del
+disco, de Home Assistant, del backup, o del relay, según cuál sea). No
+tienes ninguna fuente de evidencia adicional a la que acudir — toda la
+evidencia disponible ya está aquí.
 
 Formula varias hipótesis de causa probable (más de una si la evidencia lo
 permite) y contrasta cada una contra la evidencia dada en este mismo
@@ -99,15 +100,44 @@ concreto, que no está fallando.
 """
 
 
+_PROMPT_CLAUSULA_RELAY_AGREGADO = """\
+
+El campo "relay_agregado" es evidencia de CUÁNTOS de los relays
+vigilados fallaban en cada instante de esta ventana, nunca de CUÁL en
+concreto — ese detalle nunca se archivó y no existe. NO nombres, ni en
+"conclusion_texto" ni en ninguna "comprobacion", ningún relay concreto
+como la causa de este episodio — como mucho, describe el patrón
+agregado (cuántos caían, durante cuánto tiempo) y trátalo como una
+limitación real de la evidencia, no algo que puedas deducir.
+"""
+
+
 def construir_prompt(snapshot: dict, es_critico: bool) -> str:
     prompt = _PROMPT_INSTRUCCIONES
     if es_critico:
         prompt += _PROMPT_CLAUSULA_CRITICO
     if snapshot.get("ha_check_status") is not None:
         prompt += _PROMPT_CLAUSULA_HA_ESTADO
+    if snapshot.get("relay_agregado") is not None:
+        prompt += _PROMPT_CLAUSULA_RELAY_AGREGADO
     prompt += "\nEvidencia del episodio:\n"
     prompt += json.dumps(snapshot, ensure_ascii=False, default=str, indent=2)
     return prompt
+
+
+def _menciona_relay_concreto(parsed: dict, nombres: set[str]) -> bool:
+    """Comprueba si la respuesta ya parseada nombra literalmente uno de
+    `nombres` — usado solo para episodios de relay en diferido, donde
+    esa información no existe (FR-006, hallazgo F1 de /speckit-analyze,
+    2026-08-12; research.md §10 de specs/012-diagnostico-relays/)."""
+    if not nombres:
+        return False
+    textos = [parsed.get("conclusion_texto", "") or ""]
+    for h in parsed.get("hipotesis", []):
+        textos.append(h.get("descripcion", "") or "")
+        textos.append(h.get("comprobacion", "") or "")
+    texto_completo = " ".join(textos).lower()
+    return any(nombre.lower() in texto_completo for nombre in nombres)
 
 
 def _estimar_tokens_entrada(prompt: str) -> int:
@@ -268,6 +298,20 @@ def diagnosticar_episodio(
             "respuesta de DeepSeek inconsistente con el formato esperado",
             tokens_entrada, tokens_salida, coste,
         )
+
+    # FR-006 validado en código, no solo pedido en el prompt (hallazgo
+    # F1 de /speckit-analyze, 2026-08-12; research.md §10 de
+    # specs/012-diagnostico-relays/) — mismo tratamiento que una
+    # respuesta inconsistente: la llamada sí ocurrió, se registra el
+    # coste real, pero se rechaza el contenido.
+    if episodio.origen == "relay" and episodio.snapshot_evidencia.get("relay_agregado") is not None:
+        if _menciona_relay_concreto(parsed, evidencia.listar_nombres_relay()):
+            coste = gasto.registrar_coste(conn, parsed["tokens_entrada"], parsed["tokens_salida"])
+            return _persistir_sin_llamada(
+                "respuesta de DeepSeek nombra un relay concreto en un episodio en "
+                "diferido, sin evidencia real de cuál falló — rechazada (FR-006)",
+                parsed["tokens_entrada"], parsed["tokens_salida"], coste,
+            )
 
     coste = gasto.registrar_coste(conn, parsed["tokens_entrada"], parsed["tokens_salida"])
     diagnostico = Diagnostico(

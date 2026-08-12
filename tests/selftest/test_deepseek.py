@@ -9,6 +9,7 @@ HTTP real en ningún caso — todo contra respuestas simuladas.
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 from diagnostico import deepseek
 from tests.selftest import check
@@ -89,6 +90,130 @@ def test_parsear_respuesta_backup_con_varias_hipotesis() -> None:
 
     check("respuesta de backup bien formada se acepta", parsed is not None)
     check("SC-002: más de una hipótesis registrada para un episodio de backup", len(parsed["hipotesis"]) > 1)
+
+
+def test_construir_prompt_relay_clausula_agregado_solo_en_diferido() -> None:
+    """feature 012: la cláusula de "nunca nombres un relay concreto"
+    solo debe aparecer cuando la evidencia es agregada (diferido) —
+    nunca cuando hay detalle real por relay (vivo)."""
+    snapshot_vivo = {"relay_nombre": "Beszel AdGuard", "relay_estado_actual": {"ok": True}}
+    snapshot_diferido = {"relay_agregado": [{"momento": "2026-05-24T08:00:00", "ok": 9, "total": 10}]}
+
+    prompt_vivo = deepseek.construir_prompt(snapshot_vivo, es_critico=False)
+    prompt_diferido = deepseek.construir_prompt(snapshot_diferido, es_critico=False)
+
+    check("prompt generalizado menciona relay", "relay" in prompt_vivo)
+    check(
+        "episodio en vivo (relay_estado_actual) no lleva la cláusula de agregado",
+        "NO nombres" not in prompt_vivo,
+    )
+    check(
+        "episodio en diferido (relay_agregado) sí lleva la cláusula de agregado",
+        "NO nombres" in prompt_diferido,
+    )
+    check(
+        "episodio de backup/HA no lleva la cláusula de crítico",
+        "NO propongas ninguna acción correctiva" not in prompt_vivo,
+    )
+
+
+def test_parsear_respuesta_relay_con_varias_hipotesis() -> None:
+    """Hallazgo C1 de /speckit-analyze (2026-08-12, SC-002 de
+    specs/012-diagnostico-relays/): cuarta vez que este proyecto añade
+    este mismo test tras encontrar el mismo hueco en 009, 010 y 011 —
+    el motor generalizado debe seguir aceptando más de una hipótesis
+    también para un episodio de relay."""
+    respuesta = _respuesta_deepseek({
+        "conclusion_tipo": "causa_probable",
+        "conclusion_texto": "caída sostenida de varias horas, patrón agregado consistente con un fallo de red general",
+        "hipotesis": [
+            {"descripcion": "corte de red general en el Mac Mini",
+             "comprobacion": "el recuento agregado muestra varios relays caídos a la vez, no uno solo",
+             "desenlace": "confirmada"},
+            {"descripcion": "reinicio del Mac Mini",
+             "comprobacion": "la duración (horas) no encaja con un reinicio, que sería breve",
+             "desenlace": "descartada"},
+        ],
+    })
+    parsed = deepseek.parsear_respuesta(respuesta)
+
+    check("respuesta de relay bien formada se acepta", parsed is not None)
+    check("SC-002: más de una hipótesis registrada para un episodio de relay", len(parsed["hipotesis"]) > 1)
+
+
+def test_menciona_relay_concreto() -> None:
+    nombres = {"Beszel AdGuard", "HA Shelly"}
+    con_nombre = {
+        "conclusion_texto": "el relay Beszel AdGuard parece ser la causa",
+        "hipotesis": [{"descripcion": "x", "comprobacion": "y", "desenlace": "confirmada"}],
+    }
+    sin_nombre = {
+        "conclusion_texto": "un relay estaba caído durante la ventana, sin poder saber cuál",
+        "hipotesis": [{"descripcion": "corte de red general",
+                        "comprobacion": "varios relays caídos a la vez", "desenlace": "confirmada"}],
+    }
+    check(
+        "detecta un nombre real citado en conclusion_texto",
+        deepseek._menciona_relay_concreto(con_nombre, nombres) is True,
+    )
+    check(
+        "no da falso positivo cuando no se nombra ningún relay real",
+        deepseek._menciona_relay_concreto(sin_nombre, nombres) is False,
+    )
+    check(
+        "sin nombres conocidos (fichero no disponible), nunca lanza ni da falso positivo",
+        deepseek._menciona_relay_concreto(con_nombre, set()) is False,
+    )
+
+
+def test_diagnosticar_episodio_relay_rechaza_respuesta_que_nombra_un_relay() -> None:
+    """Hallazgo F1 de /speckit-analyze (2026-08-12): FR-006 ahora se
+    valida en código, no solo se pide en el prompt — mismo patrón que
+    test_reproducibilidad.py usa para probar diagnosticar_episodio()
+    de extremo a extremo con respuestas simuladas."""
+    import tempfile
+    from pathlib import Path
+
+    from diagnostico import evidencia, store
+    from diagnostico.model import Episodio
+
+    respuesta_indebida = {
+        "choices": [{"message": {"content": json.dumps({
+            "conclusion_tipo": "causa_probable",
+            "conclusion_texto": "el relay Beszel AdGuard es la causa probable",
+            "hipotesis": [{"descripcion": "fallo de Beszel AdGuard", "comprobacion": "x",
+                           "desenlace": "confirmada"}],
+        }, ensure_ascii=False)}}],
+        "usage": {"prompt_tokens": 400, "completion_tokens": 200},
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "diagnostico.db"
+        with store.connect(db) as conn:
+            episodio_id = store.insert_episodio(
+                conn,
+                Episodio(
+                    componente="2026-05-24T08:00:00", origen="relay", es_critico=False, en_vivo=False,
+                    ventana_inicio="a", ventana_fin="b",
+                    snapshot_evidencia={"relay_agregado": [{"momento": "2026-05-24T08:00:00", "ok": 9, "total": 10}]},
+                ),
+            )
+            episodio = store.get_episodio(conn, episodio_id)
+
+            with patch.object(deepseek.bridge, "get_secret", return_value="fake-key-for-test"), \
+                 patch.object(deepseek, "llamar_deepseek", return_value=respuesta_indebida), \
+                 patch.object(evidencia, "listar_nombres_relay", return_value={"Beszel AdGuard"}):
+                diagnostico, hipotesis = deepseek.diagnosticar_episodio(conn, episodio)
+
+        check(
+            "respuesta que nombra un relay concreto en diferido se rechaza (F1, FR-006)",
+            diagnostico.conclusion_tipo == "no_diagnosticable",
+        )
+        check("no se persiste ninguna hipótesis de la respuesta rechazada", hipotesis == [])
+        check(
+            "el coste real se registra igual, aunque se rechace el contenido",
+            diagnostico.coste_eur > 0,
+        )
 
 
 def test_construir_prompt_ha_nunca_lleva_clausula_de_critico() -> None:

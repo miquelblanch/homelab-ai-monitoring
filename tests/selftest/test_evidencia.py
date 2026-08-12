@@ -5,6 +5,7 @@ base `homelab.db` de prueba en un fichero temporal (nunca la real).
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -718,3 +719,155 @@ def test_congelar_backup_historico_es_reproducible() -> None:
             and e1.snapshot_evidencia["backup_log_path"] == e2.snapshot_evidencia["backup_log_path"],
         )
         check("cada congelado es un episodio propio", e1.id != e2.id)
+
+
+# ── Relays socat (feature 012: specs/012-diagnostico-relays/) ──────────────
+
+_SOCAT_RELAYS_FAKE = {
+    "updated": "2026-08-12T18:19:12",
+    "relays": [
+        {"name": "Beszel AdGuard", "desc": "192.168.4.87:45877 → 192.168.4.174:45876", "ok": True},
+        {"name": "HA Shelly", "desc": "192.168.4.87:80 → 192.168.4.153:80", "ok": False},
+    ],
+}
+
+_DASHBOARD_SOCAT_LOG_FAKE = "\n".join([
+    "[2026-05-24T02:00:00] socat_relays.json written — 10/10 ok",
+    "[2026-05-24T05:00:00] socat_relays.json written — 9/10 ok",
+    "[2026-05-24T08:00:00] socat_relays.json written — 9/10 ok",
+    "[2026-05-24T11:00:00] socat_relays.json written — 9/10 ok",
+    "[2026-05-24T14:00:00] socat_relays.json written — 10/10 ok",
+]) + "\n"
+
+
+def _escribir_json(path: Path, datos: dict) -> None:
+    path.write_text(json.dumps(datos))
+
+
+def test_relay_actual_existente_e_inexistente() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        relays_json = Path(tmp) / "socat_relays.json"
+        _escribir_json(relays_json, _SOCAT_RELAYS_FAKE)
+        with patch.object(evidencia, "SOCAT_RELAYS_JSON", relays_json):
+            existente = evidencia._relay_actual("Beszel AdGuard")
+            inexistente = evidencia._relay_actual("Relay que no existe")
+
+        check("relay existente devuelve su entrada real", existente == _SOCAT_RELAYS_FAKE["relays"][0])
+        check("relay inexistente devuelve None, sin lanzar", inexistente is None)
+
+
+def test_listar_nombres_relay() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        relays_json = Path(tmp) / "socat_relays.json"
+        _escribir_json(relays_json, _SOCAT_RELAYS_FAKE)
+        with patch.object(evidencia, "SOCAT_RELAYS_JSON", relays_json):
+            nombres = evidencia.listar_nombres_relay()
+
+        check(
+            "listar_nombres_relay recoge los nombres reales",
+            nombres == {"Beszel AdGuard", "HA Shelly"},
+        )
+
+
+def test_congelar_relay_vivo_arma_snapshot() -> None:
+    with tempfile.TemporaryDirectory() as tmp_relays, tempfile.TemporaryDirectory() as tmp_db:
+        relays_json = Path(tmp_relays) / "socat_relays.json"
+        _escribir_json(relays_json, _SOCAT_RELAYS_FAKE)
+        with patch.object(evidencia, "SOCAT_RELAYS_JSON", relays_json):
+            with store.connect(_diag_db(tmp_db)) as conn:
+                episodio = evidencia.congelar_relay_vivo(conn, "HA Shelly")
+
+        check("componente = nombre del relay", episodio.componente == "HA Shelly")
+        check("origen = relay", episodio.origen == "relay")
+        check("es_critico siempre False para relay", episodio.es_critico is False)
+        check("en_vivo=True", episodio.en_vivo is True)
+        check(
+            "relay_estado_actual tiene el detalle real, relay_agregado queda null",
+            episodio.snapshot_evidencia["relay_estado_actual"] == _SOCAT_RELAYS_FAKE["relays"][1]
+            and episodio.snapshot_evidencia["relay_agregado"] is None,
+        )
+        check(
+            "campos heredados de orígenes anteriores quedan a null",
+            episodio.snapshot_evidencia["restart_history"] is None
+            and episodio.snapshot_evidencia["ha_check"] is None
+            and episodio.snapshot_evidencia["backup_log_path"] is None,
+        )
+
+
+def test_congelar_relay_vivo_nombre_inexistente_no_lanza() -> None:
+    with tempfile.TemporaryDirectory() as tmp_relays, tempfile.TemporaryDirectory() as tmp_db:
+        relays_json = Path(tmp_relays) / "socat_relays.json"
+        _escribir_json(relays_json, _SOCAT_RELAYS_FAKE)
+        with patch.object(evidencia, "SOCAT_RELAYS_JSON", relays_json):
+            with store.connect(_diag_db(tmp_db)) as conn:
+                episodio = evidencia.congelar_relay_vivo(conn, "Relay que no existe")
+
+        check("componente = nombre pedido aunque no exista", episodio.componente == "Relay que no existe")
+        check(
+            "relay_estado_actual queda null, sin lanzar",
+            episodio.snapshot_evidencia["relay_estado_actual"] is None,
+        )
+
+
+def test_agregado_relays_ventana_dentro_y_fuera() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        log_path = Path(tmp) / "dashboard-socat.log"
+        log_path.write_text(_DASHBOARD_SOCAT_LOG_FAKE)
+        momento = evidencia.datetime(2026, 5, 24, 8, 0, 0)
+        with patch.object(evidencia, "DASHBOARD_SOCAT_LOG", log_path):
+            agregado = evidencia._agregado_relays_ventana(momento)
+
+        check(
+            "solo las 3 líneas dentro de ±180 min sobreviven (05:00, 08:00, 11:00)",
+            len(agregado) == 3,
+        )
+        check(
+            "cada entrada trae momento/ok/total, no qué relay concreto",
+            all(set(e.keys()) == {"momento", "ok", "total"} for e in agregado),
+        )
+        check("la entrada del fallo real refleja 9 de 10", agregado[1]["ok"] == 9 and agregado[1]["total"] == 10)
+
+
+def test_agregado_relays_ventana_acota_max_lineas() -> None:
+    momento = evidencia.datetime(2026, 1, 1, 0, 0, 0)
+    lineas = [
+        f"[2026-01-01T00:{i:02d}:00] socat_relays.json written — 10/10 ok"
+        for i in range(0, 60, 1)
+    ] * 3  # 180 líneas, todas dentro de la ventana de ±180 min
+    with tempfile.TemporaryDirectory() as tmp:
+        log_path = Path(tmp) / "dashboard-socat.log"
+        log_path.write_text("\n".join(lineas))
+        with patch.object(evidencia, "DASHBOARD_SOCAT_LOG", log_path):
+            agregado = evidencia._agregado_relays_ventana(momento)
+
+        check(
+            f"agregado se acota a {evidencia.RELAY_AGREGADO_MAX_LINEAS}, no 180",
+            len(agregado) == evidencia.RELAY_AGREGADO_MAX_LINEAS,
+        )
+
+
+def test_congelar_relay_historico_es_reproducible_y_usa_el_momento_pedido() -> None:
+    with tempfile.TemporaryDirectory() as tmp_log, tempfile.TemporaryDirectory() as tmp_db:
+        log_path = Path(tmp_log) / "dashboard-socat.log"
+        log_path.write_text(_DASHBOARD_SOCAT_LOG_FAKE)
+        momento = evidencia.datetime(2026, 5, 24, 8, 0, 0)
+        with patch.object(evidencia, "DASHBOARD_SOCAT_LOG", log_path):
+            with store.connect(_diag_db(tmp_db)) as conn:
+                e1 = evidencia.congelar_relay_historico(conn, momento)
+                e2 = evidencia.congelar_relay_historico(conn, momento)
+
+                # Sin ningún dato en la ventana — el componente debe seguir
+                # siendo el momento PEDIDO, no datetime.now() (research.md §9).
+                momento_lejano = evidencia.datetime(2020, 1, 1, 0, 0, 0)
+                e3 = evidencia.congelar_relay_historico(conn, momento_lejano)
+
+        check(
+            "dos congelados del mismo momento producen la misma evidencia agregada",
+            e1.snapshot_evidencia["relay_agregado"] == e2.snapshot_evidencia["relay_agregado"],
+        )
+        check("cada congelado es un episodio propio", e1.id != e2.id)
+        check(
+            "sin datos en la ventana, componente = momento pedido, no la hora de congelar",
+            e3.componente == momento_lejano.isoformat() and e3.snapshot_evidencia["relay_agregado"] == [],
+        )
+        check("origen = relay, relay_nombre queda null en diferido", e1.origen == "relay" and e1.snapshot_evidencia["relay_nombre"] is None)

@@ -1156,6 +1156,109 @@ adaptar):
 
 ---
 
+## Feature 012 — material de partida (2026-08-12): generalizar el diagnóstico a los relays
+
+Con 007 (motor), 008 (visor), 009 (discos), 010 (HA) y 011 (backups)
+cerrados, toca el quinto origen de los 9 de la Central de Alarmas:
+**relays** (`012-diagnostico-relays`, nombre explícito pedido para
+seguir la misma convención que 009/010/011).
+
+**Investigación previa a especificar — un origen con forma nueva**: a
+diferencia de discos/HA/backups, aquí **sí existe una línea base real**
+(Principio IX) — pero con una limitación real distinta a cualquiera de
+los tres orígenes anteriores, no la ya conocida "sin línea base".
+
+- `dump_socat_status.py` (LaunchAgent `amsterdam9.dashboard.socat`,
+  cada 5 min) comprueba 10 relays `socat` (Traefik LAN/loopback/
+  OrbStack, HA Shelly/Broadlink, Beszel AdGuard/Kuma, Kuma UI, Frigate
+  cocina/salón) y sobreescribe `socat_relays.json` — estado **actual**
+  con detalle real por relay (`name`, `desc`, `ok`), mismo patrón que
+  `ha_monitor_state.json` antes del fix de HA.
+- Su `StandardOutPath` (`~/Library/Logs/dashboard-socat.log`) **no
+  tiene ninguna rotación** — guarda histórico real desde el
+  2026-04-29, 29.834 líneas. Comprobado en vivo: **17 episodios de
+  fallo reales**, agrupando fallos consecutivos — desde parpadeos de
+  un solo ciclo hasta una caída sostenida de **~10 horas el
+  2026-05-24** (03:34–13:29). Primera vez en este proyecto con línea
+  base real desde el arranque, sin la salvedad que necesitaron 009,
+  010 y 011.
+- **La limitación real**: el log solo guarda el recuento agregado
+  ("4/5 ok") cada 5 minutos — el detalle de *qué relay concreto* falló
+  en cada uno de esos 17 episodios se perdió, porque
+  `socat_relays.json` (el único sitio con detalle por relay) se
+  sobreescribe cada ciclo sin archivar nunca la versión anterior.
+- **Decidido con Miquel (2026-08-12)**: en vivo, evidencia con detalle
+  real por relay (`socat_relays.json`, estado actual). En diferido,
+  evidencia agregada del log ("N de M caídos, durante X minutos") —
+  el motor dice honestamente que no sabe cuál si se le pregunta, en
+  vez de adivinar. Aprovecha los 17 episodios reales sin inventar una
+  resolución que no existe.
+- **Consecuencia en el CLI**: asimetría real entre los dos modos —
+  `--relay-vivo NOMBRE` (como `--ha-vivo CHECK_ID`, un relay concreto)
+  pero `--relay-historico MOMENTO_ISO` sin nombre de relay (como
+  `--backup-historico`, porque en diferido no hay ningún relay
+  concreto que nombrar).
+- **Hallazgo aparte, fuera de alcance de este feature**: `~/Library/
+  LaunchAgents/` tiene muchos más relays `socat` reales (HEOS, Marantz
+  ×3, ESPHome sal/toldos, Android TV ×2, Tapo ×3...) que
+  `dump_socat_status.py` **no vigila** — un hueco de cobertura real
+  (Frente 1, Principio XIII), no de diagnóstico. Se anota aquí para no
+  perderlo, pero ampliar la vigilancia no es diagnosticar lo que ya se
+  vigila — queda fuera, igual que el catálogo de `verify_backups.py`
+  quedó fuera en 011.
+
+**Alcance propuesto (borrador, para que Miquel decida en `clarify`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Diagnosticar en vivo un relay concreto, con su estado real actual | Dentro |
+| Diagnosticar en diferido un momento pasado, con evidencia agregada (no por relay) | Dentro |
+| Validar contra los 17 episodios reales ya identificados (sin línea base "aceptada como limitación", por primera vez en este proyecto) | Dentro |
+| Recuperar el detalle por relay de episodios históricos ya ocurridos | Fuera — esa información no existe, no se puede inventar |
+| Ampliar `dump_socat_status.py` a los relays de HA que hoy no vigila | Fuera — es vigilancia nueva (Frente 1), no diagnóstico |
+| Cualquier acción correctiva sobre un relay o su LaunchAgent | Fuera — solo diagnóstico |
+| Generalizar a los 4 orígenes restantes (hosts externos, hub de Beszel, agentes, inventario) | Fuera — uno a uno, misma razón que 009/010/011 |
+| Mostrar el diagnóstico de relays en el dashboard | Fuera de este feature — mecanismo primero, superficie después |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El motor de diagnóstico de episodios (feature 007, generalizado a
+> discos en 009, a Home Assistant en 010 y a backups en 011) hoy no
+> sabe diagnosticar nada de los **relays** `socat` del homelab. Quiero
+> que también pueda diagnosticar episodios de relay: en vivo, cuando
+> un relay concreto (de los 10 que vigila `dump_socat_status.py`) está
+> caído ahora mismo, reuniendo su estado real de `socat_relays.json`
+> (nombre, descripción, si responde); en diferido, señalando un
+> momento pasado dentro del histórico real (`dashboard-socat.log`, sin
+> rotación, con datos desde el 29 de abril), reuniendo la evidencia
+> agregada de esa ventana — cuántos de los relays vigilados estaban
+> caídos y durante cuánto tiempo, sin poder decir cuál concretamente,
+> porque ese detalle no se archivó nunca. Quiero que formule hipótesis
+> de causa probable con el mismo rigor que ya tiene para los demás
+> orígenes: varias hipótesis contrastadas, nunca inventar una causa ni
+> inventar qué relay concreto falló cuando esa información no existe,
+> el mismo límite de gasto diario compartido con el resto del motor. A
+> diferencia de discos, HA y backups, aquí sí existe una línea base
+> real desde el arranque del feature: 17 episodios de fallo reales
+> desde el 29 de abril, agrupando fallos consecutivos del log agregado,
+> incluida una caída sostenida de unas 10 horas el 24 de mayo. No
+> incluye recuperar qué relay concreto falló en un episodio ya pasado
+> — esa información no se archivó y no se puede reconstruir. No
+> incluye ampliar la vigilancia a los relays de Home Assistant que
+> `dump_socat_status.py` no comprueba hoy (HEOS, Marantz, ESPHome,
+> Android TV, Tapo) — eso es cobertura nueva, no diagnóstico, y queda
+> fuera de este feature. No incluye ninguna acción correctiva sobre
+> ningún relay ni su LaunchAgent. No incluye generalizar a ningún otro
+> origen de la Central de Alarmas (hosts externos, el hub de Beszel,
+> agentes, inventario de cobertura) — eso queda para features
+> posteriores, uno a uno. No incluye ninguna acción correctiva, ni
+> mostrar este diagnóstico nuevo en el dashboard — sigue siendo solo
+> por línea de comandos, mismo alcance que tuvo 007 antes de que 008 le
+> diera superficie visible.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que

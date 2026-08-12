@@ -11,6 +11,8 @@ Uso:
     python3 -m diagnostico.cli congelar --ha-vivo CHECK_ID
     python3 -m diagnostico.cli congelar --backup-historico MOMENTO_ISO
     python3 -m diagnostico.cli congelar --backup-vivo
+    python3 -m diagnostico.cli congelar --relay-historico MOMENTO_ISO
+    python3 -m diagnostico.cli congelar --relay-vivo NOMBRE
     python3 -m diagnostico.cli diagnosticar EPISODIO_ID
     python3 -m diagnostico.cli mostrar EPISODIO_ID [--diagnostico DIAGNOSTICO_ID]
     python3 -m diagnostico.cli --selftest
@@ -91,6 +93,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="MOMENTO_ISO",
         help="Congela el log de backup más cercano a ese momento, dentro de ±12h (feature 011).",
     )
+    origen.add_argument(
+        "--relay-vivo",
+        metavar="NOMBRE",
+        help="Congela el estado actual de un relay concreto (feature 012). Entrecomillar si tiene espacios.",
+    )
+    origen.add_argument(
+        "--relay-historico",
+        metavar="MOMENTO_ISO",
+        help="Congela la evidencia agregada de relays en ±180min de ese momento (feature 012). Sin nombre de relay.",
+    )
 
     diagnosticar_parser = subparsers.add_parser(
         "diagnosticar", help="Diagnostica un episodio ya congelado (FR-003 a FR-011)."
@@ -128,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
             ha_historico=args.ha_historico,
             backup_vivo=args.backup_vivo,
             backup_historico=args.backup_historico,
+            relay_vivo=args.relay_vivo,
+            relay_historico=args.relay_historico,
         )
     if args.comando == "diagnosticar":
         return _run_diagnosticar(args.episodio_id)
@@ -157,6 +171,8 @@ def _run_congelar(
     ha_historico: str | None,
     backup_vivo: bool,
     backup_historico: str | None,
+    relay_vivo: str | None,
+    relay_historico: str | None,
 ) -> int:
     from datetime import datetime
 
@@ -203,9 +219,17 @@ def _run_congelar(
             elif backup_vivo:
                 episodio = evidencia.congelar_backup_vivo(conn)
                 modo = "en vivo"
-            else:
+            elif backup_historico is not None:
                 episodio = evidencia.congelar_backup_historico(
                     conn, datetime.fromisoformat(backup_historico)
+                )
+                modo = "histórico"
+            elif relay_vivo is not None:
+                episodio = evidencia.congelar_relay_vivo(conn, relay_vivo)
+                modo = "en vivo"
+            else:
+                episodio = evidencia.congelar_relay_historico(
+                    conn, datetime.fromisoformat(relay_historico)
                 )
                 modo = "histórico"
     except ValueError as e:
