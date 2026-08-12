@@ -216,6 +216,100 @@ def test_diagnosticar_episodio_relay_rechaza_respuesta_que_nombra_un_relay() -> 
         )
 
 
+def test_construir_prompt_inventario_menciona_origen_nuevo() -> None:
+    """feature 013: sin cláusula nueva de restricción de contenido — a
+    diferencia de relay, la exclusión de condicion_incumplida ya se
+    resuelve en código antes de llegar al prompt (research.md §7 de
+    013)."""
+    snapshot = {
+        "inventario_ejecucion_id": 19,
+        "inventario_hallazgo": {"categoria": "hermes", "nombre_actual": "Agente Hermes/Bautista"},
+        "inventario_brecha": {"tipo": "no_llega_a_dashboard"},
+    }
+    prompt = deepseek.construir_prompt(snapshot, es_critico=False)
+
+    check("prompt generalizado menciona inventario", "inventario" in prompt)
+    check(
+        "episodio de inventario no lleva la cláusula de contenedor crítico",
+        "NO propongas ninguna acción correctiva" not in prompt,
+    )
+    check("episodio de inventario no lleva la cláusula de relay agregado", "NO nombres" not in prompt)
+
+
+def test_parsear_respuesta_inventario_con_varias_hipotesis() -> None:
+    """SC-002, escrito desde el diseño (tasks.md T010) y no como
+    corrección posterior de /speckit-analyze — quinta vez que este
+    proyecto necesita este mismo test tras encontrar el mismo hueco en
+    009, 010, 011 y 012 (hallazgo C1 recurrente)."""
+    respuesta = _respuesta_deepseek({
+        "conclusion_tipo": "causa_probable",
+        "conclusion_texto": "el heartbeat de Hermes nunca se sumó al panel del dashboard",
+        "hipotesis": [
+            {"descripcion": "el mecanismo de vigilancia no publica al dashboard",
+             "comprobacion": "el hallazgo muestra esta_vigilado=true pero llega_a_dashboard=no",
+             "desenlace": "confirmada"},
+            {"descripcion": "el componente nunca se declaró",
+             "comprobacion": "el hallazgo muestra tiene_estado_declarado=true, se descarta",
+             "desenlace": "descartada"},
+        ],
+    })
+    parsed = deepseek.parsear_respuesta(respuesta)
+
+    check("respuesta de inventario bien formada se acepta", parsed is not None)
+    check("SC-002: más de una hipótesis registrada para un episodio de inventario", len(parsed["hipotesis"]) > 1)
+
+
+def test_diagnosticar_episodio_inventario_no_dispara_ningun_rechazo_de_otro_origen() -> None:
+    """T014: confirma que ningún tratamiento especial de otro origen
+    (la validación de "nunca nombres un relay concreto" de 012, la
+    cláusula de estado ya calculado de HA de 010) se dispara por error
+    para origen="inventario" — este origen no tiene ningún invariante
+    de contenido propio que validar después de la respuesta
+    (research.md §7 de 013); su única restricción de alcance ya se
+    resolvió antes de llamar (FR-010, validado en evidencia.py)."""
+    import tempfile
+    from pathlib import Path
+
+    from diagnostico import evidencia, store
+    from diagnostico.model import Episodio
+
+    respuesta = _respuesta_deepseek({
+        "conclusion_tipo": "causa_probable",
+        "conclusion_texto": "el mecanismo de vigilancia no publica al dashboard",
+        "hipotesis": [{"descripcion": "no publica al dashboard", "comprobacion": "x",
+                       "desenlace": "confirmada"}],
+    })
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "diagnostico.db"
+        with store.connect(db) as conn:
+            episodio_id = store.insert_episodio(
+                conn,
+                Episodio(
+                    componente="Agente Hermes/Bautista", origen="inventario", es_critico=False,
+                    en_vivo=True, ventana_inicio="a", ventana_fin="b",
+                    snapshot_evidencia={
+                        "inventario_ejecucion_id": 19,
+                        "inventario_hallazgo": {"categoria": "hermes", "es_brecha": True},
+                        "inventario_brecha": {"tipo": "no_llega_a_dashboard"},
+                        "inventario_comparacion": None,
+                    },
+                ),
+            )
+            episodio = store.get_episodio(conn, episodio_id)
+
+            with patch.object(deepseek.bridge, "get_secret", return_value="fake-key-for-test"), \
+                 patch.object(deepseek, "llamar_deepseek", return_value=respuesta), \
+                 patch.object(evidencia, "listar_nombres_relay", return_value={"algún relay"}):
+                diagnostico, hipotesis = deepseek.diagnosticar_episodio(conn, episodio)
+
+    check(
+        "episodio de inventario se acepta normalmente, sin rechazo cruzado de otro origen",
+        diagnostico.conclusion_tipo == "causa_probable",
+    )
+    check("hipótesis persistida", len(hipotesis) == 1)
+
+
 def test_construir_prompt_ha_nunca_lleva_clausula_de_critico() -> None:
     """feature 010: es_critico siempre False para un episodio de HA
     (research.md §8 de specs/010-diagnostico-ha/) — mismo criterio que

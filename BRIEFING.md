@@ -1259,6 +1259,144 @@ adaptar):
 
 ---
 
+## Feature 013 — material de partida (2026-08-12): generalizar el diagnóstico al inventario de cobertura
+
+Con 007 (motor), 008 (visor), 009 (discos), 010 (HA), 011 (backups) y 012
+(relays) cerrados, toca el sexto origen de los 9 de la Central de Alarmas:
+**inventario** (`013-diagnostico-inventario`, mismo patrón de nombre
+explícito que 009/010/011/012).
+
+**Investigación previa a especificar — la mejor evidencia histórica del
+proyecto hasta ahora, pero con un problema de solapamiento que hay que
+resolver antes de tocar el spec.**
+
+`inventario.db` (el mecanismo del feature 001) tiene **81 ejecuciones
+reales** desde el 2026-08-07, con **detalle completo por componente
+preservado en cada una** — a diferencia de los relays en 012, donde el
+detalle por relay se perdía entre ejecuciones y solo quedaba el agregado.
+Además ya existe `diff.compare_runs()` (`src/inventory/diff.py`,
+expuesto por `--since RUN_ID` en el CLI): compara dos ejecuciones
+cualesquiera y da de alta/baja componentes y brechas concretas. Es
+evidencia más rica que la que tuvieron 009, 010 y 011 al empezar, y no
+hace falta construir nada nuevo para leerla — mismo criterio de
+"reutilizar lo que ya existe" que guió el diseño de esos tres.
+
+**El problema real, encontrado consultando `inventario.db` en vivo, no
+solo leyendo el código.** Las brechas tienen 6 tipos
+(`classify_gap()` en `src/inventory/evaluate.py`): `sin_declaracion`,
+`declaracion_caducada`, `sin_vigilancia`, `no_llega_a_dashboard`,
+`riesgo_concentrado_telegram` y `condicion_incumplida`. De estos, **`condicion_incumplida` ocurre única y exclusivamente en la
+categoría `entidad_ha`** (289 casos históricos; 2 activos ahora mismo,
+comprobado en vivo — de nuevo la cerradura Amsterdam 9, `binary_sensor.
+..._battery_critical` y `lock.cerradura_amsterdam_9`, en `unavailable`
+desde las 13:35 de hoy). Esto no es casualidad: `classify_gap()` solo
+asigna `condicion_incumplida` cuando el componente **sí** tiene mecanismo
+de vigilancia declarado pero su último resultado real falla — y hoy el
+único mecanismo así modelado en el inventario es `ha_monitor.py`. Es
+decir: cuando el inventario marca `condicion_incumplida`, está
+re-detectando, con otras palabras, exactamente el mismo fallo que el
+origen `ha` ya diagnostica desde el feature 010. Diagnosticarlo aquí
+también sería repetir trabajo ya hecho — mismo criterio que ya usó 011
+para dejar fuera los backups de HA ("ya cubierto, nada nuevo aquí") — y,
+en este caso concreto, reabriría un tema que Miquel ya cerró explícitamente
+en la sesión del 010 ("dejemos el tema de la cerradura").
+
+Los otros 5 tipos son los que de verdad importan para este feature: no
+son un fallo en vivo de un dispositivo, son que el propio sistema de
+monitorización **perdió** la declaración, la vigilancia o la llegada al
+dashboard de algo. Es una forma de episodio distinta a las de 009-012 —
+no "algo externo falló", sino "la cobertura misma retrocedió" — y encaja
+con el objetivo original del proyecto (`BRIEFING.md`, arriba del todo).
+
+**Dónde está la línea base real de estos 5 tipos — y por qué está
+"fría".** Comprobado en vivo, agrupando por categoría (todas menos
+`entidad_ha`, que es solo `condicion_incumplida`/`sin_declaracion` de la
+cola larga ya conocida): `hermes` y `telegram` tuvieron brechas reales
+hasta la ejecución #19 (2026-08-08), `host_externo` hasta la #28,
+`integracion` hasta la #31, `infra_monitorizacion` hasta la #52
+(2026-08-09) — todas del tipo `no_llega_a_dashboard` o `sin_vigilancia`.
+Ejemplo real, ejecución #19: *"'Agente Hermes/Bautista' (hermes) está
+vigilado por amsterdam9.bautista.heartbeat, pero un fallo real no
+llegaría al dashboard del homelab"* y lo mismo para el canal de Telegram.
+Todas se cerraron cuando los features 001-006 fueron declarando estado
+esperado y ampliando qué llega al dashboard — es decir, **sí existe
+línea base real e histórica** para estos 5 tipos (a diferencia de 009 y
+010 al empezar), pero está fría: ninguna ha vuelto a aparecer desde el
+2026-08-09. La validación de este feature puede apoyarse en
+`--inventario-historico` contra esas ejecuciones reales concretas
+(#19, #28, #31, #52) — sabiendo de antemano, por los propios commits de
+001-006, cuál fue la causa real y la resolución real de cada una, el
+mismo tipo de contraste contra una línea base ya investigada que usó 007
+con los 49 reinicios de `beszel` — más que `--vivo` contra el estado sano
+de hoy (que no tiene ninguna brecha de estos 5 tipos que congelar en
+vivo).
+
+**`declaracion_caducada` no tiene ni un solo caso real todavía.**
+Comprobado: los 859 componentes con `last_reviewed_at` no nulo lo tienen
+todos fechado a 2026-08-08; el umbral de caducidad son 90 días
+(`is_declaration_stale()`), así que el primero no puede aparecer antes
+de aproximadamente el 2026-11-06. Mismo tipo de limitación ya aceptada en
+009/010 (un subtipo sin caso real todavía) — se documenta, no se
+inventa un caso sintético.
+
+**Lo que esto exige cambiar de la arquitectura de 012 (para
+`/speckit-plan`, no para el spec).** Menos que en 009, parecido a 010:
+`Episodio.origen` admite un valor nuevo (`"inventario"`). La evidencia no
+sale de `homelab.db` sino de `inventario.db`, con un patrón nuevo pero
+ya resuelto por el propio inventario: reconstruir el hallazgo de una
+ejecución concreta (`store.hallazgos_de_ejecucion`/`brechas_de_ejecucion`)
+más el `diff.compare_runs()` contra la ejecución inmediatamente anterior
+a la que introdujo la brecha (`primera_ejecucion_id - 1`, ya guardado por
+componente) — eso es la evidencia real de "qué cambió" que el propio
+`--since` del CLI ya expone por separado, sin construir nada nuevo, solo
+ensamblarlo en `evidencia.py` igual que ya se hizo con `diff.py`/`store.py`
+para las otras 5 fuentes.
+
+**Alcance propuesto (borrador, para que Miquel decida en `clarify`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Diagnosticar en vivo una brecha activa de tipo `sin_declaracion`, `declaracion_caducada`, `sin_vigilancia`, `no_llega_a_dashboard` o `riesgo_concentrado_telegram` | Dentro |
+| Diagnosticar en diferido una ejecución pasada concreta donde existió una de esas brechas | Dentro |
+| Evidencia: el hallazgo de la ejecución + el `diff` contra la ejecución anterior a que apareciera (qué componente/mecanismo cambió) | Dentro |
+| Validar contra las brechas reales de `hermes`/`telegram` (#19), `host_externo` (#28), `integracion` (#31) e `infra_monitorizacion` (#52), con su causa y resolución ya conocidas por los commits de 001-006 | Dentro |
+| Diagnosticar `condicion_incumplida` (solo ocurre en `entidad_ha`) | **Propuesto fuera** — duplica el origen `ha` (feature 010); mismo criterio que excluyó los backups de HA en 011. A confirmar en `clarify` |
+| Cualquier acción correctiva sobre una brecha (declarar estado, añadir vigilancia, etc.) | Fuera — solo diagnóstico |
+| Generalizar a los 3 orígenes restantes (hosts externos, hub de Beszel, agentes) | Fuera — uno a uno, misma razón que 009/010/011/012 |
+| Mostrar el diagnóstico de inventario en el dashboard | Fuera de este feature — mecanismo primero, superficie después |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El motor de diagnóstico de episodios (feature 007, generalizado a
+> discos en 009, a Home Assistant en 010, a backups en 011 y a relays en
+> 012) hoy no sabe diagnosticar nada del propio **inventario de
+> cobertura** del homelab — el sistema que audita, componente a
+> componente, si tiene un estado esperado declarado, si se vigila y si
+> un fallo llegaría al dashboard. Quiero que también pueda diagnosticar
+> episodios de inventario: cuando aparece una brecha de cobertura real —
+> un componente que se queda sin declaración, sin vigilancia, o cuyo
+> fallo no llegaría al dashboard — quiero poder pedirle al motor que
+> reúna la evidencia real de ese momento, tanto en vivo como en un punto
+> pasado concreto ya registrado en el histórico del inventario, y
+> formule hipótesis de causa probable con el mismo rigor que ya tiene
+> para los demás orígenes: varias hipótesis contrastadas, nunca inventar
+> una causa sin evidencia, el mismo límite de gasto diario compartido con
+> el resto del motor. No incluye diagnosticar el tipo de brecha
+> "condición incumplida" de una entidad de Home Assistant: ese tipo
+> concreto es el propio inventario re-detectando un fallo que el origen
+> de Home Assistant (feature 010) ya diagnostica, así que no aporta
+> nada nuevo validarlo aquí también. No incluye ninguna acción
+> correctiva sobre ninguna brecha (declarar un estado esperado nuevo,
+> añadir vigilancia, etc.). No incluye generalizar a ningún otro origen
+> de la Central de Alarmas (hosts externos, el hub de Beszel, agentes) —
+> eso queda para features posteriores, uno a uno. No incluye mostrar
+> este diagnóstico nuevo en el dashboard — sigue siendo solo por línea
+> de comandos, mismo alcance que tuvo 007 antes de que 008 le diera
+> superficie visible.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que

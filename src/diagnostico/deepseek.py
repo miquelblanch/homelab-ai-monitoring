@@ -40,12 +40,17 @@ doméstico — puede ser un contenedor Docker caído, un disco con uso alto
 estado inesperado, su recorder corrupto, o su API sin responder — un
 backup nocturno fallido o parcial (feature 011:
 specs/011-diagnostico-backups/) — el rsync general, o algún dump de base
-de datos —, o un relay `socat` caído (feature 012:
-specs/012-diagnostico-relays/). A continuación tienes la evidencia real
-congelada de un episodio (métricas, logs, estado del contenedor, del
-disco, de Home Assistant, del backup, o del relay, según cuál sea). No
-tienes ninguna fuente de evidencia adicional a la que acudir — toda la
-evidencia disponible ya está aquí.
+de datos —, un relay `socat` caído (feature 012:
+specs/012-diagnostico-relays/), o una brecha de cobertura del propio
+inventario de monitorización (feature 013:
+specs/013-diagnostico-inventario/) — un componente que se quedó sin
+declaración de estado esperado, con la declaración caducada, sin
+vigilancia, o cuyo fallo no llegaría al dashboard. A continuación
+tienes la evidencia real congelada de un episodio (métricas, logs,
+estado del contenedor, del disco, de Home Assistant, del backup, del
+relay, o del inventario, según cuál sea). No tienes ninguna fuente de
+evidencia adicional a la que acudir — toda la evidencia disponible ya
+está aquí.
 
 Formula varias hipótesis de causa probable (más de una si la evidencia lo
 permite) y contrasta cada una contra la evidencia dada en este mismo

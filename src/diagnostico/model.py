@@ -24,16 +24,18 @@ class Episodio:
     Generalizado en feature 009 (specs/009-diagnostico-discos/) para
     poder representar también un episodio de disco, en feature 010
     (specs/010-diagnostico-ha/) para uno de Home Assistant, en feature
-    011 (specs/011-diagnostico-backups/) para uno de backup, y en
+    011 (specs/011-diagnostico-backups/) para uno de backup, en
     feature 012 (specs/012-diagnostico-relays/) para uno de relay
-    `socat` — `componente` es el nombre genérico (nombre de
-    contenedor, `label` de disco, `check_id` de `ha_monitor.CHECKS`, el
-    momento ISO de una ejecución de `backup_diario_nvme.sh`, o el
-    nombre de un relay en vivo / el momento ISO en diferido), `origen`
-    distingue cuál de los cinco es
-    (`"contenedor"`/`"disco"`/`"ha"`/`"backup"`/`"relay"`). Ninguno de
-    los valores nuevos exige migración de esquema — `origen` ya es TEXT
-    libre desde 009 (research.md §1 de 010)."""
+    `socat`, y en feature 013 (specs/013-diagnostico-inventario/) para
+    uno de brecha de cobertura del inventario — `componente` es el
+    nombre genérico (nombre de contenedor, `label` de disco, `check_id`
+    de `ha_monitor.CHECKS`, el momento ISO de una ejecución de
+    `backup_diario_nvme.sh`, el nombre de un relay en vivo / el momento
+    ISO en diferido, o el `nombre_actual` de un componente del
+    inventario), `origen` distingue cuál de los seis es
+    (`"contenedor"`/`"disco"`/`"ha"`/`"backup"`/`"relay"`/`"inventario"`).
+    Ninguno de los valores nuevos exige migración de esquema — `origen`
+    ya es TEXT libre desde 009 (research.md §1 de 010)."""
 
     componente: str
     es_critico: bool

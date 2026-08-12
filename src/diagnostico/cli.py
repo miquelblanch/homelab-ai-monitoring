@@ -13,6 +13,8 @@ Uso:
     python3 -m diagnostico.cli congelar --backup-vivo
     python3 -m diagnostico.cli congelar --relay-historico MOMENTO_ISO
     python3 -m diagnostico.cli congelar --relay-vivo NOMBRE
+    python3 -m diagnostico.cli congelar --inventario-historico NOMBRE@EJECUCION_ID
+    python3 -m diagnostico.cli congelar --inventario-vivo NOMBRE
     python3 -m diagnostico.cli diagnosticar EPISODIO_ID
     python3 -m diagnostico.cli mostrar EPISODIO_ID [--diagnostico DIAGNOSTICO_ID]
     python3 -m diagnostico.cli --selftest
@@ -103,6 +105,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="MOMENTO_ISO",
         help="Congela la evidencia agregada de relays en ±180min de ese momento (feature 012). Sin nombre de relay.",
     )
+    origen.add_argument(
+        "--inventario-vivo",
+        metavar="NOMBRE",
+        help="Congela el hallazgo actual de un componente del inventario, en la ejecución más reciente (feature 013). Entrecomillar si tiene espacios.",
+    )
+    origen.add_argument(
+        "--inventario-historico",
+        metavar="NOMBRE@EJECUCION_ID",
+        help="Congela el hallazgo de un componente del inventario en una ejecución pasada concreta (feature 013).",
+    )
 
     diagnosticar_parser = subparsers.add_parser(
         "diagnosticar", help="Diagnostica un episodio ya congelado (FR-003 a FR-011)."
@@ -142,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
             backup_historico=args.backup_historico,
             relay_vivo=args.relay_vivo,
             relay_historico=args.relay_historico,
+            inventario_vivo=args.inventario_vivo,
+            inventario_historico=args.inventario_historico,
         )
     if args.comando == "diagnosticar":
         return _run_diagnosticar(args.episodio_id)
@@ -173,6 +187,8 @@ def _run_congelar(
     backup_historico: str | None,
     relay_vivo: str | None,
     relay_historico: str | None,
+    inventario_vivo: str | None,
+    inventario_historico: str | None,
 ) -> int:
     from datetime import datetime
 
@@ -227,9 +243,25 @@ def _run_congelar(
             elif relay_vivo is not None:
                 episodio = evidencia.congelar_relay_vivo(conn, relay_vivo)
                 modo = "en vivo"
-            else:
+            elif relay_historico is not None:
                 episodio = evidencia.congelar_relay_historico(
                     conn, datetime.fromisoformat(relay_historico)
+                )
+                modo = "histórico"
+            elif inventario_vivo is not None:
+                episodio = evidencia.congelar_inventario_vivo(conn, inventario_vivo)
+                modo = "en vivo"
+            else:
+                nombre, _, ejecucion_id_str = inventario_historico.rpartition("@")
+                if not nombre:
+                    print(
+                        f"--inventario-historico espera NOMBRE@EJECUCION_ID, no "
+                        f"{inventario_historico!r}",
+                        file=sys.stderr,
+                    )
+                    return 1
+                episodio = evidencia.congelar_inventario_historico(
+                    conn, nombre, int(ejecucion_id_str)
                 )
                 modo = "histórico"
     except ValueError as e:

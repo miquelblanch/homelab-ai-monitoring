@@ -6,18 +6,21 @@ pasado concreto), de Home Assistant (feature 010: un check de entidad,
 de recorder corrupto, o de disponibilidad de la API, en vivo o de un
 momento pasado concreto), de backup (feature 011: el log de una
 ejecución de `backup_diario_nvme.sh`, en vivo o de un momento pasado
-dentro de la ventana de retención), o de relay `socat` (feature 012:
-en vivo con detalle real por relay, o en diferido con evidencia
-agregada — nunca cuál relay concreto, esa información no existe) —,
-pide a DeepSeek varias hipótesis de causa probable ya contrastadas
-contra esa evidencia, y registra cada hipótesis y la conclusión final.
-No ejecuta ni propone ninguna acción correctiva sobre el homelab — eso
-es explícitamente fuera de alcance (spec.md FR-012, FR-013a de 007;
-FR-008 de 009, 010, 011 y 012). El resto de orígenes de la Central de
-Alarmas (hosts externos, el hub de Beszel, agentes, inventario) siguen
-fuera de alcance — generalizar a cada uno queda para features
-posteriores. Ver specs/007-diagnostico-episodios/,
+dentro de la ventana de retención), de relay `socat` (feature 012: en
+vivo con detalle real por relay, o en diferido con evidencia agregada
+— nunca cuál relay concreto, esa información no existe), o del propio
+inventario de cobertura (feature 013: una brecha real de un
+componente, en vivo en la ejecución más reciente o en diferido en una
+ejecución pasada concreta — nunca de tipo `condicion_incumplida`, que
+duplicaría el origen `ha`) —, pide a DeepSeek varias hipótesis de
+causa probable ya contrastadas contra esa evidencia, y registra cada
+hipótesis y la conclusión final. No ejecuta ni propone ninguna acción
+correctiva sobre el homelab — eso es explícitamente fuera de alcance
+(spec.md FR-012, FR-013a de 007; FR-008 de 009, 010, 011, 012 y 013).
+El resto de orígenes de la Central de Alarmas (hosts externos, el hub
+de Beszel, agentes) siguen fuera de alcance — generalizar a cada uno
+queda para features posteriores. Ver specs/007-diagnostico-episodios/,
 specs/009-diagnostico-discos/, specs/010-diagnostico-ha/,
-specs/011-diagnostico-backups/ y specs/012-diagnostico-relays/ para
-spec, plan y contratos.
+specs/011-diagnostico-backups/, specs/012-diagnostico-relays/ y
+specs/013-diagnostico-inventario/ para spec, plan y contratos.
 """
