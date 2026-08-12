@@ -35,13 +35,16 @@ DIAGNOSTICO_DEEPSEEK_MAX_TOKENS = int(
 _PROMPT_INSTRUCCIONES = """\
 Eres un diagnosticador de causas probables para episodios de un homelab
 doméstico — puede ser un contenedor Docker caído, un disco con uso alto
-(feature 009: specs/009-diagnostico-discos/), o un check de Home Assistant
+(feature 009: specs/009-diagnostico-discos/), un check de Home Assistant
 (feature 010: specs/010-diagnostico-ha/) — una entidad con batería baja o
-estado inesperado, su recorder corrupto, o su API sin responder. A
-continuación tienes la evidencia real congelada de un episodio (métricas,
-logs, estado del contenedor, del disco, o de Home Assistant, según cuál
-sea). No tienes ninguna fuente de evidencia adicional a la que acudir —
-toda la evidencia disponible ya está aquí.
+estado inesperado, su recorder corrupto, o su API sin responder — o un
+backup nocturno fallido o parcial (feature 011:
+specs/011-diagnostico-backups/) — el rsync general, o algún dump de base
+de datos. A continuación tienes la evidencia real congelada de un
+episodio (métricas, logs, estado del contenedor, del disco, de Home
+Assistant, o del backup, según cuál sea). No tienes ninguna fuente de
+evidencia adicional a la que acudir — toda la evidencia disponible ya
+está aquí.
 
 Formula varias hipótesis de causa probable (más de una si la evidencia lo
 permite) y contrasta cada una contra la evidencia dada en este mismo

@@ -22,13 +22,15 @@ class Episodio:
     creado, `snapshot_evidencia` no se vuelve a tocar (FR-002).
 
     Generalizado en feature 009 (specs/009-diagnostico-discos/) para
-    poder representar también un episodio de disco, y en feature 010
-    (specs/010-diagnostico-ha/) para uno de Home Assistant — `componente`
-    es el nombre genérico (nombre de contenedor, `label` de disco, o
-    `check_id` de `ha_monitor.CHECKS`), `origen` distingue cuál de los
-    tres es (`"contenedor"`/`"disco"`/`"ha"`). El tercer valor no exige
-    ninguna migración de esquema — `origen` ya es TEXT libre desde 009
-    (research.md §1 de 010)."""
+    poder representar también un episodio de disco, en feature 010
+    (specs/010-diagnostico-ha/) para uno de Home Assistant, y en
+    feature 011 (specs/011-diagnostico-backups/) para uno de backup —
+    `componente` es el nombre genérico (nombre de contenedor, `label`
+    de disco, `check_id` de `ha_monitor.CHECKS`, o el momento ISO de
+    una ejecución de `backup_diario_nvme.sh`), `origen` distingue cuál
+    de los cuatro es (`"contenedor"`/`"disco"`/`"ha"`/`"backup"`).
+    Ninguno de los valores nuevos exige migración de esquema — `origen`
+    ya es TEXT libre desde 009 (research.md §1 de 010)."""
 
     componente: str
     es_critico: bool

@@ -51,6 +51,46 @@ def test_construir_prompt_disco_nunca_lleva_clausula_de_critico() -> None:
     )
 
 
+def test_construir_prompt_backup_nunca_lleva_clausula_de_critico() -> None:
+    """feature 011: es_critico siempre False para un episodio de backup
+    (research.md §7 de specs/011-diagnostico-backups/)."""
+    snapshot_backup = {
+        "backup_log_path": "/Volumes/FastData/homelab/logs/backup_2026-08-12_02-00-00.log",
+        "backup_resumen_final": "Duración 17m 36s — rsync completo",
+    }
+    prompt = deepseek.construir_prompt(snapshot_backup, es_critico=False)
+    check(
+        "prompt de episodio de backup no lleva la cláusula de contenedor crítico",
+        "NO propongas ninguna acción correctiva" not in prompt,
+    )
+    check("prompt generalizado menciona backup", "backup" in prompt)
+
+
+def test_parsear_respuesta_backup_con_varias_hipotesis() -> None:
+    """Hallazgo C1 de /speckit-analyze (2026-08-12, SC-002 de
+    specs/011-diagnostico-backups/): mismo patrón que
+    test_parsear_respuesta_disco_con_varias_hipotesis (009) y
+    test_parsear_respuesta_ha_con_varias_hipotesis (010) — el motor
+    generalizado debe seguir aceptando más de una hipótesis también
+    para un episodio de backup."""
+    respuesta = _respuesta_deepseek({
+        "conclusion_tipo": "causa_probable",
+        "conclusion_texto": "el dump de MariaDB falló por falta de espacio temporal",
+        "hipotesis": [
+            {"descripcion": "disco de origen sin espacio para el dump temporal",
+             "comprobacion": "el log muestra el dump fallido justo antes del rsync principal",
+             "desenlace": "confirmada"},
+            {"descripcion": "credencial de MariaDB caducada",
+             "comprobacion": "el resto de dumps de esa misma noche completaron sin problema",
+             "desenlace": "descartada"},
+        ],
+    })
+    parsed = deepseek.parsear_respuesta(respuesta)
+
+    check("respuesta de backup bien formada se acepta", parsed is not None)
+    check("SC-002: más de una hipótesis registrada para un episodio de backup", len(parsed["hipotesis"]) > 1)
+
+
 def test_construir_prompt_ha_nunca_lleva_clausula_de_critico() -> None:
     """feature 010: es_critico siempre False para un episodio de HA
     (research.md §8 de specs/010-diagnostico-ha/) — mismo criterio que

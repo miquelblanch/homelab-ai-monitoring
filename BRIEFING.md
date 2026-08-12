@@ -1034,6 +1034,128 @@ adaptar):
 > solo por línea de comandos, mismo alcance que tuvo 007 antes de que
 > 008 le diera superficie visible.
 
+## Feature 011 — material de partida (2026-08-12): generalizar el diagnóstico a los backups
+
+Con 007 (motor), 008 (visor), 009 (discos) y 010 (HA) cerrados, toca el
+cuarto origen de los 9 de la Central de Alarmas: **backups**. El nombre
+de la feature debe llevar "backups" explícito (`011-diagnostico-backups`,
+mismo patrón que `009-diagnostico-discos`/`010-diagnostico-ha`) — pedido
+directo de Miquel, para tenerlo como referente.
+
+**Investigación previa a especificar — qué evidencia real existe.**
+A diferencia de HA (API + historial por entidad) y de discos (tabla
+SQL), aquí no hay ni tabla en `homelab.db` ni ningún JSON histórico:
+comprobado en vivo, `homelab.db` solo tiene tablas de contenedores y
+discos, y `heartbeat.read('verify-backups')` solo da el último
+resultado (`"12/12 checks OK"`), nunca un historial. La única fuente de
+evidencia real es texto libre:
+
+- `backup_diario_nvme.sh` escribe un log completo por ejecución
+  (`/Volumes/FastData/homelab/logs/backup_YYYY-MM-DD_HH-MM-SS.log`):
+  estado de cada dump de BD (Vaultwarden, Jellyfin ×2, Beszel, n8n,
+  Audiobookshelf, MariaDB, PostgreSQL Immich/GBrain), la salida
+  completa de `rsync --itemize-changes`, y una línea `RESUMEN FINAL`
+  con la duración y el código de rsync **ya interpretado por el propio
+  script** (`0`/`24` = ok, `23` = parcial con riesgo de huérfanos —
+  mismo bug que el `sudo` del 2026-07-27 ya documentado en el
+  `CLAUDE.md` general, `10` = fallo).
+- **Retención: solo 7 días** (`RETENTION_DAYS=7`), no 30 como
+  `container_metrics`/`disk_metrics` — condiciona directamente cuánto
+  se puede mirar hacia atrás en diferido. Hoy hay 8 logs reales en
+  disco (5–12 de agosto), todos limpios.
+- Sin línea base real disponible: los 8 logs retenidos son todos
+  éxitos — mismo criterio ya aceptado por 009/010. El incidente real
+  conocido (huérfanos root del 2026-07-27) ya cayó fuera de la ventana
+  de 7 días — no hay log real de aquel episodio que recuperar.
+- Corrección menor de paso: el `CLAUDE.md` general dice "13 checks" de
+  `verify_backups.py`; comprobado en vivo son **12** (10 ficheros del
+  catálogo + heartbeat + log de backup) — se anota aquí, no se toca el
+  documento general en este feature.
+
+**Pregunta ya resuelta durante la investigación — backups de Home
+Assistant.** Miquel preguntó si había que añadir aquí los backups
+automáticos de HA. Son dos cosas distintas, comprobadas ambas en vivo:
+
+1. **Que HA siga generando copias nuevas** — ya lo vigila el check
+   `ha_backup_reciente` de `ha_monitor.py` (`entity_age_below`,
+   `max_age_s=129600`), y ya es diagnosticable hoy: es exactamente el
+   check validado en vivo con 010 (episodio 22). Nada que añadir aquí.
+2. **Que esas copias sobrevivan al backup nocturno** — comprobado que
+   `docker/homeassistant/backups/` **no está excluido** del rsync
+   principal (solo se excluye `zigbee2mqtt/data/log` de esa carpeta);
+   los tres backups automáticos reales de HA (9, 10 y 11 de agosto,
+   172–250 MB) se copian igual que cualquier otro fichero de FastData.
+   Entra sin tratamiento especial en el alcance ya previsto de este
+   feature — diagnosticar "¿tuvo éxito el rsync de anoche?" cubre a HA
+   exactamente igual que a cualquier otro dato bajo `/Volumes/FastData/`.
+
+Matiz real anotado, no propuesto como trabajo de este feature:
+`verify_backups.py` verifica una lista curada de ~12 elementos, pero no
+comprueba específicamente que el tar de HA (ni el de ningún otro dato
+fuera del catálogo) haya llegado — solo el éxito global del rsync.
+Ampliar ese catálogo sería vigilar más cosas nuevas, no diagnosticar;
+fuera de alcance aquí.
+
+**Diferencia real respecto a HA/discos, con consecuencia en el
+diseño.** La evidencia no es una tabla ni una API — es texto libre por
+ejecución. "Congelar" aquí significa parsear un log, no hacer un
+`SELECT` ni una llamada REST. Y "diferido" solo tiene sentido dentro de
+los 7 días retenidos — pasada esa ventana, no hay nada que congelar,
+ni siquiera con `--historico`.
+
+**Alcance propuesto (borrador, para que Miquel decida en `clarify`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Diagnosticar en vivo el log de backup más reciente | Dentro |
+| Diagnosticar en diferido cualquier log dentro de los 7 días retenidos | Dentro |
+| Evidencia: parsear el log de texto (estado por dump de BD, código de rsync interpretado, duración) | Dentro |
+| Backups de HA (frescura de sus propias copias, o que sobrevivan al rsync) | Ya cubierto — ver arriba, nada nuevo aquí |
+| Tocar `backup_diario_nvme.sh` de cualquier forma, ejecutar un backup nuevo, cualquier acción sobre `/Volumes/Storage/backup/` | Fuera — solo diagnóstico |
+| Ampliar el catálogo de `verify_backups.py` a más rutas | Fuera — es vigilancia nueva, no diagnóstico |
+| Generalizar a los 5 orígenes restantes (relays, hosts externos, hub de Beszel, agentes, inventario) | Fuera — uno a uno, misma razón que 009/010 |
+| Mostrar el diagnóstico de backups en el dashboard | Fuera de este feature — mecanismo primero, superficie después, mismo orden que 007→008 |
+| **Por decidir en `clarify`**: ¿se diagnostican los ~12 checks de `verify_backups.py` como unidades individuales (como los checks de HA), o el log completo de una noche como una sola unidad? A diferencia de HA, aquí no hay "checks" con `id` propio — es un log narrativo de una sola ejecución. | Abierto |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El motor de diagnóstico de episodios (feature 007, generalizado a
+> discos en 009 y a Home Assistant en 010) hoy no sabe diagnosticar
+> nada de los **backups** del homelab. Quiero que también pueda
+> diagnosticar episodios de backup: cuando el rsync nocturno
+> (`backup_diario_nvme.sh`) falla o queda parcial, o cuando algún dump
+> de base de datos del catálogo de `verify_backups.py` falla o queda
+> atrasado, quiero poder pedirle al motor que reúna la evidencia real
+> de esa ejecución — el log completo de esa noche, con el estado de
+> cada dump y el código de rsync ya interpretado — y formule hipótesis
+> de causa probable, con el mismo rigor que ya tiene para contenedores,
+> discos y HA: varias hipótesis contrastadas, nunca inventar una causa
+> sin evidencia, el mismo límite de gasto diario compartido con el
+> resto del motor. A diferencia de HA y discos, aquí la evidencia es
+> texto libre (un log por ejecución), no una tabla ni una API, y la
+> retención es de solo 7 días — el diagnóstico en diferido solo puede
+> mirar dentro de esa ventana. No existe hoy ningún incidente real
+> dentro de esos 7 días que usar como línea base — los 8 logs
+> retenidos están todos limpios; el incidente real conocido (huérfanos
+> root del 27-07) ya cayó fuera de la ventana de retención — la
+> validación se apoya en `congelar --vivo` contra el estado sano actual
+> y contra cualquier fallo real que aparezca mientras se desarrolla. No
+> incluye los backups automáticos de Home Assistant como caso aparte:
+> su frescura ya la diagnostica el feature 010 (`ha_backup_reciente`),
+> y que sobrevivan al rsync ya lo cubre este mismo mecanismo sin
+> tratamiento especial. No incluye ejecutar ningún backup nuevo, tocar
+> `backup_diario_nvme.sh`, ni ninguna acción sobre
+> `/Volumes/Storage/backup/`. No incluye generalizar a ningún otro
+> origen de la Central de Alarmas (relays, hosts externos, el hub de
+> Beszel, agentes, inventario de cobertura) — eso queda para features
+> posteriores, uno a uno. No incluye ninguna acción correctiva, ni
+> mostrar este diagnóstico nuevo en el dashboard — sigue siendo solo
+> por línea de comandos, mismo alcance que tuvo 007 antes de que 008 le
+> diera superficie visible.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que

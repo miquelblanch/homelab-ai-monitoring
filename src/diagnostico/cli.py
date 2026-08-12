@@ -9,6 +9,8 @@ Uso:
     python3 -m diagnostico.cli congelar --disco-vivo LABEL
     python3 -m diagnostico.cli congelar --ha-historico CHECK_ID@MOMENTO_ISO
     python3 -m diagnostico.cli congelar --ha-vivo CHECK_ID
+    python3 -m diagnostico.cli congelar --backup-historico MOMENTO_ISO
+    python3 -m diagnostico.cli congelar --backup-vivo
     python3 -m diagnostico.cli diagnosticar EPISODIO_ID
     python3 -m diagnostico.cli mostrar EPISODIO_ID [--diagnostico DIAGNOSTICO_ID]
     python3 -m diagnostico.cli --selftest
@@ -79,6 +81,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="CHECK_ID@MOMENTO_ISO",
         help="Congela un momento pasado concreto de un check de Home Assistant (feature 010).",
     )
+    origen.add_argument(
+        "--backup-vivo",
+        action="store_true",
+        help="Congela el log de backup más reciente (feature 011). Sin argumento — solo hay una serie.",
+    )
+    origen.add_argument(
+        "--backup-historico",
+        metavar="MOMENTO_ISO",
+        help="Congela el log de backup más cercano a ese momento, dentro de ±12h (feature 011).",
+    )
 
     diagnosticar_parser = subparsers.add_parser(
         "diagnosticar", help="Diagnostica un episodio ya congelado (FR-003 a FR-011)."
@@ -114,6 +126,8 @@ def main(argv: list[str] | None = None) -> int:
             disco_historico=args.disco_historico,
             ha_vivo=args.ha_vivo,
             ha_historico=args.ha_historico,
+            backup_vivo=args.backup_vivo,
+            backup_historico=args.backup_historico,
         )
     if args.comando == "diagnosticar":
         return _run_diagnosticar(args.episodio_id)
@@ -141,6 +155,8 @@ def _run_congelar(
     disco_historico: str | None,
     ha_vivo: str | None,
     ha_historico: str | None,
+    backup_vivo: bool,
+    backup_historico: str | None,
 ) -> int:
     from datetime import datetime
 
@@ -172,7 +188,7 @@ def _run_congelar(
             elif ha_vivo is not None:
                 episodio = evidencia.congelar_ha_vivo(conn, ha_vivo)
                 modo = "en vivo"
-            else:
+            elif ha_historico is not None:
                 check_id, _, momento_str = ha_historico.partition("@")
                 if not momento_str:
                     print(
@@ -182,6 +198,14 @@ def _run_congelar(
                     return 1
                 episodio = evidencia.congelar_ha_historico(
                     conn, check_id, datetime.fromisoformat(momento_str)
+                )
+                modo = "histórico"
+            elif backup_vivo:
+                episodio = evidencia.congelar_backup_vivo(conn)
+                modo = "en vivo"
+            else:
+                episodio = evidencia.congelar_backup_historico(
+                    conn, datetime.fromisoformat(backup_historico)
                 )
                 modo = "histórico"
     except ValueError as e:
