@@ -6,6 +6,102 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-12 — Feature 013, ciclo completo (specify → implement), sexto origen, primera vez que `diagnostico` importa un paquete hermano
+
+**Igual que 011/012**: Miquel pidió explícitamente "Claude ejecuta
+todo" vía `AskUserQuestion` antes de arrancar — rompe a propósito el
+reparto por defecto de `METODO.md`. Ciclo completo ejecutado por
+Claude: `specify` → `clarify` → `plan` → `tasks` → `analyze` →
+`implement` → validación en vivo.
+
+- **Qué se pidió**: sexto origen de la Central de Alarmas — el propio
+  inventario de cobertura (`inventario.db`, feature 001). De los 6
+  tipos de brecha que clasifica (`sin_declaracion`,
+  `declaracion_caducada`, `sin_vigilancia`, `no_llega_a_dashboard`,
+  `riesgo_concentrado_telegram`, `condicion_incumplida`), 5 entran en
+  alcance; `condicion_incumplida` queda fuera por diseño — solo ocurre
+  hoy en `entidad_ha` y es el propio inventario re-detectando, con
+  otras palabras, lo que el origen `ha` (010) ya diagnostica.
+- **Decisión de arquitectura real, no anticipada en el material de
+  partida**: `diagnostico/evidencia.py` importa `inventory.store`/
+  `inventory.diff` directamente (paquete hermano de este mismo repo)
+  en vez de leer un fichero/DB externo — primera vez que este motor
+  importa un paquete de aplicación en vez de una fuente de datos
+  externa. La comparación contra "qué cambió" se resuelve gratis
+  reutilizando `primera_ejecucion_id` (ya persistido por
+  `populate_brechas()`) y `inventory.diff.compare_runs()`, sin
+  construir ningún mecanismo nuevo.
+- **Investigando la línea base real antes de planificar se encontraron
+  dos hallazgos que el material de partida (`BRIEFING.md`) no
+  anticipaba** — corregidos en el propio `plan`/`research`, no
+  descubiertos tarde:
+  1. Las cuatro brechas reales conocidas (ejecuciones #19/#28/#31/#52)
+     no son su propia `primera_ejecucion_id` — las cuatro comparten
+     `primera_ejecucion_id = 3`; `#19` etc. son la **última** aparición
+     antes de resolverse, no la primera. El mecanismo de comparación
+     (research.md §4) sigue siendo correcto, pero la nota de validación
+     original ("apuntar a la propia primera_ejecucion_id") era
+     literalmente al revés y se corrigió antes de escribir código.
+  2. El ancla real de esas cuatro brechas (ejecución #2) tiene **0
+     brechas registradas** (probablemente anterior a que
+     `populate_brechas()` se conectara al flujo normal) — un diff sin
+     límite listaría hasta 319 brechas como "nuevas". Corregido con
+     `INVENTARIO_COMPARACION_MAX_ENTRADAS = 30` (`{"total", "muestra"}`
+     por lista), mismo patrón defensivo que `HA_HISTORIAL_MAX_ENTRADAS`
+     (010) y `BACKUP_ANOMALIA_MAX_LINEAS` (011), aplicado esta vez
+     *antes* de la primera llamada real, no después de gastar dinero
+     descubriéndolo.
+- **`/speckit-analyze` encontró 1 hallazgo (U1, MEDIUM), corregido antes
+  de implementar**: `data-model.md`/`tasks.md` describían
+  `_brecha_de_componente()` como si "filtrara a los 5 tipos en alcance
+  salvo para la comprobación de FR-010" — contradictorio consigo mismo.
+  Si se hubiera implementado tal cual, la función habría filtrado
+  `condicion_incumplida` antes de que `_validar_tipo_brecha_inventario()`
+  (T004) tuviera nada que rechazar, vaciando FR-010 en silencio.
+  Corregido en `data-model.md`, `tasks.md` y `research.md` antes de
+  escribir ninguna línea de código. **Cero hallazgos de tipo C1**
+  (hueco de SC-002 sin selftest) por primera vez en el proyecto — el
+  test `test_parsear_respuesta_inventario_con_varias_hipotesis` se
+  escribió directamente en `tasks.md`/T010 desde el diseño, en vez de
+  esperar a que `/speckit-analyze` lo volviera a encontrar una quinta
+  vez.
+- **Tareas implementadas sin intervención: 23 de 23** — sin errores de
+  test-writing esta vez (a diferencia de 012), aunque sí hizo falta un
+  pase de limpieza propio durante la propia implementación (no
+  detectado por ninguna skill): un `inv_store.connect()` redundante
+  (abría la conexión de inventario dos veces por congelado) y un
+  filtro muerto en `inventario_brecha` (ya inalcanzable tras la
+  validación de FR-010) — corregidos antes de escribir los tests, no
+  después.
+- **La garantía central del feature (SC-005), verificada contra dos de
+  las cuatro brechas reales conocidas**: "Agente Hermes/Bautista" (#19)
+  y "Host de Uptime Kuma" (#28). El primer caso reprodujo exactamente
+  el mismo patrón de truncamiento ya documentado en 012 §11 — 2 de 2
+  llamadas reales a presupuesto por defecto (2000 tokens) fallaron
+  (`finish_reason: "length"` una vez, `finish_reason: "stop"` con
+  `content` vacío la otra — un tercer patrón de fallo, distinto tanto
+  del truncamiento como de la recuperación vía `reasoning_content` de
+  010) y una llamada manual con el límite subido a 6000 sí completó una
+  `causa_probable` correcta, coincidiendo con la causa real conocida.
+  El segundo caso, en cambio, tuvo éxito limpio a presupuesto por
+  defecto con un `no_diagnosticable` bien razonado (4 hipótesis) —
+  confirma que el truncamiento no es sistemático para todo episodio de
+  inventario en diferido, depende del tamaño real de la evidencia.
+  Documentado en `research.md` §12, sin tocar la constante compartida
+  (mismo criterio ya fijado en 010/012 — decisión de coste de Miquel,
+  no de este feature).
+- **Veces que se corrigió el spec en lugar del código**: 0.
+- **Veces que se reescribió el spec entero**: 0.
+- **¿El spec sigue describiendo lo que hay al cerrar el hito?**: sí.
+- **Validación real, con coste real**: los 8 escenarios de
+  `quickstart.md` contra `inventario.db` real y DeepSeek real —
+  incluidas 2 llamadas de investigación adicionales fuera del CLI para
+  diagnosticar el truncamiento (mismo método que 012). Coste nuevo:
+  ~0,008 €.
+- **Dato para el método**: sexto origen cerrado (contenedores, discos,
+  HA, backups, relays, inventario) de los 9 de la Central de Alarmas —
+  quedan 3: hosts externos, el hub de Beszel, agentes.
+
 ## 2026-08-12 — Feature 012, ciclo completo (specify → implement), primera línea base real desde el arranque
 
 **Igual que 011**: Miquel invocó él mismo `specify`/`plan`/`tasks`/
