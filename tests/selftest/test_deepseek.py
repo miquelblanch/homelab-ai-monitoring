@@ -502,6 +502,41 @@ def test_diagnosticar_episodio_hub_beszel_no_dispara_ningun_rechazo_de_otro_orig
     check("hipótesis persistida", len(hipotesis) == 1)
 
 
+def test_construir_prompt_agente_menciona_origen_nuevo() -> None:
+    """feature 016: noveno y último origen, sin cláusula nueva de
+    restricción de contenido (research.md §4 de 016) — el estado de un
+    agente es un hecho directo, no una inferencia sobre ausencia."""
+    snapshot = {"agente_actual": {"label": "amsterdam9.docker-monitor", "status": "running"}}
+    prompt = deepseek.construir_prompt(snapshot, es_critico=False)
+
+    check("prompt generalizado menciona LaunchAgent", "LaunchAgent" in prompt)
+    check(
+        "episodio de agente no lleva la cláusula de contenedor crítico",
+        "NO propongas ninguna acción correctiva" not in prompt,
+    )
+
+
+def test_parsear_respuesta_agente_con_varias_hipotesis() -> None:
+    """SC-002, escrito desde el diseño — mismo criterio ya aplicado en
+    013-015 tras el hallazgo recurrente C1 de 009-012."""
+    respuesta = _respuesta_deepseek({
+        "conclusion_tipo": "causa_probable",
+        "conclusion_texto": "el agente lleva sin proceso activo desde el último código de salida anómalo",
+        "hipotesis": [
+            {"descripcion": "el proceso terminó por una señal (SIGTERM)",
+             "comprobacion": "exit_code=-15, sin proceso activo",
+             "desenlace": "confirmada"},
+            {"descripcion": "el plist se descargó manualmente",
+             "comprobacion": "no hay evidencia de una descarga intencionada en este snapshot",
+             "desenlace": "descartada"},
+        ],
+    })
+    parsed = deepseek.parsear_respuesta(respuesta)
+
+    check("respuesta de agente bien formada se acepta", parsed is not None)
+    check("SC-002: más de una hipótesis registrada para un episodio de agente", len(parsed["hipotesis"]) > 1)
+
+
 def test_construir_prompt_ha_nunca_lleva_clausula_de_critico() -> None:
     """feature 010: es_critico siempre False para un episodio de HA
     (research.md §8 de specs/010-diagnostico-ha/) — mismo criterio que

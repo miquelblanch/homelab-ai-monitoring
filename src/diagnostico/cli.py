@@ -19,6 +19,7 @@ Uso:
     python3 -m diagnostico.cli congelar --host-externo-vivo NOMBRE
     python3 -m diagnostico.cli congelar --hub-beszel-historico MOMENTO_ISO
     python3 -m diagnostico.cli congelar --hub-beszel-vivo
+    python3 -m diagnostico.cli congelar --agente-vivo LABEL
     python3 -m diagnostico.cli diagnosticar EPISODIO_ID
     python3 -m diagnostico.cli mostrar EPISODIO_ID [--diagnostico DIAGNOSTICO_ID]
     python3 -m diagnostico.cli --selftest
@@ -139,6 +140,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="MOMENTO_ISO",
         help="Congela la densidad de muestras de todos los sistemas del hub en ±24h de ese momento (feature 015).",
     )
+    origen.add_argument(
+        "--agente-vivo",
+        metavar="LABEL",
+        help="Congela el estado actual de un LaunchAgent (feature 016). Sin modo diferido — no existe evidencia histórica real.",
+    )
 
     diagnosticar_parser = subparsers.add_parser(
         "diagnosticar", help="Diagnostica un episodio ya congelado (FR-003 a FR-011)."
@@ -184,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             host_externo_historico=args.host_externo_historico,
             hub_beszel_vivo=args.hub_beszel_vivo,
             hub_beszel_historico=args.hub_beszel_historico,
+            agente_vivo=args.agente_vivo,
         )
     if args.comando == "diagnosticar":
         return _run_diagnosticar(args.episodio_id)
@@ -221,6 +228,7 @@ def _run_congelar(
     host_externo_historico: str | None,
     hub_beszel_vivo: bool,
     hub_beszel_historico: str | None,
+    agente_vivo: str | None,
 ) -> int:
     from datetime import datetime
 
@@ -315,11 +323,14 @@ def _run_congelar(
             elif hub_beszel_vivo:
                 episodio = evidencia.congelar_hub_beszel_vivo(conn)
                 modo = "en vivo"
-            else:
+            elif hub_beszel_historico is not None:
                 episodio = evidencia.congelar_hub_beszel_historico(
                     conn, datetime.fromisoformat(hub_beszel_historico)
                 )
                 modo = "histórico"
+            else:
+                episodio = evidencia.congelar_agente_vivo(conn, agente_vivo)
+                modo = "en vivo"
     except ValueError as e:
         # FR-010: los checks de la cerradura se rechazan explícitamente
         # (evidencia.CHECKS_HA_EXCLUIDOS_CERRADURA) — mismo tratamiento

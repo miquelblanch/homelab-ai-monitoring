@@ -1593,6 +1593,100 @@ adaptar):
 
 ---
 
+## Feature 016 — material de partida (2026-08-12): generalizar el diagnóstico a los agentes (LaunchAgents)
+
+Con 015 cerrado, toca el noveno y último origen: **los agentes**
+(`016-diagnostico-agentes`) — los ~20 LaunchAgents que ejecutan toda
+la automatización del homelab (`amsterdam9.*`, `com.homeassistant.*`,
+`ai.hermes.*`), vigilados hoy por `app.py::get_launchagents()`.
+
+**Ambigüedad real encontrada en el propio histórico de este
+`BRIEFING.md`, resuelta antes de especificar.** La tabla de orígenes
+de "Feature 006" (línea 539-543) lista **dos** filas separadas bajo
+"Automatización": `LaunchAgents` (`get_launchagents()`, "agente
+crasheado") y `Latidos de monitores` (`get_monitor_heartbeats()`, "un
+monitor dejó de ejecutarse"). Las dos siguieron apareciendo juntas en
+la lista de "orígenes restantes" hasta el material de 011 — pero entre
+011 y 012, `monitores` **desapareció de la lista sin que ningún
+feature la cerrara**. Ningún commit la generalizó; simplemente dejó de
+mencionarse. Se documenta aquí como lo que es —una inconsistencia real
+del propio histórico del proyecto, no una decisión tomada— y se
+resuelve así: **este feature cierra `LaunchAgents` en el sentido
+literal del término "agentes"** (mismo uso consistente en el resto de
+`BRIEFING.md` desde 012 en adelante); `Latidos de monitores`
+(`get_monitor_heartbeats()`) queda **explícitamente fuera**, como
+mecanismo relacionado pero distinto, disponible para un feature futuro
+si Miquel decide cerrarlo — no se amplía el alcance de este feature
+para "arreglar" la inconsistencia sin que él lo decida.
+
+**El hallazgo real que hace de este origen un caso estructuralmente
+distinto a los 8 anteriores**: no existe **ningún** dato histórico
+reconstruible. Comprobado en vivo:
+
+- `launchagents_raw.txt` (el fichero que lee `get_launchagents()`,
+  escrito por `dump_launchagents.sh` cada 5 min vía el LaunchAgent
+  `amsterdam9.dashboard.launchagents`) se **sobreescribe** en cada
+  ciclo — solo el estado actual, sin ningún historial.
+- Su log (`/tmp/dump_launchagents.log`, `StandardOutPath` del propio
+  LaunchAgent) tiene 9.392 líneas — **todas vacías**: `launchctl list
+  > fichero` no produce salida en `stdout` por sí solo, así que el log
+  no contiene ni un solo dato real aprovechable.
+- No existe ninguna tabla en `homelab.db` equivalente a
+  `restart_history` para LaunchAgents — `docker_monitor.py` solo
+  vigila contenedores Docker, nunca ha vigilado agentes.
+
+**Consecuencia real para el diseño**: este es el primer origen del
+proyecto que **no puede tener un modo diferido** — no por falta de un
+episodio real conocido (009/010/011/015, que sí tenían un mecanismo de
+consulta histórica aunque sin caso real), sino porque no existe
+ninguna fuente que consultar. El Principio XI (Reproducibilidad
+Diferida) no se puede cumplir literalmente para este origen — se
+documentará así, explícitamente, en el `Constitution Check` del plan
+en vez de forzar un mecanismo diferido ficticio o fingir que se
+cumple. La reproducibilidad que sí se puede garantizar y se garantizará
+(SC-001, igual que el resto) es la del propio motor: diagnosticar dos
+veces el mismo episodio ya congelado en vivo da la misma conclusión.
+
+**Alcance propuesto (borrador, para que Miquel decida en `clarify`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Diagnosticar en vivo un LaunchAgent concreto (por `label`) — vigilando, crasheado, o "idle" según el mismo cálculo que ya usa el dashboard | Dentro |
+| Diagnosticar en diferido un momento pasado | **Fuera — imposible con la evidencia real disponible**, no una decisión de alcance |
+| `Latidos de monitores` (`get_monitor_heartbeats()`) | Fuera — mecanismo distinto, disponible para un feature futuro |
+| Cualquier acción correctiva sobre un LaunchAgent (reiniciarlo, recargarlo) | Fuera — solo diagnóstico |
+| Mostrar el diagnóstico en el dashboard | Fuera — sigue siendo solo por línea de comandos |
+
+Con esto se cierran los 9 orígenes de la Central de Alarmas que este
+proyecto se propuso generalizar (`BRIEFING.md`, línea 56 en adelante).
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El motor de diagnóstico de episodios (007, generalizado a discos en
+> 009, HA en 010, backups en 011, relays en 012, inventario en 013,
+> hosts externos en 014 y el hub de Beszel en 015) hoy no sabe
+> diagnosticar nada de los LaunchAgents que ejecutan toda la
+> automatización del homelab — los ~20 agentes `amsterdam9.*`,
+> `com.homeassistant.*` y `ai.hermes.*`. Quiero que también pueda
+> diagnosticar un agente concreto: reunir su estado real (si tiene un
+> proceso activo, y su último código de salida) y formular hipótesis
+> de causa probable cuando esté fallando, con el mismo rigor que los
+> demás orígenes — varias hipótesis contrastadas, nunca inventar una
+> causa, mismo límite de gasto diario compartido. A diferencia de
+> todos los orígenes anteriores, este no tiene ningún modo diferido:
+> no existe ningún historial real de LaunchAgents que consultar, ni en
+> el propio fichero de estado (se sobreescribe cada 5 minutos) ni en
+> su log (vacío) ni en ninguna base de datos del homelab — solo se
+> puede diagnosticar el estado actual. No incluye el mecanismo
+> relacionado de latidos de monitores (`get_monitor_heartbeats()`) —
+> es una fuente de evidencia distinta, fuera de alcance de este
+> feature. No incluye ninguna acción correctiva sobre ningún agente
+> (reiniciarlo, recargarlo). No incluye mostrar este diagnóstico en el
+> dashboard — sigue siendo solo por línea de comandos.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que

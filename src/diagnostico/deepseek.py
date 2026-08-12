@@ -48,13 +48,15 @@ declaración de estado esperado, con la declaración caducada, sin
 vigilancia, o cuyo fallo no llegaría al dashboard —, un host físico
 externo que Beszel ya vigila (feature 014:
 specs/014-diagnostico-hosts-externos/) — Uptime Kuma o AdGuard Home —,
-o el propio hub de Beszel, si deja de vigilar todos sus sistemas a la
-vez (feature 015: specs/015-diagnostico-hub-beszel/). A continuación
+el propio hub de Beszel, si deja de vigilar todos sus sistemas a la
+vez (feature 015: specs/015-diagnostico-hub-beszel/), o un LaunchAgent
+del propio homelab (feature 016: specs/016-diagnostico-agentes/) — si
+tiene un proceso activo, y su último código de salida. A continuación
 tienes la evidencia real congelada de un episodio (métricas, logs,
 estado del contenedor, del disco, de Home Assistant, del backup, del
-relay, del inventario, del host externo, o del hub, según cuál sea).
-No tienes ninguna fuente de evidencia adicional a la que acudir — toda
-la evidencia disponible ya está aquí.
+relay, del inventario, del host externo, del hub, o del agente, según
+cuál sea). No tienes ninguna fuente de evidencia adicional a la que
+acudir — toda la evidencia disponible ya está aquí.
 
 Formula varias hipótesis de causa probable (más de una si la evidencia lo
 permite) y contrasta cada una contra la evidencia dada en este mismo

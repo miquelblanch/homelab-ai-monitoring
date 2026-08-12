@@ -29,19 +29,22 @@ class Episodio:
     `socat`, en feature 013 (specs/013-diagnostico-inventario/) para
     uno de brecha de cobertura del inventario, en feature 014
     (specs/014-diagnostico-hosts-externos/) para uno de host físico
-    externo vigilado por Beszel, y en feature 015
+    externo vigilado por Beszel, en feature 015
     (specs/015-diagnostico-hub-beszel/) para uno del propio hub de
-    Beszel — `componente` es el nombre genérico (nombre de contenedor,
-    `label` de disco, `check_id` de `ha_monitor.CHECKS`, el momento ISO
-    de una ejecución de `backup_diario_nvme.sh`, el nombre de un relay
-    en vivo / el momento ISO en diferido, el `nombre_actual` de un
-    componente del inventario, el nombre canónico de un host externo, o
-    el momento ISO de un episodio del hub —sin ningún nombre, igual que
-    backup, porque solo existe un hub—), `origen` distingue cuál de los
-    ocho es
-    (`"contenedor"`/`"disco"`/`"ha"`/`"backup"`/`"relay"`/`"inventario"`/`"host_externo"`/`"hub_beszel"`).
-    Ninguno de los valores nuevos exige migración de esquema — `origen`
-    ya es TEXT libre desde 009 (research.md §1 de 010)."""
+    Beszel, y en feature 016 (specs/016-diagnostico-agentes/) para uno
+    de LaunchAgent — `componente` es el nombre genérico (nombre de
+    contenedor, `label` de disco, `check_id` de `ha_monitor.CHECKS`, el
+    momento ISO de una ejecución de `backup_diario_nvme.sh`, el nombre
+    de un relay en vivo / el momento ISO en diferido, el
+    `nombre_actual` de un componente del inventario, el nombre
+    canónico de un host externo, el momento ISO de un episodio del hub
+    —sin ningún nombre, igual que backup, porque solo existe un hub—,
+    o el `label` de un LaunchAgent), `origen` distingue cuál de los
+    nueve es (`"contenedor"`/`"disco"`/`"ha"`/`"backup"`/`"relay"`/
+    `"inventario"`/`"host_externo"`/`"hub_beszel"`/`"agente"`) — el
+    noveno y último origen de la Central de Alarmas. Ninguno de los
+    valores nuevos exige migración de esquema — `origen` ya es TEXT
+    libre desde 009 (research.md §1 de 010)."""
 
     componente: str
     es_critico: bool
