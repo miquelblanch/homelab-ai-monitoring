@@ -6,6 +6,74 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-12 — Feature 011, ciclo completo (specify → implement), Miquel pide expresamente que ejecute cada paso
+
+**Distinta otra vez**: en 010 Miquel ejecutó `clarify`/`plan`/`tasks`/
+`analyze` él mismo y solo delegó `implement`. En 011 pidió
+explícitamente "ejecuta tú" en cada paso del ciclo, incluidos
+`specify`, `plan`, `tasks`, `analyze`, `implement`, y el commit/push
+final — la ruptura de `METODO.md` fue completa esta vez, a petición
+directa, no por defecto.
+
+- **Qué se pidió**: cuarto origen de la Central de Alarmas —
+  backups. Petición concreta de Miquel sobre el nombre
+  (`011-diagnostico-backups`, para tenerlo como referente) y una
+  pregunta real que cambió el material de partida: si los backups
+  automáticos de Home Assistant necesitaban tratamiento aparte.
+  Investigado antes de escribir nada: no — su frescura ya la
+  diagnostica 010 (`ha_backup_reciente`), y que sobrevivan al rsync ya
+  lo cubre el mecanismo genérico de este mismo feature (comprobado que
+  su carpeta no está excluida del rsync principal).
+- **Sin `/speckit-clarify` esta vez**: el checklist de calidad del spec
+  pasó 16/16 sin ningún marcador `[NEEDS CLARIFICATION]` — la
+  investigación previa a especificar (material de partida) ya había
+  resuelto la única ambigüedad real (granularidad del episodio: ¿log
+  completo de una noche, o cada uno de los ~12 checks de
+  `verify_backups.py` por separado?) con un valor por defecto
+  documentado en Assumptions, no como pregunta abierta.
+- **`/speckit-analyze` encontró 3 hallazgos, 0 críticos, corregidos
+  antes de implementar** (a diferencia de 010, donde las correcciones
+  de `/speckit-analyze` se aplicaron sobre la marcha durante
+  `implement`): SC-002 sin selftest explícito de varias hipótesis para
+  origen backup (mismo hueco ya cerrado una vez en 009/010 — se había
+  reproducido); una línea de dump fallido se contaba dos veces (en
+  `dumps` y en `anomalias`); el caso "sin log en la ventana" de
+  `congelar_backup_historico()` no se probaba explícitamente.
+- **Tareas implementadas sin intervención: 20 de 20** — ninguna falló,
+  pero la propia validación en vivo encontró un problema real no
+  anticipado por ningún artefacto: sin ningún log en la ventana
+  pedida, el episodio se etiquetaba con la hora *actual* en vez de la
+  *pedida* — confuso en diferido (pedir 2020 mostraba la hora de hoy).
+  Corregido y documentado en `research.md` §9 antes de cerrar el
+  feature.
+- **La garantía central del feature, verificada dos veces, sin
+  sorpresas**: a diferencia de 010 (donde el reventón de prompt de
+  `sal_nivel` fue un hallazgo real *durante* la implementación), aquí
+  se comprobó primero en `research.md`/`plan.md` —antes de escribir
+  código— contra el log real más grande retenido (951.031 caracteres,
+  9.878 líneas), y se volvió a confirmar en Polish: la evidencia
+  extraída se quedó en 1.684 caracteres las dos veces. Aplicar la
+  lección de 010 por diseño, no después, evitó repetir el mismo
+  susto.
+- **Veces que se corrigió el spec en lugar del código**: 0. El código
+  se corrigió (el hallazgo de `momento_solicitado`) y `research.md` se
+  actualizó para seguir describiéndolo — mismo criterio que 010.
+- **Veces que se reescribió el spec entero**: 0.
+- **¿El spec sigue describiendo lo que hay al cerrar el hito?**: sí,
+  tras la actualización de `research.md` §9.
+- **Validación real, con coste real**: 6 escenarios de `quickstart.md`
+  contra logs reales y DeepSeek real. Coste nuevo: 0,00725 € —
+  confirmado por consulta directa que el acumulado del día
+  (0,24332864 €) es exactamente HA + backup, un único límite
+  compartido.
+- **Dato para el método**: cuarto origen cerrado (contenedores, discos,
+  HA, backups) de los 9 de la Central de Alarmas — quedan 5 (relays,
+  hosts externos, hub de Beszel, agentes, inventario). Segunda sesión
+  seguida (tras 010) donde la investigación previa a especificar
+  encuentra una diferencia estructural real entre orígenes —aquí, "sin
+  tabla ni API, solo texto libre con 7 días de retención"— que cambia
+  el propio diseño del plan, no solo el contenido de la evidencia.
+
 ## 2026-08-12 — Feature 010, ciclo completo (specify → implement), ruptura parcial de `METODO.md`
 
 **Distinta de las rupturas de 008/009**: esta vez Miquel sí ejecutó él
