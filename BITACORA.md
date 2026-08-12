@@ -6,6 +6,101 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-12 — Feature 010, ciclo completo (specify → implement), ruptura parcial de `METODO.md`
+
+**Distinta de las rupturas de 008/009**: esta vez Miquel sí ejecutó él
+mismo `/speckit-clarify`, `/speckit-plan`, `/speckit-tasks` y
+`/speckit-analyze` (los cuatro llegaron como comandos escritos por él,
+no decididos por Claude). La ruptura fue más estrecha y explícita: al
+llegar a `/speckit-implement`, Claude paró y preguntó antes de escribir
+ningún código (`METODO.md` dice "todo el código" es de Miquel) — Miquel
+respondió "Implementa tú esta vez", y más tarde pidió también el commit
+y el push. Registrar esto con precisión importa para el propio
+experimento: no es "Claude hizo todo el ciclo" como 008/009, es "Miquel
+llevó el diseño, Claude llevó la implementación a petición explícita,
+con una pausa de confirmación en el punto exacto donde cambiaba el
+reparto".
+
+- **Qué se pidió**: generalizar el motor de diagnóstico (007, ya
+  generalizado a discos en 009) a un tercer origen: Home Assistant —
+  checks de entidad, el recorder corrupto, y la disponibilidad de la
+  API. Tercero de los 7 orígenes restantes de la Central de Alarmas;
+  quedan 6.
+- **Ambigüedades detectadas por `clarify`**: 1 — el check `ha_api`
+  (tipo `api_ping`, sin entidad asociada) no encajaba en ninguna de las
+  dos categorías de evidencia que el material de partida daba por
+  buenas. Encontrado comparando el spec contra `ha_monitor.py` real, no
+  por inspección del propio spec — el Principio XIII (Cobertura
+  Sistemática) fue literalmente el motivo de la pregunta.
+- **`/speckit-analyze` encontró 5 hallazgos, 0 críticos**: dos huecos de
+  cobertura MEDIUM (SC-004 sin validación real del recorder *sano*,
+  SC-002 sin selftest explícito de varias hipótesis para origen `ha`),
+  una inconsistencia de dependencias MEDIUM (T024 no listaba T007 como
+  prerrequisito pese a invocar el flag que T007 conecta), y dos LOW
+  (una nota de verificación de research.md sin tarea asignada, un
+  resumen incompleto en `plan.md`). Los tres MEDIUM se cerraron durante
+  `implement`, no antes: los dos huecos de cobertura escribiendo los
+  tests/validaciones correctamente desde el principio, y la
+  inconsistencia de T024 corrigiendo la nota de dependencia al marcar
+  la tarea.
+- **Tareas implementadas sin intervención: 24 de 24** — ninguna falló.
+  Pero la mayor parte del tiempo de la sesión no lo absorbió `tasks.md`,
+  sino la validación en vivo: **4 problemas reales del motor**, ninguno
+  anticipado por ninguna tarea, encontrados solo porque la validación
+  usó DeepSeek/HA/Docker reales en vez de pararse en los selftests
+  simulados (que ya tenían mocks "bien formados" por construcción, así
+  que ninguno de los 4 podía aparecer ahí):
+  1. `parsear_respuesta()` descartaba respuestas completas y válidas
+     que el modelo de razonamiento escribía en `reasoning_content` en
+     vez de `content` — afecta al motor compartido por 007/009 también,
+     no solo a HA.
+  2. Una entidad de alta frecuencia (`sal_nivel`, sensor de voltaje)
+     reventó un prompt a 280.454 tokens sin producir ningún
+     diagnóstico — la premisa de diseño ("las entidades de HA solo
+     cambian de estado de vez en cuando") era cierta para baterías
+     Zigbee y falsa para sensores de medición continua.
+  3. `docker_logs_tail("homeassistant")` devolvía siempre `""` — ese
+     contenedor escribe en `stderr`, no en `stdout`, y el `_run_ro()`
+     heredado de 007 solo capturaba `stdout`.
+  4. Un check `ha_api` sano se diagnosticaba como `causa_probable`
+     citando un error real pero no relacionado de otra integración —
+     el prompt no le decía al modelo si *ese check concreto* estaba
+     fallando, así que rellenaba el hueco con el ruido más cercano.
+  Cada uno se confirmó antes de tocar código (reproducido, no asumido),
+  y los tres primeros se corrigieron sin pedir confirmación de nuevo
+  (bugs claros, de bajo riesgo, dentro del alcance de lo que FR-003 ya
+  exigía); el cuarto se paró a preguntar porque cambiaba la forma del
+  snapshot (`data-model.md`) y el propio diseño de qué cuenta como
+  evidencia, no solo corregía un error de ejecución.
+- **Veces que se corrigió el spec en lugar del código**: 0. Al revés:
+  se corrigió el código y **el spec se actualizó para seguir
+  describiéndolo** — los 4 hallazgos quedaron escritos en
+  `research.md` §10-§13 y `data-model.md`, con fecha, causa raíz y
+  validación real, no como una discrepancia silenciosa entre lo que
+  dice el documento y lo que hace el código.
+- **Veces que se reescribió el spec entero**: 0.
+- **¿El spec sigue describiendo lo que hay al cerrar el hito?**: sí,
+  después de las 4 actualizaciones post-hoc de arriba — sin ellas,
+  `research.md` habría quedado desfasado del código real en el mismo
+  commit que lo cerraba.
+- **Validación real, con coste real**: API de HA real, contenedor
+  `homeassistant` real (corrupción de recorder simulada con
+  `docker exec ... touch`/`rm`, limpiada de inmediato), DeepSeek real.
+  Los 7 escenarios de `quickstart.md` validados con datos reales, no
+  solo simulados. Coste real acumulado: 0,236 € — muy por debajo del
+  límite compartido de 5 €/día, confirmado por consulta directa a
+  `gasto_diario` (FR-007/SC-003).
+- **Dato para el método**: cuarta sesión seguida (tras 007, 008, 009)
+  donde la validación contra infraestructura real encuentra algo que
+  ningún selftest simulado podía encontrar — esta vez el número más
+  alto hasta ahora (4 hallazgos reales en una sola sesión de
+  `implement`). Refuerza el mismo argumento que ya dejaron 007/008/009:
+  "selftest en verde" y "feature funciona contra el sistema real" son
+  preguntas distintas, y la brecha entre ambas parece crecer, no
+  reducirse, a medida que el motor se generaliza a orígenes con formas
+  de evidencia más variadas (HA es el primero sin una tabla SQL propia
+  de la que leer).
+
 ## 2026-08-11 — Feature 009, ciclo completo (specify → implement), tercera vez fuera de proceso
 
 **Ruptura deliberada de `METODO.md`, tercera vez en la misma sesión
