@@ -6,6 +6,69 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-12 — Feature 016, ciclo completo (specify → implement), noveno y último origen — cierra la Central de Alarmas
+
+**Mismo modo que 014/015**: investigación propia en esta sesión,
+material de partida escrito antes de especificar, sin pausas.
+
+- **Qué se pidió**: el último origen de los 9 — los LaunchAgents
+  (`amsterdam9.*`, `com.homeassistant.*`, `ai.hermes.*`) que ejecutan
+  toda la automatización del homelab.
+- **Ambigüedad real encontrada en el propio histórico de
+  `BRIEFING.md`, resuelta antes de especificar**: la tabla de orígenes
+  original (feature 006) listaba **dos** filas de "Automatización":
+  `LaunchAgents` y `Latidos de monitores`. La segunda desapareció de la
+  lista de "orígenes restantes" entre los materiales de 011 y 012
+  **sin que ningún feature la cerrara** — inconsistencia real del
+  propio proyecto, no una decisión tomada. Documentada explícitamente:
+  este feature cierra `LaunchAgents` (uso consistente del término
+  "agentes" en el resto de `BRIEFING.md` desde 012), `Latidos de
+  monitores` queda fuera, disponible para un feature futuro si Miquel
+  decide cerrarlo — no se amplió el alcance sin que él lo decidiera.
+- **El hallazgo estructural más importante de la serie**: este es el
+  **único origen sin ningún modo diferido posible**, no por decisión
+  de alcance sino por ausencia real de datos — comprobado
+  explícitamente: `launchagents_raw.txt` se sobreescribe cada 5 min sin
+  historial; su log tiene 9.392 líneas, todas vacías (`launchctl
+  list > fichero` no escribe nada en `stdout` por sí solo); ninguna
+  base de datos del homelab tiene una tabla histórica de LaunchAgents.
+  Documentado explícitamente en el `Constitution Check` del plan como
+  cumplimiento **parcial** del Principio XI (Reproducibilidad
+  Diferida) — la primera vez en el proyecto que un principio "DEBE" no
+  se cumple en su sentido literal completo para un origen, justificado
+  por una limitación real y verificada, no forzado con un mecanismo
+  ficticio ni ocultado.
+- **El feature más simple de toda la serie**: una sola función de
+  evidencia (`_agente_actual`), sin subprocesos, sin husos horarios,
+  sin consultas externas — un fichero de texto plano ya existente, con
+  el mismo cálculo exacto que ya usa el dashboard.
+- **`/speckit-analyze` no encontró hallazgos propios** — segunda vez
+  consecutiva (015, 016) sin ninguna corrección antes de implementar.
+- **Tareas implementadas sin intervención: 15 de 15** — sin ningún
+  hallazgo de implementación en la validación en vivo. Un detalle
+  menor descubierto en vivo, no un error: el label real del agente que
+  ejecuta `docker_monitor.py` es `amsterdam9.health.docker`, no
+  `amsterdam9.docker-monitor` como se supuso al planificar el
+  Escenario 2 — el intento fallido sirvió, sin querer, como el propio
+  Escenario 3 (label inexistente).
+- **Validación real**: los 6 escenarios de `quickstart.md` contra
+  `launchagents_raw.txt` real y DeepSeek real — dos agentes reales
+  sanos (`amsterdam9.morning-report`, `amsterdam9.health.docker`),
+  ambos `no_diagnosticable` bien razonado (SC-004). Coste nuevo:
+  ~0,008 €.
+- **Veces que se corrigió el spec en lugar del código**: 0.
+- **Veces que se reescribió el spec entero**: 0.
+- **¿El spec sigue describiendo lo que hay al cerrar el hito?**: sí.
+- **Dato para el método — cierre del objetivo del proyecto**: con este
+  feature se generalizan los **9 de 9** orígenes de la Central de
+  Alarmas (contenedores, discos, HA, backups, relays, inventario,
+  hosts externos, hub de Beszel, agentes) al motor de diagnóstico de
+  episodios. Ningún origen queda pendiente. El Frente 2 del proyecto
+  (diagnóstico) queda completo en su generalización; la remediación
+  automática (Principios V-VI de la constitución) sigue fuera de
+  alcance, sin cambios respecto a lo decidido en la sesión de feature
+  006.
+
 ## 2026-08-12 — Feature 015, ciclo completo (specify → implement), octavo origen, el feature con menos infraestructura nueva de la serie
 
 **Mismo modo que 014**: "hazlo directamente todo tú", investigación
