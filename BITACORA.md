@@ -6,6 +6,82 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-12 — Feature 014, ciclo completo (specify → implement), séptimo origen, primera línea base con causa raíz ya conocida
+
+**Distinto de 011/012/013**: el usuario pidió explícitamente "hazlo
+todo esta vez" — sin pasar por `AskUserQuestion` para decidir quién
+ejecuta, y sin material de partida ya escrito en `BRIEFING.md` de una
+sesión anterior (a diferencia de 013). Toda la investigación previa
+(qué hosts, dónde vive la evidencia, qué línea base real existe) se
+hizo en esta misma sesión, contra el sistema real, antes de escribir
+el material de partida y arrancar `/speckit-specify`.
+
+- **Qué se pidió**: séptimo origen de la Central de Alarmas — los 2
+  hosts físicos externos que Beszel vigila (Uptime Kuma, AdGuard Home),
+  distinto del hub de Beszel en sí (origen #8, pendiente) y de los
+  relays `socat` (012, ya cerrado).
+- **El material de partida original resultó equivocado en un punto
+  central, corregido antes de escribir ningún código**: se asumió por
+  analogía con relays que el log del propio mecanismo
+  (`beszel-hosts-reader.log`) sería la evidencia histórica. Comprobado
+  en vivo (1.139 líneas): no lo es — solo registra si el ciclo completo
+  tuvo éxito o falló, nunca el estado por host. La evidencia real
+  estaba en otro sitio, dos niveles más adentro: la propia base de
+  datos del hub de Beszel (`system_stats`, con retención escalonada en
+  5 resoluciones, desde el 2026-07-14).
+- **Hallazgo inesperado que mejoró la validación del feature**:
+  investigando esa tabla se encontró un hueco idéntico de 8 días
+  (2026-07-30 a 2026-08-07) para los dos hosts — y coincide
+  exactamente con una avería ya documentada e independientemente
+  explicada en el `CLAUDE.md` general del homelab (routing de
+  contenedores roto tras un reinicio). Es la primera vez en el
+  proyecto que la línea base de validación tiene una causa raíz
+  externa ya conocida, no solo el hecho de que el episodio existió
+  (007, 012, 013) ni una limitación aceptada (009, 010, 011).
+- **`/speckit-analyze` encontró 1 hallazgo (MEDIUM), corregido antes de
+  implementar**: `_consultar_beszel_hub()` puede devolver `None`
+  (consulta fallida) o `[]` (consulta con éxito, sin filas) — dos casos
+  reales que `tasks.md`/`data-model.md` no distinguían y que, sin
+  corregir, habrían hecho fallar `_resumen_system_stats(None)` con un
+  `TypeError` real la primera vez que Docker no estuviera disponible.
+- **Decisión de diseño explícita, documentada antes de implementar**:
+  a diferencia de 012 (F1, corregido tras el hecho) y 013 (FR-010,
+  validado en código desde el diseño), la restricción de contenido de
+  este feature (FR-006a, nunca presentar la ausencia de muestras como
+  "caído confirmado") se dejó **solo en el prompt**, con la razón
+  escrita en `research.md` §8: es un juicio sobre la calidad del
+  razonamiento, no un hecho verificable por coincidencia de texto como
+  los otros dos casos — intentar detectarlo con una búsqueda de
+  palabras habría producido falsos rechazos de conclusiones legítimas.
+- **Tareas implementadas sin intervención: 22 de 23** — la única
+  excepción real, encontrada en la propia validación en vivo (T020, no
+  en el selftest): `congelar_host_externo_historico()` nunca añadía
+  `nombre`/`beszel_name` al resumen de evidencia, pese a que
+  `data-model.md` ya los documentaba desde el diseño. El primer
+  diagnóstico real contra la avería conocida lo delató solo: concluyó
+  honestamente que "ni siquiera se puede determinar qué componente...
+  estaba en episodio" — cierto, la evidencia serializada no llevaba el
+  nombre en ningún sitio. Corregido de inmediato (research.md §12),
+  con el mismo tratamiento que el hallazgo F1 de 012 y el U1 de 013:
+  documentado como hallazgo de validación, no parcheado en silencio.
+  Aparte, un error de test propio (buscar una frase partida por un
+  salto de línea del prompt) — mismo tipo de error ya visto en 012.
+- **La garantía central del feature (SC-005), verificada contra los 2
+  hosts reales dentro de la avería conocida**: los dos diagnósticos
+  concluyeron `no_diagnosticable` bien razonado, citando explícitamente
+  las alternativas que pide FR-006a (fallo del agente, fallo de red
+  hub↔host, hub sin registrar) en vez de afirmar "caído" sin más — sin
+  ningún síntoma de truncamiento esta vez, a diferencia de 012/013.
+- **Veces que se corrigió el spec en lugar del código**: 0.
+- **Veces que se reescribió el spec entero**: 0.
+- **¿El spec sigue describiendo lo que hay al cerrar el hito?**: sí.
+- **Validación real, con coste real**: los 7 escenarios de
+  `quickstart.md` contra `beszel_hosts.json` real, el hub de Beszel
+  real (vía `docker run`) y DeepSeek real. Coste nuevo: ~0,010 €.
+- **Dato para el método**: séptimo origen cerrado (contenedores,
+  discos, HA, backups, relays, inventario, hosts externos) de los 9 de
+  la Central de Alarmas — quedan 2: el hub de Beszel, agentes.
+
 ## 2026-08-12 — Feature 013, ciclo completo (specify → implement), sexto origen, primera vez que `diagnostico` importa un paquete hermano
 
 **Igual que 011/012**: Miquel pidió explícitamente "Claude ejecuta
