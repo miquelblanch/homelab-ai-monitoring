@@ -15,6 +15,8 @@ Uso:
     python3 -m diagnostico.cli congelar --relay-vivo NOMBRE
     python3 -m diagnostico.cli congelar --inventario-historico NOMBRE@EJECUCION_ID
     python3 -m diagnostico.cli congelar --inventario-vivo NOMBRE
+    python3 -m diagnostico.cli congelar --host-externo-historico NOMBRE@MOMENTO_ISO
+    python3 -m diagnostico.cli congelar --host-externo-vivo NOMBRE
     python3 -m diagnostico.cli diagnosticar EPISODIO_ID
     python3 -m diagnostico.cli mostrar EPISODIO_ID [--diagnostico DIAGNOSTICO_ID]
     python3 -m diagnostico.cli --selftest
@@ -115,6 +117,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="NOMBRE@EJECUCION_ID",
         help="Congela el hallazgo de un componente del inventario en una ejecución pasada concreta (feature 013).",
     )
+    origen.add_argument(
+        "--host-externo-vivo",
+        metavar="NOMBRE",
+        help="Congela el estado ya calculado de un host externo (feature 014). Entrecomillar si tiene espacios.",
+    )
+    origen.add_argument(
+        "--host-externo-historico",
+        metavar="NOMBRE@MOMENTO_ISO",
+        help="Congela la densidad de muestras de rendimiento de un host externo en ±24h de ese momento (feature 014).",
+    )
 
     diagnosticar_parser = subparsers.add_parser(
         "diagnosticar", help="Diagnostica un episodio ya congelado (FR-003 a FR-011)."
@@ -156,6 +168,8 @@ def main(argv: list[str] | None = None) -> int:
             relay_historico=args.relay_historico,
             inventario_vivo=args.inventario_vivo,
             inventario_historico=args.inventario_historico,
+            host_externo_vivo=args.host_externo_vivo,
+            host_externo_historico=args.host_externo_historico,
         )
     if args.comando == "diagnosticar":
         return _run_diagnosticar(args.episodio_id)
@@ -189,6 +203,8 @@ def _run_congelar(
     relay_historico: str | None,
     inventario_vivo: str | None,
     inventario_historico: str | None,
+    host_externo_vivo: str | None,
+    host_externo_historico: str | None,
 ) -> int:
     from datetime import datetime
 
@@ -251,7 +267,7 @@ def _run_congelar(
             elif inventario_vivo is not None:
                 episodio = evidencia.congelar_inventario_vivo(conn, inventario_vivo)
                 modo = "en vivo"
-            else:
+            elif inventario_historico is not None:
                 nombre, _, ejecucion_id_str = inventario_historico.rpartition("@")
                 if not nombre:
                     print(
@@ -262,6 +278,22 @@ def _run_congelar(
                     return 1
                 episodio = evidencia.congelar_inventario_historico(
                     conn, nombre, int(ejecucion_id_str)
+                )
+                modo = "histórico"
+            elif host_externo_vivo is not None:
+                episodio = evidencia.congelar_host_externo_vivo(conn, host_externo_vivo)
+                modo = "en vivo"
+            else:
+                nombre, _, momento_str = host_externo_historico.partition("@")
+                if not momento_str:
+                    print(
+                        f"--host-externo-historico espera NOMBRE@MOMENTO_ISO, no "
+                        f"{host_externo_historico!r}",
+                        file=sys.stderr,
+                    )
+                    return 1
+                episodio = evidencia.congelar_host_externo_historico(
+                    conn, nombre, datetime.fromisoformat(momento_str)
                 )
                 modo = "histórico"
     except ValueError as e:

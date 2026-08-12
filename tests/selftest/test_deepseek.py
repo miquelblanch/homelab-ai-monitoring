@@ -310,6 +310,104 @@ def test_diagnosticar_episodio_inventario_no_dispara_ningun_rechazo_de_otro_orig
     check("hipótesis persistida", len(hipotesis) == 1)
 
 
+def test_construir_prompt_host_externo_clausula_solo_en_diferido() -> None:
+    """feature 014: la cláusula FR-006a ("nunca presentes la ausencia
+    de muestras como caída confirmada") solo debe aparecer cuando la
+    evidencia es de diferido (host_externo_stats) — nunca cuando la
+    evidencia es en vivo (host_externo_actual, el estado ya
+    calculado)."""
+    snapshot_vivo = {"host_externo_actual": {"nombre": "Host de Uptime Kuma", "status": "arriba"}}
+    snapshot_diferido = {"host_externo_stats": {"total_muestras": 0, "primera": None, "ultima": None, "por_tipo": {}}}
+
+    prompt_vivo = deepseek.construir_prompt(snapshot_vivo, es_critico=False)
+    prompt_diferido = deepseek.construir_prompt(snapshot_diferido, es_critico=False)
+
+    check("prompt generalizado menciona host externo", "Beszel ya vigila" in prompt_vivo)
+    check(
+        "episodio en vivo (host_externo_actual) no lleva la cláusula FR-006a",
+        "NO presentes la ausencia" not in prompt_vivo,
+    )
+    check(
+        "episodio en diferido (host_externo_stats) sí lleva la cláusula FR-006a",
+        "NO presentes la ausencia" in prompt_diferido,
+    )
+    check(
+        "episodio de host externo no lleva la cláusula de crítico",
+        "NO propongas ninguna acción correctiva" not in prompt_vivo,
+    )
+
+
+def test_parsear_respuesta_host_externo_con_varias_hipotesis() -> None:
+    """SC-002, escrito desde el diseño (tasks.md T008) y no como
+    corrección posterior de /speckit-analyze — mismo criterio ya
+    aplicado en 013 tras el hallazgo recurrente C1 de 009-012."""
+    respuesta = _respuesta_deepseek({
+        "conclusion_tipo": "causa_probable",
+        "conclusion_texto": "el host dejó de reportar datos durante el routing roto de contenedores del 30 de julio al 7 de agosto",
+        "hipotesis": [
+            {"descripcion": "avería de red ya documentada (routing de contenedores roto)",
+             "comprobacion": "el hueco de muestras coincide exactamente con la ventana de la avería conocida",
+             "desenlace": "confirmada"},
+            {"descripcion": "el host físico estaba apagado",
+             "comprobacion": "no hay ninguna otra evidencia de un apagado físico, y la avería de red ya documentada explica el hueco",
+             "desenlace": "descartada"},
+        ],
+    })
+    parsed = deepseek.parsear_respuesta(respuesta)
+
+    check("respuesta de host externo bien formada se acepta", parsed is not None)
+    check("SC-002: más de una hipótesis registrada para un episodio de host externo", len(parsed["hipotesis"]) > 1)
+
+
+def test_diagnosticar_episodio_host_externo_no_dispara_ningun_rechazo_de_otro_origen() -> None:
+    """T015: confirma que ningún tratamiento especial de otro origen
+    (relay F1, HA) se dispara por error para origen="host_externo", y
+    que una respuesta que respeta FR-006a (describe ausencia de datos,
+    considera otras causas, sin afirmar "caído confirmado" sin más) se
+    acepta normalmente — mismo patrón que T014 de 013."""
+    import tempfile
+    from pathlib import Path
+
+    from diagnostico import evidencia, store
+    from diagnostico.model import Episodio
+
+    respuesta = _respuesta_deepseek({
+        "conclusion_tipo": "causa_probable",
+        "conclusion_texto": "ausencia de muestras coincidente con la avería de red ya documentada, no un apagado del host",
+        "hipotesis": [{"descripcion": "avería de red ya documentada", "comprobacion": "x",
+                       "desenlace": "confirmada"}],
+    })
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "diagnostico.db"
+        with store.connect(db) as conn:
+            episodio_id = store.insert_episodio(
+                conn,
+                Episodio(
+                    componente="Host de Uptime Kuma", origen="host_externo", es_critico=False,
+                    en_vivo=False, ventana_inicio="a", ventana_fin="b",
+                    snapshot_evidencia={
+                        "host_externo_actual": None,
+                        "host_externo_stats": {
+                            "total_muestras": 0, "primera": None, "ultima": None, "por_tipo": {},
+                        },
+                    },
+                ),
+            )
+            episodio = store.get_episodio(conn, episodio_id)
+
+            with patch.object(deepseek.bridge, "get_secret", return_value="fake-key-for-test"), \
+                 patch.object(deepseek, "llamar_deepseek", return_value=respuesta), \
+                 patch.object(evidencia, "listar_nombres_relay", return_value={"algún relay"}):
+                diagnostico, hipotesis = deepseek.diagnosticar_episodio(conn, episodio)
+
+    check(
+        "episodio de host externo se acepta normalmente, sin rechazo cruzado de otro origen",
+        diagnostico.conclusion_tipo == "causa_probable",
+    )
+    check("hipótesis persistida", len(hipotesis) == 1)
+
+
 def test_construir_prompt_ha_nunca_lleva_clausula_de_critico() -> None:
     """feature 010: es_critico siempre False para un episodio de HA
     (research.md §8 de specs/010-diagnostico-ha/) — mismo criterio que

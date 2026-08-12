@@ -1397,6 +1397,117 @@ adaptar):
 
 ---
 
+## Feature 014 — material de partida (2026-08-12): generalizar el diagnóstico a los hosts externos
+
+Con 013 cerrado, toca el séptimo origen de los 9: **hosts externos**
+(`014-diagnostico-hosts-externos`) — los dos hosts físicos que Beszel
+vigila además del propio Mac Mini: Uptime Kuma y AdGuard Home (DNS
+primario). Distinto del hub de Beszel en sí (origen #8, "¿el propio
+hub sigue reportando?") y de los relays `socat` (012, ya cerrado) —
+este origen es "¿el host físico que Beszel ya vigila está arriba?".
+
+**Investigación previa a especificar — con el homelab en vivo, no solo
+con el código.** Los dos hosts, sus nombres canónicos
+(`"Host de Uptime Kuma"`/`"Host de AdGuard Home (DNS primario)"`) y su
+mapeo a Beszel (`UptimeKuma`/`AdGuardHome`) ya están fijados en tres
+sitios que hablan del mismo componente con el mismo nombre:
+`scripts/beszel_hosts_monitor.py::HOSTS`, `app.py::EXTERNAL_HOSTS` y
+`inventory/sources.py` (categoría `host_externo`). El mecanismo ya
+calcula "arriba"/"caído"/"sin evidencia" — evidencia en vivo, no algo
+que este feature tenga que construir.
+
+**El hallazgo real que cambia el diseño de la parte en diferido**: se
+asumía, por analogía con relays (012), que `~/Library/Logs/
+beszel-hosts-reader.log` (el `StandardOutPath` del LaunchAgent, sin
+rotación desde el 2026-08-08) sería la fuente de evidencia histórica.
+Comprobado en vivo (1.139 líneas): **no lo es**. Cada línea dice solo
+`"N hosts escritos"` o `"consulta a Beszel incompleta o fallida"` — el
+propio `build_payload()` de `beszel_hosts_monitor.py` escribe "hosts
+escritos" en cuanto los dos hosts **aparecen** en la consulta,
+independientemente de si su `status` es `up` o `down`. El log no
+distingue nunca "los dos arriba" de "uno caído" — cero señal
+reconstruible por host, a diferencia del `ok/total` que sí tenía
+`dashboard-socat.log` para relays.
+
+**Dónde está la evidencia histórica real, en cambio**: la propia base
+de datos del hub de Beszel (`beszel_hub_data`, mismo volumen que ya
+lee `beszel_hosts_monitor.py` vía `docker run` de solo lectura, mismo
+patrón documentado en el `CLAUDE.md` general — montar el volumen,
+nunca `docker cp` del fichero suelto por el problema de WAL ya
+conocido). Más allá de `systems` (que solo trae el estado *actual*),
+la tabla `system_stats` sí tiene series temporales reales por sistema
+— comprobado en vivo para `UptimeKuma`: 352 muestras en 5 resoluciones
+de retención escalonada (`1m`: última hora, `10m`: últimas 12h,
+`20m`: último día, `120m`: últimos 5 días, `480m`: desde el
+2026-07-14, un mes completo) — mismo patrón de retención por niveles
+que ya usa `container_metrics`/`container_metrics_hourly` en este
+propio proyecto. La ausencia de muestras en una ventana es la señal de
+"host no reportaba" — no hay ningún campo explícito "caído", igual que
+`disk_metrics`/`container_metrics` tampoco tienen un booleano así y ya
+se interpretan por ausencia/anomalía en 007/009. `alerts`/
+`alerts_history` (las tablas que sí serían un booleano explícito de
+"caído") están vacías — Beszel no tiene alertas configuradas para
+estos sistemas, así que no son una fuente utilizable hoy.
+
+**Ninguna IP ni dato de topología nueva en `stats`** (comprobado en
+vivo): los campos son métricas de rendimiento (CPU, memoria, disco,
+red, temperatura) y un nombre de interfaz (`wlan0`) con contadores de
+bytes — ninguna dirección IP, a diferencia de `socat_relays.json` en
+012. Sin justificación nueva de Principio X que documentar.
+
+**Línea base real con causa raíz ya conocida — mejor que cualquier
+feature anterior de este proyecto.** Comprobado en vivo: `system_stats`
+tiene un hueco idéntico para los dos hosts, del 2026-07-30 a las
+00:00-01:40 hasta el 2026-08-07 a las 22:20 — ocho días sin ninguna
+muestra. No es una casualidad ni una incógnita: coincide exactamente
+con la avería ya documentada en el `CLAUDE.md` general del homelab
+("Beszel — routing roto tras reinicio", con su propio runbook en
+`docs/`) — los contenedores de este Mac perdieron la ruta a la LAN el
+30 de julio, y no se resolvió hasta los relays `socat` de Beszel del 7
+de agosto. A diferencia de los 49 reinicios de `beszel` (007, causa
+nunca encontrada) o de las brechas de inventario (013, causa "se
+introdujo la categoría, se corrigió con el feature siguiente"), aquí sí
+existe una causa raíz real e independientemente documentada contra la
+que medir si el diagnóstico llega a una conclusión razonable.
+
+**Alcance propuesto (borrador, para que Miquel decida en `clarify`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Diagnosticar en vivo el estado actual de uno de los 2 hosts, leyendo `beszel_hosts.json` con la misma política de frescura que ya usa el dashboard (900s, dato + latido) | Dentro |
+| Diagnosticar en diferido un momento pasado concreto, consultando `system_stats` del hub de Beszel para ese host en una ventana alrededor del momento — presencia/ausencia de muestras como señal, nunca un booleano inventado | Dentro |
+| Diagnosticar el propio hub de Beszel (`get_beszel_hub_status()`, si deja de reportar sobre *todos* sus sistemas a la vez) | Fuera — es el origen #8, con su propia investigación pendiente |
+| Cualquier acción correctiva sobre Beszel, sus hosts o sus relays | Fuera — solo diagnóstico |
+| Generalizar a los 2 orígenes restantes (hub de Beszel, agentes) | Fuera — uno a uno, misma razón que 009-013 |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El motor de diagnóstico de episodios (007, generalizado a discos en
+> 009, HA en 010, backups en 011, relays en 012 e inventario en 013)
+> hoy no sabe diagnosticar nada de los hosts físicos externos que
+> Beszel ya vigila — el host de Uptime Kuma y el de AdGuard Home (DNS
+> primario), la infraestructura de observabilidad del propio homelab,
+> distinta del Mac Mini. Quiero que también pueda diagnosticar
+> episodios de host externo: en vivo, leyendo el estado ya calculado
+> por el dashboard (arriba/caído/sin evidencia, con su misma política
+> de frescura); en diferido, señalando un momento pasado y consultando
+> directamente la base de datos del hub de Beszel para ver si ese host
+> seguía reportando datos de rendimiento en esa ventana — sin inventar
+> un estado "caído" que la propia evidencia no sostenga si solo hay
+> ausencia de muestras, nunca un registro explícito de caída. Mismo
+> rigor que los demás orígenes: varias hipótesis contrastadas, nunca
+> inventar una causa, mismo límite de gasto diario compartido. No
+> incluye diagnosticar el propio hub de Beszel (si deja de reportar
+> sobre todos sus sistemas a la vez) — eso es otro origen, con otra
+> investigación pendiente. No incluye ninguna acción correctiva sobre
+> Beszel ni sobre los hosts. No incluye generalizar a los 2 orígenes
+> restantes de la Central de Alarmas (el hub de Beszel, agentes). No
+> incluye mostrar este diagnóstico en el dashboard — sigue siendo solo
+> por línea de comandos.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que

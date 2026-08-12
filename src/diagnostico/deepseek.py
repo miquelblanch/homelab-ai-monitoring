@@ -41,16 +41,18 @@ estado inesperado, su recorder corrupto, o su API sin responder — un
 backup nocturno fallido o parcial (feature 011:
 specs/011-diagnostico-backups/) — el rsync general, o algún dump de base
 de datos —, un relay `socat` caído (feature 012:
-specs/012-diagnostico-relays/), o una brecha de cobertura del propio
+specs/012-diagnostico-relays/), una brecha de cobertura del propio
 inventario de monitorización (feature 013:
 specs/013-diagnostico-inventario/) — un componente que se quedó sin
 declaración de estado esperado, con la declaración caducada, sin
-vigilancia, o cuyo fallo no llegaría al dashboard. A continuación
-tienes la evidencia real congelada de un episodio (métricas, logs,
-estado del contenedor, del disco, de Home Assistant, del backup, del
-relay, o del inventario, según cuál sea). No tienes ninguna fuente de
-evidencia adicional a la que acudir — toda la evidencia disponible ya
-está aquí.
+vigilancia, o cuyo fallo no llegaría al dashboard —, o un host físico
+externo que Beszel ya vigila (feature 014:
+specs/014-diagnostico-hosts-externos/) — Uptime Kuma o AdGuard Home. A
+continuación tienes la evidencia real congelada de un episodio
+(métricas, logs, estado del contenedor, del disco, de Home Assistant,
+del backup, del relay, del inventario, o del host externo, según cuál
+sea). No tienes ninguna fuente de evidencia adicional a la que acudir
+— toda la evidencia disponible ya está aquí.
 
 Formula varias hipótesis de causa probable (más de una si la evidencia lo
 permite) y contrasta cada una contra la evidencia dada en este mismo
@@ -117,6 +119,21 @@ limitación real de la evidencia, no algo que puedas deducir.
 """
 
 
+_PROMPT_CLAUSULA_HOST_EXTERNO_STATS = """\
+
+El campo "host_externo_stats" resume la densidad de muestras de
+rendimiento que este host reportó al hub de Beszel en la ventana
+consultada — nunca un registro explícito de "caído". Si
+"total_muestras" es 0, es ausencia de datos comprobada, NO una prueba
+de que el host estuviera caído: puede deberse al host real caído, pero
+también a un fallo del propio agente de monitorización en ese host, a
+un problema de red entre el hub y el host, o a que el hub mismo dejara
+de registrar. NO presentes la ausencia de muestras como "caído
+confirmado" sin más — si la evidencia no permite descartar esas otras
+causas, dilo explícitamente en vez de forzar la más simple.
+"""
+
+
 def construir_prompt(snapshot: dict, es_critico: bool) -> str:
     prompt = _PROMPT_INSTRUCCIONES
     if es_critico:
@@ -125,6 +142,8 @@ def construir_prompt(snapshot: dict, es_critico: bool) -> str:
         prompt += _PROMPT_CLAUSULA_HA_ESTADO
     if snapshot.get("relay_agregado") is not None:
         prompt += _PROMPT_CLAUSULA_RELAY_AGREGADO
+    if snapshot.get("host_externo_stats") is not None:
+        prompt += _PROMPT_CLAUSULA_HOST_EXTERNO_STATS
     prompt += "\nEvidencia del episodio:\n"
     prompt += json.dumps(snapshot, ensure_ascii=False, default=str, indent=2)
     return prompt
