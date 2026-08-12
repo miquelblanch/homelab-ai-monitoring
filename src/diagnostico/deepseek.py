@@ -45,14 +45,16 @@ specs/012-diagnostico-relays/), una brecha de cobertura del propio
 inventario de monitorización (feature 013:
 specs/013-diagnostico-inventario/) — un componente que se quedó sin
 declaración de estado esperado, con la declaración caducada, sin
-vigilancia, o cuyo fallo no llegaría al dashboard —, o un host físico
+vigilancia, o cuyo fallo no llegaría al dashboard —, un host físico
 externo que Beszel ya vigila (feature 014:
-specs/014-diagnostico-hosts-externos/) — Uptime Kuma o AdGuard Home. A
-continuación tienes la evidencia real congelada de un episodio
-(métricas, logs, estado del contenedor, del disco, de Home Assistant,
-del backup, del relay, del inventario, o del host externo, según cuál
-sea). No tienes ninguna fuente de evidencia adicional a la que acudir
-— toda la evidencia disponible ya está aquí.
+specs/014-diagnostico-hosts-externos/) — Uptime Kuma o AdGuard Home —,
+o el propio hub de Beszel, si deja de vigilar todos sus sistemas a la
+vez (feature 015: specs/015-diagnostico-hub-beszel/). A continuación
+tienes la evidencia real congelada de un episodio (métricas, logs,
+estado del contenedor, del disco, de Home Assistant, del backup, del
+relay, del inventario, del host externo, o del hub, según cuál sea).
+No tienes ninguna fuente de evidencia adicional a la que acudir — toda
+la evidencia disponible ya está aquí.
 
 Formula varias hipótesis de causa probable (más de una si la evidencia lo
 permite) y contrasta cada una contra la evidencia dada en este mismo
@@ -134,6 +136,23 @@ causas, dilo explícitamente en vez de forzar la más simple.
 """
 
 
+_PROMPT_CLAUSULA_HUB_BESZEL_STATS = """\
+
+El campo "hub_beszel_stats" resume la densidad de muestras que reportó
+CADA sistema que el hub de Beszel tiene registrado, en la ventana
+consultada. Una ausencia PARCIAL (algunos sistemas con muestras, otros
+sin ninguna) nunca significa que el hub entero esté caído — puede
+deberse a un problema de ese sistema en concreto, ya cubierto por otro
+diagnóstico. Solo "todos_sin_muestras": true indica que NINGÚN sistema
+reportó nada en toda la ventana — y ni siquiera eso es, por sí solo,
+una prueba de que el hub esté caído: puede deberse también a un fallo
+de la consulta misma, a un problema de red más amplio, o a otra causa
+que la evidencia no permita descartar. NO presentes ninguna de las dos
+situaciones como "el hub está caído" sin más — sé explícito sobre qué
+sí y qué no demuestra esta evidencia.
+"""
+
+
 def construir_prompt(snapshot: dict, es_critico: bool) -> str:
     prompt = _PROMPT_INSTRUCCIONES
     if es_critico:
@@ -144,6 +163,8 @@ def construir_prompt(snapshot: dict, es_critico: bool) -> str:
         prompt += _PROMPT_CLAUSULA_RELAY_AGREGADO
     if snapshot.get("host_externo_stats") is not None:
         prompt += _PROMPT_CLAUSULA_HOST_EXTERNO_STATS
+    if snapshot.get("hub_beszel_stats") is not None:
+        prompt += _PROMPT_CLAUSULA_HUB_BESZEL_STATS
     prompt += "\nEvidencia del episodio:\n"
     prompt += json.dumps(snapshot, ensure_ascii=False, default=str, indent=2)
     return prompt

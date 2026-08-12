@@ -408,6 +408,100 @@ def test_diagnosticar_episodio_host_externo_no_dispara_ningun_rechazo_de_otro_or
     check("hipótesis persistida", len(hipotesis) == 1)
 
 
+def test_construir_prompt_hub_beszel_clausula_solo_en_diferido() -> None:
+    """feature 015: la cláusula FR-006a propia solo debe aparecer
+    cuando hay evidencia de diferido (hub_beszel_stats) — nunca en
+    vivo (hub_beszel_actual)."""
+    snapshot_vivo = {"hub_beszel_actual": {"systems": [], "sano": True}}
+    snapshot_diferido = {"hub_beszel_stats": {"por_sistema": {}, "todos_sin_muestras": True}}
+
+    prompt_vivo = deepseek.construir_prompt(snapshot_vivo, es_critico=False)
+    prompt_diferido = deepseek.construir_prompt(snapshot_diferido, es_critico=False)
+
+    check("prompt generalizado menciona el hub de Beszel", "hub de Beszel" in prompt_vivo)
+    check(
+        "episodio en vivo (hub_beszel_actual) no lleva la cláusula FR-006a propia",
+        "todos_sin_muestras" not in prompt_vivo,
+    )
+    check(
+        "episodio en diferido (hub_beszel_stats) sí lleva la cláusula FR-006a propia",
+        "todos_sin_muestras" in prompt_diferido,
+    )
+    check(
+        "episodio del hub no lleva la cláusula de crítico",
+        "NO propongas ninguna acción correctiva" not in prompt_vivo,
+    )
+
+
+def test_parsear_respuesta_hub_beszel_con_varias_hipotesis() -> None:
+    """SC-002, escrito desde el diseño — mismo criterio ya aplicado en
+    013/014 tras el hallazgo recurrente C1 de 009-012."""
+    respuesta = _respuesta_deepseek({
+        "conclusion_tipo": "causa_probable",
+        "conclusion_texto": "ningún sistema reportó en la ventana, coincidiendo con un fallo real del propio proceso del hub",
+        "hipotesis": [
+            {"descripcion": "el proceso del hub se detuvo",
+             "comprobacion": "todos_sin_muestras=true en toda la ventana, incluido Mac Mini Server (local, sin depender de red)",
+             "desenlace": "confirmada"},
+            {"descripcion": "fallo puntual de la consulta de este diagnóstico",
+             "comprobacion": "la consulta sí devolvió una lista con éxito, no None, así que no fue un fallo de la propia consulta",
+             "desenlace": "descartada"},
+        ],
+    })
+    parsed = deepseek.parsear_respuesta(respuesta)
+
+    check("respuesta del hub bien formada se acepta", parsed is not None)
+    check("SC-002: más de una hipótesis registrada para un episodio del hub", len(parsed["hipotesis"]) > 1)
+
+
+def test_diagnosticar_episodio_hub_beszel_no_dispara_ningun_rechazo_de_otro_origen() -> None:
+    """T014: confirma que ningún tratamiento especial de otro origen
+    se dispara por error para origen="hub_beszel" — mismo patrón que
+    T015 de 014."""
+    import tempfile
+    from pathlib import Path
+
+    from diagnostico import evidencia, store
+    from diagnostico.model import Episodio
+
+    respuesta = _respuesta_deepseek({
+        "conclusion_tipo": "no_diagnosticable",
+        "conclusion_texto": "ausencia parcial, no todos los sistemas a la vez — no permite confirmar ninguna causa",
+        "hipotesis": [{"descripcion": "un sistema concreto con problema", "comprobacion": "x",
+                       "desenlace": "sin_evidencia_suficiente"}],
+    })
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "diagnostico.db"
+        with store.connect(db) as conn:
+            episodio_id = store.insert_episodio(
+                conn,
+                Episodio(
+                    componente="2026-08-02T12:00:00", origen="hub_beszel", es_critico=False,
+                    en_vivo=False, ventana_inicio="a", ventana_fin="b",
+                    snapshot_evidencia={
+                        "hub_beszel_actual": None,
+                        "hub_beszel_stats": {
+                            "por_sistema": {"Mac Mini Server": {"total_muestras": 3, "primera": "x", "ultima": "y", "por_tipo": {}}},
+                            "todos_sin_muestras": False,
+                        },
+                    },
+                ),
+            )
+            episodio = store.get_episodio(conn, episodio_id)
+
+            with patch.object(deepseek.bridge, "get_secret", return_value="fake-key-for-test"), \
+                 patch.object(deepseek, "llamar_deepseek", return_value=respuesta), \
+                 patch.object(evidencia, "listar_nombres_relay", return_value={"algún relay"}):
+                diagnostico, hipotesis = deepseek.diagnosticar_episodio(conn, episodio)
+
+    check(
+        "episodio del hub se acepta normalmente, sin rechazo cruzado de otro origen",
+        diagnostico.conclusion_tipo == "no_diagnosticable",
+    )
+    check("hipótesis persistida", len(hipotesis) == 1)
+
+
 def test_construir_prompt_ha_nunca_lleva_clausula_de_critico() -> None:
     """feature 010: es_critico siempre False para un episodio de HA
     (research.md §8 de specs/010-diagnostico-ha/) — mismo criterio que

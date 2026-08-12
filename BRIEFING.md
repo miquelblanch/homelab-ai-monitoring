@@ -1508,6 +1508,91 @@ adaptar):
 
 ---
 
+## Feature 015 — material de partida (2026-08-12): generalizar el diagnóstico al hub de Beszel
+
+Con 014 cerrado, toca el octavo origen de los 9: **el propio hub de
+Beszel** (`015-diagnostico-hub-beszel`) — distinto de los hosts
+externos (014, ya cerrado): no es "¿está arriba el host X que Beszel
+vigila?", es "¿el hub de Beszel sigue vigilando *algo* de verdad, o se
+quedó colgado?".
+
+**El mecanismo ya existe y ya se investigó en el Frente 1**:
+`app.py::get_beszel_hub_status()` (feature 003) lee `hub_systems` de
+`beszel_hosts.json` — la antigüedad (`updated`) de **todos** los
+sistemas que Beszel tiene registrados, no solo los 2 hosts canónicos
+— y decide `sano=False` únicamente cuando **todos** superan
+`BESZEL_HOSTS_MAX_AGE_S` (900s) a la vez. Un solo sistema viejo no
+cuenta — eso ya lo cubre 014. Sin comprobación de latido aparte: si el
+propio script (`beszel_hosts_monitor.py`) deja de ejecutarse, los
+`updated` capturados quedan congelados y acaban superando el umbral
+igual, así que el mecanismo ya detecta ambos fallos (Beszel realmente
+colgado, o el propio lector sin ejecutarse) sin necesitar dos
+comprobaciones distintas.
+
+**El hallazgo real que cambia la validación de este feature, comprobado
+antes de escribir nada**: se esperaba poder reutilizar la misma avería
+real que validó 014 (routing de contenedores roto, 30 jul-7 ago). No
+sirve para este origen. Comprobado en vivo contra `system_stats`: el
+tercer sistema que vigila Beszel, `Mac Mini Server` —el propio Mac
+donde vive el hub—, **no tiene ningún hueco en todo el mes de
+retención** (90 muestras de `480m` seguidas, desde el 2026-07-13 sin
+ninguna interrupción >10h). Tiene sentido: el agente de Beszel en el
+propio Mac se comunica con el hub en local, sin pasar por el routing
+de contenedores que se rompió — la avería solo afectó a los 2 hosts
+remotos (Kuma, AdGuard), nunca a "todos los sistemas a la vez". Es
+decir: **durante toda la avería real de 014, el hub de Beszel según
+`get_beszel_hub_status()` estuvo `sano=True` en todo momento** — no es
+un ejemplo válido para este origen.
+
+**No existe, en la evidencia real disponible hoy, ningún episodio
+conocido de "hub realmente caído"** (mismo tipo de limitación ya
+aceptada en 009/010/011, no una excepción de este feature) — el
+propio `BRIEFING.md` ya documentaba que el síntoma original del Caso 3
+("Beszel no vigila bien lo que vigila", visto el 06-08) dejó de
+reproducirse antes de que existiera ningún mecanismo que lo
+investigara a fondo. La validación de este feature se apoyará en
+`--vivo` contra el estado sano actual, igual que 009/010/011 al
+arrancar.
+
+**Alcance propuesto (borrador, para que Miquel decida en `clarify`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Diagnosticar en vivo si el hub sigue vigilando algo (mismo cálculo que `get_beszel_hub_status()`, con la antigüedad real de cada sistema) | Dentro |
+| Diagnosticar en diferido un momento pasado, consultando `system_stats` de **todos** los sistemas del hub en una ventana — sin ninguna muestra en ninguno a la vez, nunca un booleano "caído" inventado si solo hay ausencia parcial | Dentro |
+| Sin identificador de componente — como los backups (011), solo hay un hub, `--hub-beszel-vivo`/`--hub-beszel-historico MOMENTO_ISO`, mismo patrón `--backup-vivo`/`--backup-historico` | Dentro |
+| Diagnosticar un host externo concreto (Kuma, AdGuard) | Fuera — es el origen #7 (014), ya cerrado |
+| Cualquier acción correctiva sobre Beszel | Fuera — solo diagnóstico |
+| Generalizar al último origen restante (agentes) | Fuera — uno a uno, misma razón que 009-014 |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El motor de diagnóstico de episodios (007, generalizado a discos en
+> 009, HA en 010, backups en 011, relays en 012, inventario en 013 y
+> hosts externos en 014) hoy no sabe diagnosticar nada del propio hub
+> de Beszel — la herramienta de observabilidad del homelab que vigila
+> el Mac Mini y los 2 hosts externos. Quiero que también pueda
+> diagnosticar si el hub sigue vigilando algo de verdad, distinto de
+> si un host concreto está caído (eso ya lo cubre el origen anterior):
+> en vivo, leyendo la antigüedad de todos los sistemas que el hub
+> tiene registrados y si todos a la vez superan el umbral de frescura
+> ya establecido; en diferido, señalando un momento pasado y
+> consultando si todos los sistemas del hub dejaron de reportar datos
+> de rendimiento a la vez en esa ventana — sin inventar un estado
+> "caído" que la propia evidencia no sostenga si solo hay ausencia
+> parcial. Mismo rigor que los demás orígenes: varias hipótesis
+> contrastadas, nunca inventar una causa, mismo límite de gasto diario
+> compartido. Como con los backups, no hace falta identificar ningún
+> componente — solo hay un hub. No incluye diagnosticar un host
+> externo concreto — eso es otro origen, ya cubierto. No incluye
+> ninguna acción correctiva sobre Beszel. No incluye generalizar al
+> último origen restante (agentes). No incluye mostrar este
+> diagnóstico en el dashboard — sigue siendo solo por línea de
+> comandos.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que
