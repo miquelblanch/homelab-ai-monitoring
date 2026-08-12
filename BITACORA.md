@@ -6,6 +6,70 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-12 — Feature 015, ciclo completo (specify → implement), octavo origen, el feature con menos infraestructura nueva de la serie
+
+**Mismo modo que 014**: "hazlo directamente todo tú", investigación
+propia en esta sesión, material de partida escrito antes de
+especificar.
+
+- **Qué se pidió**: octavo origen de la Central de Alarmas — el
+  propio hub de Beszel, distinto del host externo individual (014, ya
+  cerrado): no "¿está arriba el host X?", sino "¿el hub sigue
+  vigilando *algo* de verdad, o se quedó colgado?". El mecanismo ya
+  existía (`app.py::get_beszel_hub_status()`, feature 003) — sano solo
+  si no todos los sistemas registrados están caducados a la vez.
+- **Hallazgo real que cambió la validación esperada, comprobado antes
+  de escribir el spec**: se esperaba reutilizar la avería real que
+  validó 014 (routing de contenedores roto, 30 jul-7 ago). No sirve
+  para este origen — comprobado en vivo: `Mac Mini Server` (el tercer
+  sistema del hub, el propio Mac) no tuvo ningún hueco en todo el mes
+  de retención, porque su agente se comunica con el hub en local, sin
+  pasar por el routing que se rompió. Durante toda esa avería el hub
+  estuvo `sano=True` en todo momento — nunca fue un episodio de "hub
+  caído". Documentado explícitamente en spec.md/research.md como
+  ausencia de línea base real, mismo tratamiento honesto que 009/010/011
+  tuvieron al arrancar — no se inventó un caso sintético para
+  evitarlo.
+- **El feature con menos infraestructura genuinamente nueva de toda la
+  serie**: reutiliza tal cual, sin reimplementar nada, cuatro
+  constantes y tres funciones ya construidas en 014
+  (`BESZEL_HOSTS_JSON`, `BESZEL_HOSTS_MAX_AGE_S`, `BESZEL_HUB_VOLUME`,
+  `_docker_bin()`, `_a_utc_madrid()`, `_resumen_system_stats()`). Las
+  únicas piezas nuevas: `_hub_beszel_actual()` (mismo cálculo que
+  `get_beszel_hub_status()`, con datos que ya existían),
+  `_consultar_beszel_hub_todos_sistemas()` (la misma consulta de 014
+  con un `LEFT JOIN` en vez de filtrar por sistema) y
+  `_resumen_por_sistema()` (agrupa y reutiliza
+  `_resumen_system_stats()` por sistema). Sin identificador de
+  componente, mismo patrón que backup (011) — solo hay un hub.
+- **`/speckit-analyze` no encontró hallazgos propios de este feature**
+  — primera vez desde 011 sin ningún hallazgo nuevo que corregir antes
+  de implementar. Nota aparte, no de este feature: `constitution.md`
+  sigue diciendo "diagnóstico de Home Assistant y relays socat" está
+  "fuera de alcance en v1" pese a que 010/012 ya lo implementaron —
+  deuda de documentación acumulada, anotada sin tocarla.
+- **Tareas implementadas sin intervención: 21 de 21** — sin ningún
+  error de test propio ni hallazgo de implementación encontrado en la
+  validación en vivo, primera vez en la serie 012-015 sin ninguna
+  corrección de última hora.
+- **La garantía central del feature (SC-005), verificada sin línea
+  base real**: diagnosticar en diferido un momento dentro de la
+  avería de 014 confirmó exactamente lo esperado —
+  `todos_sin_muestras=false` (Mac Mini Server con 6 muestras reales,
+  los otros dos sistemas con 0) — y el diagnóstico distinguió
+  correctamente "el hub no está caído" de "esos dos sistemas
+  concretos tienen un problema", sin inventar una causa ni confundir
+  ausencia parcial con caída total.
+- **Veces que se corrigió el spec en lugar del código**: 0.
+- **Veces que se reescribió el spec entero**: 0.
+- **¿El spec sigue describiendo lo que hay al cerrar el hito?**: sí.
+- **Validación real, con coste real**: los 6 escenarios de
+  `quickstart.md` contra `beszel_hosts.json` real, el hub de Beszel
+  real y DeepSeek real. Coste nuevo: ~0,004 €.
+- **Dato para el método**: octavo origen cerrado (contenedores,
+  discos, HA, backups, relays, inventario, hosts externos, hub de
+  Beszel) de los 9 de la Central de Alarmas — queda 1: agentes.
+
 ## 2026-08-12 — Feature 014, ciclo completo (specify → implement), séptimo origen, primera línea base con causa raíz ya conocida
 
 **Distinto de 011/012/013**: el usuario pidió explícitamente "hazlo
