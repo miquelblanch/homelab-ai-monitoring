@@ -6,6 +6,75 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-12 — Feature 012, ciclo completo (specify → implement), primera línea base real desde el arranque
+
+**Igual que 011**: Miquel invocó él mismo `specify`/`plan`/`tasks`/
+`analyze` como comandos slash explícitos; el ciclo completo lo ejecutó
+Claude, incluido el `implement` final, a petición directa ("aplica las
+dos correcciones y directamente haz el implement").
+
+- **Qué se pidió**: quinto origen de la Central de Alarmas — relays
+  `socat` (9 relays HA + 2 de Beszel documentados en el `CLAUDE.md`
+  general, 10 vigilados de verdad en `socat_relays.json`). Decisión
+  explícita por `AskUserQuestion` antes de especificar: vivo con
+  detalle real por relay, diferido solo con evidencia agregada
+  (`ok/total`) — nunca cuál relay concreto, porque esa información no
+  se archivó nunca en `dashboard-socat.log` y no existe forma de
+  reconstruirla. Segunda decisión: enviar las IPs LAN reales a DeepSeek
+  tal cual, con justificación explícita en `plan.md` (mismo criterio ya
+  aplicado a otros orígenes, no una excepción nueva).
+- **`/speckit-analyze` encontró 2 hallazgos, uno HIGH, corregidos antes
+  de implementar**: F1 — FR-006 ("nunca nombres un relay concreto")
+  solo estaba pedido en el prompt, sin validación en código, el mismo
+  patrón de riesgo que ya causó el hallazgo I2 de 007 (dos hipótesis
+  `confirmada` a la vez pese a que el prompt pedía una sola). Corregido
+  con `listar_nombres_relay()` + `_menciona_relay_concreto()` +
+  rechazo en `diagnosticar_episodio()` — nueva tarea T011. C1 — el
+  hueco de SC-002 sin selftest de varias hipótesis para el origen
+  nuevo, la cuarta vez seguida (009, 010, 011, 012) que `/speckit-analyze`
+  encuentra el mismo hueco recurrente.
+- **Tareas implementadas sin intervención: 22 de 22** — pero dos
+  errores míos, no de las tareas, bloquearon el primer `--selftest`:
+  un test nuevo sin `from unittest.mock import patch` en las
+  importaciones, y una aserción que buscaba el texto literal "NUNCA
+  nombres" cuando la cláusula real dice "NO nombres" — los dos en
+  tests que yo mismo escribí en esta sesión, no en el código de
+  producción. Corregidos antes de la validación en vivo.
+- **La garantía central del feature (SC-005), verificada contra el
+  episodio real del 2026-05-24 (~10h de caída, 1 de 5 relays caído sin
+  interrupción)**: por primera vez en el proyecto, una línea base real
+  estuvo disponible desde el arranque del feature — 009/010/011
+  tuvieron que arrancar con la salvedad de "sin línea base real
+  todavía". El resultado fue honesto (SC-005 no exige más que eso) pero
+  revela una limitación real: de 4 llamadas reales a DeepSeek contra
+  ese episodio con `DIAGNOSTICO_DEEPSEEK_MAX_TOKENS` en su valor por
+  defecto (2000), 3 se truncaron (`finish_reason: "length"`) antes de
+  completar un JSON válido — el razonamiento del modelo para esta
+  evidencia agregada resultó sistemáticamente largo. La misma llamada
+  con el límite subido a 6000 sí completó una `causa_probable` bien
+  formada, con una única hipótesis `confirmada` y sin nombrar ningún
+  relay. No se tocó la constante compartida (mismo criterio ya fijado
+  en 010, research.md §10) — documentado como limitación conocida en
+  `research.md` §11, no como corrección, porque subirla afecta al coste
+  de los cinco orígenes por igual y es una decisión de Miquel.
+- **Veces que se corrigió el spec en lugar del código**: 0.
+- **Veces que se reescribió el spec entero**: 0.
+- **¿El spec sigue describiendo lo que hay al cerrar el hito?**: sí.
+- **Validación real, con coste real**: los 7 escenarios de
+  `quickstart.md` contra `socat_relays.json` y `dashboard-socat.log`
+  reales y DeepSeek real — 8 llamadas en total (4 sobre el episodio del
+  apagón, 1 sobre relay inexistente, 2 sobre relays sanos, 1 rechazada
+  por el cortacircuitos de gasto sin llegar a llamar). Coste nuevo:
+  ~0,013 €.
+- **Dato para el método**: quinto origen cerrado (contenedores, discos,
+  HA, backups, relays) de los 9 de la Central de Alarmas — quedan 4
+  (hosts externos, hub de Beszel, agentes, inventario). Primera vez que
+  el hallazgo de validación en vivo no es un bug de código sino una
+  limitación de coste/calidad ya conocida y ya decidida en una sesión
+  anterior — la disciplina de "no tocar sin decisión explícita" se
+  sostuvo bajo presión real (un episodio con datos, sin poder mostrar
+  una `causa_probable` limpia con la configuración por defecto).
+
 ## 2026-08-12 — Feature 011, ciclo completo (specify → implement), Miquel pide expresamente que ejecute cada paso
 
 **Distinta otra vez**: en 010 Miquel ejecutó `clarify`/`plan`/`tasks`/
