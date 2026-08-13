@@ -70,3 +70,13 @@ existente "Sistema & almacenamiento" (id `sistema`, visible por
 defecto) — encaja como housekeeping de disco/logs, sin crear una
 pestaña nueva para una única lista de 17 filas. Sin ningún botón ni
 control — FR-006, verificado por inspección del HTML/JS (SC-004).
+
+## §9 — Dos totales, pedidos por Miquel tras ver la lista completa
+
+**Decisión**: además de la fila por log, `escribir_snapshot()` calcula
+dos totales agregados —`total_activos_bytes` (suma de los 17 ficheros
+activos) y `total_con_rotaciones_bytes` (activos + todas sus
+rotaciones `.rotado-*` archivadas, research.md §8 de 019)— para que
+Miquel vea de un vistazo cuánto ocupa todo junto, sin sumar fila a
+fila. El dashboard los muestra en la cabecera de la sección, no como
+filas nuevas de la tabla.

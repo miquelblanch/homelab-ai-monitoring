@@ -23,6 +23,8 @@ final de `_run_comprobar()` (`cli.py`) — cada ejecución de `comprobar`
 {
   "generado_en": "2026-08-13T18:30:00+00:00",
   "modo_rotar_log": "manual",
+  "total_activos_bytes": 1783322,
+  "total_con_rotaciones_bytes": 88783828,
   "logs": [
     {"nombre": "health-docker", "tamano_bytes": 5032, "umbral_bytes": 10485760, "supera_umbral": false},
     {"nombre": "health-ha", "tamano_bytes": 0, "umbral_bytes": 10485760, "supera_umbral": false},
@@ -47,3 +49,7 @@ final de `_run_comprobar()` (`cli.py`) — cada ejecución de `comprobar`
    `try/except` que el resto de `app.py`.
 5. **Ningún campo de este JSON es escribible desde el dashboard** — de
    solo lectura en todo el ciclo (FR-006).
+6. **`total_activos_bytes` y `total_con_rotaciones_bytes` siempre
+   presentes y consistentes** — el segundo nunca es menor que el
+   primero; ambos se recalculan enteros en cada `comprobar`, nunca se
+   acumulan entre ejecuciones (research.md §9).

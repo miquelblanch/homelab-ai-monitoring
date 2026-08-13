@@ -242,23 +242,35 @@ def escribir_snapshot(conn: sqlite3.Connection) -> None:
     logs vigilados y el modo vigente de `rotar_log` — feature 020,
     para que el dashboard (sin acceso a REMEDIACION_LOGS_DIR) pueda
     leerlo sin montar ningún volumen nuevo (research.md §1/§2 de
-    specs/020-visor-remediacion/). Nunca lanza: un fallo de escritura
-    no debe tumbar `comprobar` (contracts/snapshot-json.md, garantía 1)."""
+    specs/020-visor-remediacion/). Incluye dos totales (research.md
+    §9): el de los ficheros activos, y el de activos + sus rotaciones
+    archivadas — para que Miquel vea de un vistazo cuánto ocupa todo
+    junto, no solo log a log. Nunca lanza: un fallo de escritura no
+    debe tumbar `comprobar` (contracts/snapshot-json.md, garantía 1)."""
     modo = get_modo(conn, TIPO_ACCION_ROTAR_LOG)
     logs = []
+    total_activos = 0
+    total_con_rotaciones = 0
     for nombre, nombre_fichero, umbral_bytes in LOGS_VIGILADOS:
         ruta = REMEDIACION_LOGS_DIR / nombre_fichero
         tamano = ruta.stat().st_size if ruta.exists() else 0
+        rotaciones_bytes = sum(
+            p.stat().st_size for p in ruta.parent.glob(f"{ruta.name}.rotado-*")
+        )
         logs.append({
             "nombre": nombre,
             "tamano_bytes": tamano,
             "umbral_bytes": umbral_bytes,
             "supera_umbral": tamano > umbral_bytes,
         })
+        total_activos += tamano
+        total_con_rotaciones += tamano + rotaciones_bytes
 
     payload = {
         "generado_en": datetime.now(timezone.utc).isoformat(),
         "modo_rotar_log": modo,
+        "total_activos_bytes": total_activos,
+        "total_con_rotaciones_bytes": total_con_rotaciones,
         "logs": logs,
     }
     try:

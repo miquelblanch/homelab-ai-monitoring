@@ -292,6 +292,7 @@ def test_escribir_snapshot_forma_correcta() -> None:
          tempfile.TemporaryDirectory() as snap_dir:
         _escribir(Path(logs_dir) / "health-docker.log", 11 * 1024 * 1024)
         # health-ha.log deliberadamente ausente — comprueba tamano_bytes=0
+        _escribir(Path(logs_dir) / "health-docker.log.rotado-20260101T000000", 5 * 1024 * 1024)
 
         lista = [
             ("health-docker", "health-docker.log", 10 * 1024 * 1024),
@@ -319,6 +320,15 @@ def test_escribir_snapshot_forma_correcta() -> None:
         check("health-ha ausente ⇒ tamano_bytes=0, supera_umbral=False",
               por_nombre["health-ha"]["tamano_bytes"] == 0
               and por_nombre["health-ha"]["supera_umbral"] is False)
+
+        check(
+            "total_activos_bytes suma solo los ficheros activos (11 MB + 0)",
+            payload["total_activos_bytes"] == 11 * 1024 * 1024,
+        )
+        check(
+            "total_con_rotaciones_bytes suma también la rotación archivada (11 + 5 MB)",
+            payload["total_con_rotaciones_bytes"] == 16 * 1024 * 1024,
+        )
 
 
 def test_escribir_snapshot_crea_el_directorio_si_hace_falta() -> None:

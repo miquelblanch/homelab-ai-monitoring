@@ -8,6 +8,8 @@
 |---|---|---|
 | `generado_en` | string (ISO 8601) | Momento de la última ejecución de `comprobar` — siempre visible en el dashboard (FR-002). |
 | `modo_rotar_log` | `"manual"` \| `"automatico"` | El modo vigente en el momento de generar el snapshot. |
+| `total_activos_bytes` | integer | Suma de `logs[].tamano_bytes` — solo los ficheros activos (research.md §9). |
+| `total_con_rotaciones_bytes` | integer | `total_activos_bytes` + la suma de todas las rotaciones `.rotado-*` archivadas de los 17 logs (research.md §9, §8 de 019). |
 | `logs` | lista de objetos | Uno por cada entrada de `LOGS_VIGILADOS` (17 hoy). |
 | `logs[].nombre` | string | Nombre corto (`"health-docker"`, `"dashboard-socat"`...). |
 | `logs[].tamano_bytes` | integer | `0` si el fichero no existe en el momento de comprobar (spec.md Edge Cases). |
