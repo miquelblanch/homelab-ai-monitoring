@@ -67,7 +67,9 @@ medir cómo de bien funciona el método para construirlo.
 
 ## Estado actual
 
-El proyecto tiene dos frentes, y solo el primero está cerrado.
+El proyecto tiene dos frentes. El primero está cerrado. Del segundo,
+la mitad de diagnóstico está cerrada; la mitad de remediación
+automática no ha empezado.
 
 ### Frente 1 — Cobertura sistemática (cerrado)
 
@@ -88,14 +90,36 @@ real:
 Resultado medible: la primera ejecución real encontró 385 brechas sobre
 830 componentes. Hoy, cero.
 
-### Frente 2 — Diagnóstico y remediación (sin empezar)
+### Frente 2 — Diagnóstico (cerrado, los 10 orígenes) y remediación (sin empezar)
 
-Un agente que, ante un fallo cuya causa **no** se conoce de antemano,
-formule hipótesis, las contraste contra datos reales, y para las que
-queden confirmadas con certeza y tengan una corrección segura y
-reversible, la aplique — documentado en los principios IV, V, VI, VII y
-VIII de la constitución. Todavía en fase de material de partida (ver la
-sección "Feature 007" de `BRIEFING.md`).
+**Diagnóstico**: ante un episodio de cualquiera de los 10 orígenes de
+alarma del homelab, un motor (`src/diagnostico/`) reúne su evidencia
+real, pide a DeepSeek varias hipótesis de causa probable ya
+contrastadas contra esa evidencia, y registra cada una — nunca inventa
+una causa sin respaldo (principios IV, VIII, XI). Doce features, del
+primer origen (contenedor) hasta el décimo (latido de monitores) y su
+superficie en el dashboard:
+
+| Feature | Qué cierra |
+|---|---|
+| [`007-diagnostico-episodios`](specs/007-diagnostico-episodios/) | El motor mismo — origen `contenedor`, hipótesis contrastadas contra métricas/logs/estado real, límite de gasto diario compartido |
+| [`008-visor-diagnosticos-correcciones`](specs/008-visor-diagnosticos-correcciones/) | Primer intento de mostrar el diagnóstico en el dashboard — una migración de esquema posterior lo dejó roto en producción durante dos días, sin que nadie lo notara; corregido en 018 |
+| [`009-diagnostico-discos`](specs/009-diagnostico-discos/) | Generaliza el motor a discos |
+| [`010-diagnostico-ha`](specs/010-diagnostico-ha/) | Generaliza a Home Assistant |
+| [`011-diagnostico-backups`](specs/011-diagnostico-backups/) | Generaliza al backup diario |
+| [`012-diagnostico-relays`](specs/012-diagnostico-relays/) | Generaliza a relays `socat` — en diferido solo con el recuento agregado al principio, sin poder nombrar cuál relay concreto |
+| [`013-diagnostico-inventario`](specs/013-diagnostico-inventario/) | Generaliza al propio inventario de cobertura (Frente 1) |
+| [`014-diagnostico-hosts-externos`](specs/014-diagnostico-hosts-externos/) | Generaliza a hosts físicos externos vigilados por Beszel |
+| [`015-diagnostico-hub-beszel`](specs/015-diagnostico-hub-beszel/) | Generaliza al propio hub de Beszel |
+| [`016-diagnostico-agentes`](specs/016-diagnostico-agentes/) | Generaliza a los LaunchAgents — único origen sin ningún modo diferido: no existe ninguna fuente histórica real que consultar |
+| [`017-diagnostico-latidos`](specs/017-diagnostico-latidos/) | Generaliza a los latidos de monitores — el mecanismo relacionado que había quedado fuera de 016 |
+| [`018-visor-diagnosticos-origenes`](specs/018-visor-diagnosticos-origenes/) | Generaliza el visor del dashboard a los 10 orígenes, corrige el bug de contenedor, y arregla hacia adelante la limitación de relay |
+
+**Remediación automática: sin empezar.** Ejecutar, dentro de una lista
+cerrada de acciones reversibles con rollback escrito, la corrección de
+una causa ya diagnosticada con certeza (Principios V y VI de la
+constitución). `docker_monitor.py` sigue siendo el único mecanismo que
+remedia algo hoy, y solo reinicia contenedores.
 
 ## Estructura del repo
 
@@ -106,16 +130,19 @@ METODO.md                          Reparto de trabajo y qué mide cada skill de 
 PRINCIPIOS.md                      Entrada original a speckit-constitution (histórico)
 BARRIDO-2026-08-0*.md              Barridos manuales que motivaron o validaron features
 BITACORA.md                        Una línea por sesión: qué midió el método
-specs/00N-*/                       Un directorio por feature: spec, plan, tasks, research...
-src/inventory/                     El inventario de cobertura (feature 001), ~2.100 líneas
-tests/selftest/                    Autocomprobaciones del inventario, sin tocar datos reales
+specs/0NN-*/                       Un directorio por feature: spec, plan, tasks, research...
+src/inventory/                     El inventario de cobertura (feature 001)
+src/diagnostico/                   El motor de diagnóstico (features 007-017), 10 orígenes
+tests/selftest/                    Autocomprobaciones del inventario y del motor de
+                                    diagnóstico — sin tocar datos reales ni llamar a DeepSeek
 ```
 
 ## El inventario de cobertura
 
-La pieza con código real de este repo. Recorre contenedores, integraciones
-de Home Assistant y la propia infraestructura de monitorización, y para
-cada componente responde tres preguntas: ¿tiene un estado esperado
+Una de las dos piezas con código real de este repo (la otra es el motor
+de diagnóstico, más abajo). Recorre contenedores, integraciones de Home
+Assistant y la propia infraestructura de monitorización, y para cada
+componente responde tres preguntas: ¿tiene un estado esperado
 declarado?, ¿se vigila de verdad?, ¿llegaría al dashboard si fallara?
 
 ```bash
@@ -130,6 +157,34 @@ PYTHONPATH=src python3 -m inventory.cli --gaps --no-telegram --no-dashboard
 PYTHONPATH=src python3 -m inventory.cli --selftest
 ```
 
+## El motor de diagnóstico
+
+Congela evidencia real de un episodio (métricas, logs, estado del
+componente — nunca inventada) para uno de los 10 orígenes, pide a
+DeepSeek varias hipótesis de causa probable ya contrastadas contra esa
+evidencia, y registra cada hipótesis y la conclusión final. Nunca
+ejecuta ni propone una acción correctiva — es estrictamente
+diagnóstico (Frente 2, mitad de remediación sin empezar). Un límite de
+gasto diario compartido protege las llamadas a DeepSeek entre los 10
+orígenes.
+
+```bash
+# Congelar evidencia real de un contenedor caído ahora mismo, y diagnosticarlo
+# — solo tiene sentido dentro del homelab real, con sus credenciales de DeepSeek
+PYTHONPATH=src python3 -m diagnostico.cli congelar --vivo CONTENEDOR
+PYTHONPATH=src python3 -m diagnostico.cli diagnosticar EPISODIO_ID
+PYTHONPATH=src python3 -m diagnostico.cli mostrar EPISODIO_ID
+
+# Cada uno de los otros 9 orígenes tiene su propio flag --ORIGEN-vivo,
+# y la mayoría también --ORIGEN-historico para un momento pasado concreto
+# (agente y latido son los únicos sin modo diferido — no existe ninguna
+# fuente histórica real que consultar, ver specs/016 y specs/017)
+
+# Autocomprobación de la lógica pura — no toca DeepSeek, Docker, HA ni
+# ninguna otra fuente real
+PYTHONPATH=src python3 -m diagnostico.cli --selftest
+```
+
 Fuera del homelab real (sin las credenciales ni los ficheros de datos
 privados) el `--selftest` es la única vía con sentido: valida la lógica de
 evaluación, identidad de componentes y comparación entre ejecuciones contra
@@ -140,9 +195,12 @@ datos sintéticos.
 Por diseño (ver "Decisiones ya tomadas" en `BRIEFING.md`): topología real
 de la red, credenciales, IPs, y cualquier dato ligado a la seguridad física
 de la vivienda. El código que corre dentro del homelab en sí —los scripts
-que Docker y Home Assistant ejecutan de verdad— vive en un repositorio
-privado aparte; este repo contiene el inventario de cobertura (público
-desde el diseño) y la documentación completa del método.
+que Docker y Home Assistant ejecutan de verdad, incluido el propio
+dashboard web (`homelab-dashboard/scripts/app.py`, que consume lo que
+persiste el motor de diagnóstico)— vive fuera de este repositorio, en el
+homelab real; este repo contiene el inventario de cobertura y el motor de
+diagnóstico (ambos públicos desde el diseño) y la documentación completa
+del método.
 
 ## Leer más
 
