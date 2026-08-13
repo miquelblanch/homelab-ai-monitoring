@@ -6,6 +6,78 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Cobertura de los dos candidatos diferidos: relays en `/tmp` y contenedores sin healthcheck
+
+Trabajo de infraestructura pura sobre el homelab privado (fuera de este
+repo — sin `spec.md`, sin código versionado aquí), motivado por los dos
+"candidatos futuros" que quedaron explícitos en la última corrección de
+`constitution.md` (1.2.3). No es un defecto del proyecto: es la propia
+constitución documentando dónde falta cobertura sistemática y
+resolviéndolo cuando llega el turno.
+
+**1. 16 relays `socat` escribían a `/tmp/*.log`, no a `~/Library/Logs/`.**
+Un log en `/tmp` no sobrevive un reinicio y no lo vigila nada — el mismo
+patrón de "sin estado esperado declarado" que motiva el Principio XIII.
+Migrados uno a uno (confirmado con Miquel: "uno a uno, verificando cada
+vez"), cada uno con `plutil -lint` → `bootout` → `bootstrap` →
+verificación de `launchctl list` + `lsof -i :<puerto>` + fichero de log
+nuevo. Cero fallos en los 16. Efecto secundario: al revisar los 16 salió
+que 3 relays `com.homeassistant.tapo-*` siguen vivos pese a que
+`tapo_control` está permanentemente deshabilitado, y los 2
+`amsterdam9.frigate.relay-*` siguen vivos pese a que Frigate está
+parado y en `NEVER_RESTART` — ninguno de los dos se ha tocado, quedan
+pendientes de decisión de Miquel.
+
+**2. 19 contenedores sin `HEALTHCHECK` → 17 resueltos (2 ya iban de un
+piloto previo: `mosquitto`, `syncthing`).** Cada uno con: comprobar
+herramientas disponibles dentro del contenedor (`curl`/`wget`/`nc`/CLI
+propio), diseñar un check real (nunca uno que solo confirme que el
+binario arranca), backup del `docker-compose.yml`, y para ficheros
+compartidos con contenedores CRÍTICOS (`homeassistant` con
+`mosquitto`/`matter-server`/`zigbee2mqtt`; `pangolin-server` con
+`gerbil`/`traefik`/`crowdsec`/`cloudflare-ddns`) recrear solo el
+servicio objetivo por nombre, nunca `docker compose up -d` a secas.
+Los 17: `beszel`, `beszel-agent`, `beszel-docker-proxy`, `zigbee2mqtt`,
+`matter-server`, `crowdsec`, `homelab-dashboard`,
+`homelab-dashboard-proxy`, `n8n`, `speedtest-tracker`, `audiobookshelf`,
+`qbittorrent`, `gbrain`, `minipaint`, `caldav-bridge` — 15 con
+healthcheck real. Los otros 2, deliberadamente sin healthcheck:
+
+- **`cloudflare-ddns`**: imagen `scratch`, sin shell, sin cliente HTTP,
+  sin subcomando de estado ni endpoint propio. Cualquier check habría
+  sido un placebo (`--version` solo confirma que el binario existe, no
+  que el proceso vivo funciona). Mejor ninguno que uno falso.
+- **`adguardhome-sync`**: tiene un endpoint documentado (`/healthz`),
+  pero está roto — ver más abajo.
+
+**Hallazgo real, no buscado: `adguardhome-sync` lleva roto desde al
+menos el 28-06-2026.** Al probar su `/healthz` (el endpoint que la
+propia documentación recomienda para Docker) la petición se quedaba
+colgada sin límite. Los logs explican por qué: cada sincronización
+(cada 15 min, 1.424 líneas de error en el log retenido) falla contra
+**los dos** extremos —
+  - Origen (Pi, `192.168.4.174`): `dial tcp ...:80: i/o timeout` — el
+    mismo patrón "los contenedores de este Mac no alcanzan la LAN" ya
+    documentado para Beszel el 2026-08-07, ahora confirmado en un
+    cuarto contenedor.
+  - Réplica (este Mac, `192.168.4.87`): `404 Not Found` en
+    `/control/status` — el contenedor sí llega al Mac (coherente con
+    el patrón conocido), pero el puerto/ruta configurados están mal.
+  `/healthz` internamente repite esa misma llamada rota, así que
+  cuelga en vez de responder — no es seguro apuntarle un healthcheck
+  hasta arreglar el problema de fondo. Ninguno de los dos fallos se ha
+  tocado — reportado a Miquel, pendiente de decisión.
+  Efecto lateral notado de paso: su `docker-compose.yml`
+  (`/Volumes/FastData/docker/adguard_home_sync/docker-compose.yml`)
+  tiene las credenciales de AdGuardHome en texto plano, en contra de
+  la regla 1 del `CLAUDE.md` general — tampoco tocado, solo anotado.
+- **Dato para el método**: un candidato "diferido" en la constitución
+  no es una tarea de checklist mecánica — investigar el segundo de los
+  dos (`adguardhome-sync`) sacó a la luz un bug real de sincronización
+  de seis semanas que nadie había visto, exactamente el tipo de hueco
+  que el Principio XIII pide cubrir. La cobertura sistemática encuentra
+  cosas que una lista de casos conocidos no habría encontrado.
+
 ## 2026-08-13 — Dos totales agregados en la sección de remediación (sin nuevo número de feature)
 
 Miquel pidió ver, además de la tabla por log, el total de los
