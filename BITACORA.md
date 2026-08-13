@@ -6,6 +6,51 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Feature 020, ciclo completo (specify → implement): primera superficie visual de remediación en el dashboard
+
+Miquel pidió ver la lista de logs vigilados con sus tamaños "en alguna
+pestaña del dashboard" — primera vez que el Frente 2/remediación tiene
+una superficie visual, no solo CLI.
+
+- **Hallazgo real que cambió la arquitectura, encontrado antes de
+  diseñar nada**: el contenedor `homelab-dashboard` no monta
+  `~/Library/Logs/` (comprobado en `docker-compose.yml`) — nunca ha
+  podido leer esos ficheros directamente. Confirmado con
+  `AskUserQuestion`: mismo patrón que ya usa el resto del homelab
+  (`dump_socat_status.py`, `docker_monitor.py`) — un proceso en el
+  host escribe un JSON a `/data` (ya montado), el dashboard solo lee.
+  Sin tocar `docker-compose.yml` ni recrear el contenedor por ese
+  motivo.
+- **Tres piezas nuevas**: `escribir_snapshot()` en
+  `src/remediacion/acciones.py` (este repo), conectada al final de
+  `comprobar`; un LaunchAgent nuevo,
+  `amsterdam9.remediacion.comprobar` (cada 15 min, `RunAtLoad=true`,
+  mismo patrón que el resto de `amsterdam9.*`); y una sección nueva de
+  solo lectura en `app.py`, dentro del panel "Sistema &
+  almacenamiento" — sin ningún botón ni control, verificado
+  explícitamente por inspección del HTML/JS servido (ni `button` ni
+  `onclick` en el bloque nuevo).
+- **Validado en vivo, extremo a extremo**: `comprobar` real escribe el
+  snapshot con los 17 logs; el dashboard reconstruido lo sirve en
+  `/api/data` (`remediacion.logs` con 17 entradas, `modo_rotar_log`,
+  `generado_en`); quitar el fichero a mano confirma que el resto del
+  dashboard sigue en `200` sin romperse (FR-007); cambiar el modo por
+  CLI a `automatico` y volver a `comprobar` lo refleja en el
+  dashboard en el siguiente ciclo, sin ningún control para cambiarlo
+  desde ahí. El LaunchAgent se cargó de verdad
+  (`launchctl bootstrap`) y su primera ejecución (`RunAtLoad`) ya
+  actualizó el snapshot — la periodicidad de 15 min en sí no se
+  esperó en vivo dentro de la sesión, es una propiedad estándar de
+  `StartInterval` de launchd, igual que el resto de monitores del
+  homelab.
+- **Selftest**: ~8 aserciones nuevas para `escribir_snapshot()`
+  (forma del JSON, log ausente ⇒ `tamano_bytes: 0`, nunca lanza ante
+  un fallo real de escritura), sin romper ninguna de las ~440
+  existentes.
+- **Con esto, remediación automática deja de ser solo-CLI** — mismo
+  hito que 008/018 marcaron para el motor de diagnóstico, ahora para
+  su remediación.
+
 ## 2026-08-13 — Amplía `LOGS_VIGILADOS` de 019 de 2 a 17 logs (sin nuevo número de feature)
 
 Al ver los tamaños reales de los logs recién rotados, Miquel preguntó
