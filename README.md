@@ -130,9 +130,14 @@ sustituye.
 | [`019-remediacion-automatica`](specs/019-remediacion-automatica/) | Primer tipo de acción real, `rotar_log` — rota (nunca borra) un log que supera un umbral, sobre una lista cerrada de 17 logs reales, con interruptor manual/automático por tipo de acción que Miquel controla siempre desde el CLI. Retención de 4 rotaciones archivadas por log |
 | [`020-visor-remediacion`](specs/020-visor-remediacion/) | Primera superficie visual del Frente 2 de remediación — sección de solo lectura en el dashboard con el estado de los 17 logs y sus totales, sin ningún control de acción |
 
-Quedan fuera todavía, documentados como candidatos futuros y no como
-una omisión: los relays que escriben su log en `/tmp`, y dar cobertura
-de acciones a los contenedores sin healthcheck.
+Los dos candidatos futuros que quedaban documentados aquí —relays que
+escribían su log en `/tmp`, y contenedores sin healthcheck— se
+resolvieron el 2026-08-13, pero como intervención directa sobre el
+homelab (16 relays migrados, 15 contenedores con healthcheck nuevo),
+no como un nuevo tipo de acción de este proyecto: ninguno de los dos
+encajaba bien en el modelo de "acción reversible puntual" de
+`rotar_log`. `remediación automática` sigue teniendo un único tipo de
+acción real.
 
 ## Estructura del repo
 

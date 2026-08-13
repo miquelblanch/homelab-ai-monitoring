@@ -1,19 +1,18 @@
 <!--
 ## Sync Impact Report
 
-**Version change**: 1.2.2 → 1.2.3
+**Version change**: 1.2.3 → 1.2.4
 **Principles added**: None
 **Principles modified**: None (Principios I–XIII sin cambios)
 **Sections added**: None
 **Sections removed**: N/A
-**Sections clarified**: "Alcance y Límites" decía que la remediación automática estaba
-"fuera de alcance" y que "solo docker_monitor.py remedia hoy, y solo contenedores" — falso
-desde los features 019/020 (specs/019-remediacion-automatica/,
-specs/020-visor-remediacion/): rotar_log ya ejecuta acciones reversibles reales sobre
-logs del homelab, con interruptor manual/automático por tipo de acción, y su estado es
-visible en el dashboard. Corregido para reflejar que remediación automática ya tiene su
-primer tipo de acción real, no que sigue sin empezar. Deuda detectada revisando el estado
-del proyecto a fondo el 2026-08-13.
+**Sections clarified**: "Alcance y Límites" seguía listando los relays con log en `/tmp`
+y los contenedores sin healthcheck como "candidatos futuros" pendientes — ambos se
+resolvieron el mismo día (2026-08-13) mediante intervención directa sobre el homelab
+privado (16 relays migrados, 15 healthchecks añadidos), fuera del ciclo de specs de este
+repo. Corregido para no dejar constancia de un candidato ya resuelto. También se corrigió
+el pie de versión (`1.2.0`/`2026-08-07`, desincronizado desde hacía dos amends) para que
+coincida con este Sync Impact Report.
 **Deferred TODOs**: None
 -->
 
@@ -183,11 +182,14 @@ homelab, con interruptor manual/automático por tipo de acción controlado siemp
 Miquel (nunca autopromovido — Principio VII) y rollback escrito y verificado (Principio
 VI). El feature 020 (`specs/020-visor-remediacion/`) hizo visible su estado en el
 dashboard, de solo lectura. `docker_monitor.py` sigue siendo, además, el único mecanismo
-que remedia contenedores — `rotar_log` no lo sustituye ni lo toca (Principio VII). Quedan
-fuera de alcance, documentados explícitamente como candidatos futuros y no como una
-omisión: los relays que escriben su log en `/tmp`, y dar cobertura de acciones a los
-contenedores sin healthcheck (que además no encaja bien en el modelo de "acción reversible
-puntual").
+que remedia contenedores — `rotar_log` no lo sustituye ni lo toca (Principio VII).
+
+Los dos candidatos que quedaban aquí como fuera de alcance —relays que escribían su log en
+`/tmp`, y contenedores sin healthcheck— se resolvieron el 2026-08-13 mediante intervención
+directa sobre el homelab, no como un nuevo tipo de acción de esta capa: ninguno de los dos
+encaja bien en el modelo de "acción reversible puntual" de `rotar_log`. `remediación
+automática` sigue teniendo un único tipo de acción real; no hay ningún candidato pendiente
+documentado en este momento.
 
 **No reemplaza**: `docker_monitor.py` y su ciclo de remediación automática. El agente se
 añade como capa de diagnóstico.
@@ -211,4 +213,4 @@ principio, sobra. Si un principio no tiene componente, falta.
 cada ciclo de implementación. La línea base (Principio IX) DEBE actualizarse cuando se
 establezca un nuevo conjunto de evaluación validado.
 
-**Version**: 1.2.0 | **Ratified**: 2026-08-02 | **Last Amended**: 2026-08-07
+**Version**: 1.2.4 | **Ratified**: 2026-08-02 | **Last Amended**: 2026-08-13

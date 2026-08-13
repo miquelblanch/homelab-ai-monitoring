@@ -6,6 +6,38 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Auditoría de staleness tras cerrar los dos candidatos diferidos
+
+Miquel preguntó "¿y ahora qué falta?" tras el trabajo de relays/healthchecks
+y la eliminación de `adguardhome-sync`. Como en las veces anteriores esta
+misma sesión, la respuesta correcta salió de investigar de cero, no de la
+memoria de la conversación — y otra vez salió staleness real:
+
+- **`constitution.md` llevaba dos amends con el pie de versión
+  desincronizado**: el Sync Impact Report decía `1.2.2 → 1.2.3`, pero el pie
+  del documento seguía en `1.2.0 | Last Amended: 2026-08-07`. Corregido a
+  `1.2.4` (con este mismo cambio) y sincronizado.
+- **"Alcance y Límites" de la constitución y el cierre de `README.md`**
+  seguían listando los relays en `/tmp` y los contenedores sin healthcheck
+  como "candidatos futuros" — ya resueltos el mismo día, ver la entrada
+  anterior. Corregidos ambos para no dejar constancia de un candidato ya
+  cerrado, aclarando que se resolvió por intervención directa sobre el
+  homelab, no como un nuevo tipo de acción de `remediación automática`.
+- **`CLAUDE.md` de este repo seguía diciendo "sin investigar todavía"** para
+  los casos 3 y 4 de los cuatro que motivaron el proyecto (Beszel no vigila
+  bien sus 3 sistemas; recordatorios de Nextcloud que no llegan) — ambos
+  quedaron cerrados por `specs/003-latidos-beszel-calendario/` (implementado
+  el 09-08, después de investigarse en `BARRIDO-2026-08-07.md`), pero la
+  frase motivadora original nunca se actualizó tras cerrar el feature.
+  Corregida para apuntar a la investigación y al feature que los cerró.
+- **Dato para el método**: la staleness no aparece solo en los documentos
+  que se tocan al cerrar un feature (`constitution.md`, `README.md`) — el
+  `CLAUDE.md` de arranque, que se lee una vez al principio y rara vez se
+  vuelve a abrir, llevaba semanas describiendo como abiertos dos casos ya
+  cerrados. Cualquier fichero que declare "esto está sin resolver" es una
+  promesa que hay que revisar cuando lo que describe deja de ser cierto,
+  no solo cuando se toca por otro motivo.
+
 ## 2026-08-13 — Cobertura de los dos candidatos diferidos: relays en `/tmp` y contenedores sin healthcheck
 
 Trabajo de infraestructura pura sobre el homelab privado (fuera de este

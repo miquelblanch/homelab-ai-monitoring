@@ -46,9 +46,17 @@ sistémico (ver `BRIEFING.md` para el detalle de cada uno):
 2. El barrido del 01-08-2026: 11 problemas reales, 0 visibles en el dashboard.
    Causas conocidas y escritas en `BARRIDO-2026-08-01.md`.
 3. Beszel —la propia herramienta de monitorización— no vigila bien 2 de los 3
-   sistemas que tiene a su cargo. Sin investigar todavía.
+   sistemas que tiene a su cargo. Investigado en `BARRIDO-2026-08-07.md`: el
+   síntoma original ya no se reproducía, pero quedaba un hueco real (si el
+   hub deja de reportar para los tres a la vez, nada lo distingue de "los
+   tres están bien"). Cerrado por `specs/003-latidos-beszel-calendario/`
+   (User Story 2): latido propio derivado de la antigüedad de `updated` de
+   los tres sistemas, no solo su `status`.
 4. Los recordatorios de Tareas/Calendario de Nextcloud no llegan por Telegram.
-   Sin investigar todavía.
+   Investigado en `BARRIDO-2026-08-07.md`: encontrado y arreglado un fallo
+   silencioso real en `recordatorios_hoy()` (un `""` que significaba dos
+   cosas distintas). Cerrado por `specs/003-latidos-beszel-calendario/`
+   (User Story 1): latido propio de `bautista-calendar.sh`.
 
 ## Datos disponibles para el agente
 
