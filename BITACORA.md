@@ -6,6 +6,82 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Feature 018, ciclo completo (specify → implement): generaliza el visor del dashboard a los 9 orígenes restantes — y encuentra un bug crítico en producción
+
+Mismo modo que 013-017: investigación propia en esta sesión, material
+de partida escrito antes de especificar. Punto 2 del listado de "qué
+falta" de esta misma sesión, tras cerrar la deuda documental (punto 4)
+y los latidos de monitores (punto 3, feature 017).
+
+- **Qué se pidió**: extender el visor de diagnósticos del dashboard
+  (feature 008, solo mostraba `contenedor`) a los otros 9 orígenes ya
+  generalizados en `src/diagnostico/` (007-017).
+- **Hallazgo crítico, encontrado investigando antes de especificar**:
+  el visor de `contenedor` estaba **roto en producción desde hacía dos
+  días**. `get_diagnostico_para_alarma()` seguía consultando `WHERE
+  contenedor = ?`, columna que el feature 009 renombró a
+  `componente`+`origen` el mismo día 2026-08-11, después de 008.
+  Comprobado ejecutando la consulta real contra `diagnostico.db`:
+  `Error: in prepare, no such column: contenedor`. El fallo se traga
+  en silencio (a propósito, para no tumbar `/api/data`), así que nadie
+  lo había notado — violación activa del Principio XII (Precisión del
+  Dashboard, NO NEGOCIABLE). Se arregló como User Story 1 (P1), antes
+  de generalizar nada.
+- **Complejidad real encontrada al mapear los 10 orígenes de alarma
+  contra `diagnostico.db`**: ni la identidad de emparejamiento ni la
+  disponibilidad de una ventana temporal son uniformes. Cuatro
+  orígenes usan un identificador real distinto de lo que muestra la
+  alarma (HA: `cid` no `label`; latido: `job` no `label`; agente:
+  `label` completo no `short`; host externo: nombre canónico no el de
+  pantalla). Dos orígenes (`backup`, `hub_beszel`) no tienen ninguna
+  identidad estable — su `componente` es el momento del propio
+  diagnóstico. Ocho de los diez no tienen ningún ancla temporal real
+  en la alarma (solo `contenedor` y `ha` la tienen). `relay` solo
+  puede emparejar diagnósticos hechos en vivo por nombre — en
+  diferido, la evidencia agregada nunca identifica cuál relay
+  concreto, limitación real del motor (012), no de este feature. Y los
+  Crons de Hermes, que comparten la alarma visual `agentes` con los
+  LaunchAgents, quedan fuera de alcance: ningún origen del motor los
+  cubre.
+- **Decisión de diseño**: una única función generalizada,
+  `get_diagnostico_para_origen(origen, identidad, down_since=None)`,
+  sustituye a la rota `get_diagnostico_para_alarma()` — tres ramas
+  según haya o no identidad y ancla temporal.
+- **Analyze**: pase limpio (comprobación cruzada manual de que los
+  campos "antigüedad" de backup/monitores/beszel_hub son duraciones,
+  no momentos ISO, confirmando que no debían tratarse como
+  `down_since`).
+- **Bug real encontrado en la validación en vivo, no en analyze**: la
+  primera implementación de `_diagnostico_episodio_mas_reciente()`
+  devolvía la lista entera de `_diagnostico_db_query()` en vez de su
+  primer elemento — `TypeError: list indices must be integers` al
+  probar el primer caso real (contenedor). Corregido antes de seguir
+  validando el resto.
+- **Validación en vivo, contra el dashboard real reconstruido**: los
+  10 orígenes probados uno a uno contra episodios reales
+  (`docker exec homelab-dashboard python3 -c ...`) — contenedor
+  (bug corregido), disco, latido, HA (por `cid`), backup, hub_beszel,
+  agente (por `label` completo), host externo (nombre canónico),
+  inventario, y la limitación de relay confirmada explícitamente (un
+  episodio en diferido no empareja con un nombre de relay). Contrato
+  verificado contra `/api/data` real: 0 alarmas sin la clave
+  `diagnostico`, 0 agrupadas con diagnóstico, 0 crons con diagnóstico.
+  Contenedor sano tras la reconstrucción (`docker compose up -d
+  --build`), 0 huérfanos en `diagnostico.db` (24 episodios, 35
+  diagnósticos tras la sesión).
+- **Riesgo operativo real, distinto de cualquier feature anterior**:
+  todo el código vive en `homelab-dashboard/scripts/app.py`, **sin
+  control de versiones** — se hizo copia de seguridad con marca de
+  tiempo antes de editar, y verificación de salud del contenedor
+  (`docker ps` + `curl /api/data`) tras cada reconstrucción.
+- **Dato para el método**: la tercera vez consecutiva (tras 016, 017)
+  que la investigación previa a especificar encuentra algo que nadie
+  sabía — esta vez no una limitación documentable, sino una regresión
+  activa en producción. Vale la pena, antes de generalizar cualquier
+  pieza ya construida, comprobar que la pieza original todavía
+  funciona contra el estado real del sistema, no solo contra lo que
+  dice su propia documentación.
+
 ## 2026-08-13 — Feature 017, ciclo completo (specify → implement): décimo y último mecanismo relacionado — cierra los latidos de monitores
 
 Mismo modo que 014/015/016: investigación propia en esta sesión,
