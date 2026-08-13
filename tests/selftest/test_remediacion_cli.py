@@ -22,12 +22,16 @@ def _escribir(ruta: Path, tamano_bytes: int) -> None:
 def test_cli_comprobar_y_pendientes() -> None:
     with tempfile.TemporaryDirectory() as logs_dir, tempfile.TemporaryDirectory() as db_dir:
         _escribir(Path(logs_dir) / "health-docker.log", 11 * 1024 * 1024)
+        snap_path = Path(db_dir) / "remediacion_estado.json"
 
         with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(logs_dir)), \
              patch.object(acciones, "LOGS_VIGILADOS", [("health-docker", "health-docker.log", 10 * 1024 * 1024)]), \
+             patch.object(acciones, "_snapshot_path", return_value=snap_path), \
              patch.object(store, "db_path", return_value=_db(db_dir)):
             codigo_comprobar = cli.main(["comprobar"])
             codigo_pendientes = cli.main(["pendientes"])
+
+        check("comprobar por CLI nunca toca el snapshot real de producción", snap_path.exists())
 
         check("cli comprobar termina en 0", codigo_comprobar == 0)
         check("cli pendientes termina en 0", codigo_pendientes == 0)
@@ -60,6 +64,7 @@ def test_cli_aprobar_rechazar_deshacer() -> None:
 
         with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(logs_dir)), \
              patch.object(acciones, "LOGS_VIGILADOS", [("health-docker", "health-docker.log", 10 * 1024 * 1024)]), \
+             patch.object(acciones, "_snapshot_path", return_value=Path(db_dir) / "remediacion_estado.json"), \
              patch.object(store, "db_path", return_value=_db(db_dir)):
             cli.main(["comprobar"])
             with store.connect(_db(db_dir)) as conn:
