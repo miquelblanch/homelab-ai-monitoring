@@ -6,6 +6,38 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Retención de rotaciones: 4 como mucho (sin nuevo número de feature)
+
+Al usar el visor nuevo del dashboard, Miquel notó que los dos logs ya
+rotados dejaban su histórico visible y preguntó qué era — llevó a
+descubrir que nada purgaba nunca los ficheros `.rotado-*`.
+
+- **Hallazgo real**: cada rotación se archiva para siempre —
+  `~/Library/Logs/` acumularía un fichero más por cada rotación de
+  cada uno de los 17 logs, sin ningún límite, indefinidamente.
+- **Decisión, confirmada con Miquel**: `ROTACIONES_A_CONSERVAR = 4` —
+  mismo número que ya usa `rotate_hermes_logs.sh` para el otro
+  mecanismo de rotación del homelab, por consistencia. Con el ritmo
+  de crecimiento real observado, cubre varios meses; en el peor caso
+  (los 17 logs rotando justo al umbral) son ~680 MB, nada frente a
+  los TBs libres.
+- **Efecto secundario real, encontrado y corregido en el mismo
+  cambio**: `resolver_deshacer()` no comprobaba si el fichero rotado
+  seguía existiendo — con la purga nueva, deshacer un intento de más
+  de 4 rotaciones atrás habría dejado escapar un `OSError` crudo sin
+  explicar. Corregido para fallar con un mensaje claro
+  (`ValueError`) antes de intentar el `rename()`.
+- **Un fallo real en mi propio test durante la primera pasada**: el
+  valor esperado de una aserción tenía un error de copiado (le
+  faltaba el sufijo de hora a la marca de tiempo) — el código de
+  retención era correcto desde el principio; el test comparaba mal.
+  Corregido tras verificar el comportamiento real por separado antes
+  de tocar nada más.
+- **Sin ciclo SDD nuevo**: extensión de la feature 019 ya cerrada
+  (documentada como research.md §8 de esa misma feature), no una
+  capacidad nueva. Selftest: 5 aserciones nuevas, ~442 en total, todas
+  en verde.
+
 ## 2026-08-13 — Feature 020, ciclo completo (specify → implement): primera superficie visual de remediación en el dashboard
 
 Miquel pidió ver la lista de logs vigilados con sus tamaños "en alguna
