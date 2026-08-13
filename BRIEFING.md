@@ -1687,6 +1687,96 @@ adaptar):
 
 ---
 
+## Feature 017 — material de partida (2026-08-13): generalizar el diagnóstico a los latidos de monitores
+
+Con los 9 orígenes de la Central de Alarmas cerrados en 016, queda un
+décimo mecanismo relacionado pero distinto, dejado fuera explícitamente
+en esa misma sesión: **`Latidos de monitores`** (`get_monitor_heartbeats()`
+en `app.py`) — si un monitor (`docker_monitor.py`, `ha_monitor.py`, etc.)
+sigue vivo no según si su LaunchAgent está cargado (eso ya lo cubre 016),
+sino según si ha completado un ciclo hace poco. Cierra un caso distinto:
+un LaunchAgent cargado pero cuyo proceso se cuelga en silencio sin
+crashear.
+
+**Cómo funciona, comprobado en vivo:**
+
+- `heartbeat.py` (`/Volumes/FastData/homelab/scripts/heartbeat.py`) escribe
+  un fichero `<job>.json` por tarea en `/Volumes/FastData/homelab/data/heartbeats/`
+  cada vez que esa tarea completa un ciclo: `{job, timestamp, epoch, status,
+  detail}`. Cada escritura **sobreescribe** el fichero anterior — mismo
+  patrón sin historial que 016 (LaunchAgents), no un patrón nuevo.
+- `app.py::get_monitor_heartbeats()` (líneas 714-732) lee esos ficheros
+  para una lista fija de 8 jobs (`MONITOR_JOBS`, línea 54) y calcula
+  `ok = edad_del_latido <= max_age_s` por job — el mismo cálculo que ya
+  alimenta la Central de Alarmas (`add("monitores", "monitor_sin_latido",
+  ...)`, línea 1108-1113): esta pieza **ya genera alarmas** en el
+  dashboard hoy, lo que falta es que el motor de diagnóstico sepa
+  explicar el porqué de una.
+- Sin persistencia histórica: no hay tabla en `homelab.db` ni ninguna otra
+  base de datos con el histórico de latidos — mismo caso estructural que
+  016, este origen tampoco tendrá modo diferido.
+
+**Hallazgo real no trivial, encontrado al comparar el código con los
+datos en disco (2026-08-13), antes de especificar:** existen **dos
+listas independientes** de "qué jobs tienen latido", y no coinciden:
+
+| Job | En `MONITOR_JOBS` (`app.py`, alimenta el dashboard y las alarmas) | En `DEFAULT_MANIFEST` (`heartbeat.py`, alimenta `heartbeat.py --report` y el informe de Telegram) |
+|---|---|---|
+| `docker-monitor`, `ha-monitor`, `dns-pi-monitor`, `verify-backups`, `inventario-cobertura` | Sí | Sí |
+| `telegram-monitor`, `beszel-hosts`, `bautista-calendar` | Sí | **No** |
+| `metrics-retention`, `immich-album-sync` | **No** | Sí |
+
+Los tres jobs ausentes de `DEFAULT_MANIFEST` sí escriben su latido
+(comprobado: `telegram-monitor.json` y `beszel-hosts.json` existen y se
+actualizan en disco), pero `heartbeat.py::report()` solo itera sobre
+`load_manifest().items()` — así que esos tres son **invisibles** para
+`heartbeat.py --report` y para la línea "💓 Latidos" del informe de las
+09:00, aunque si se les pregunta al dashboard sí aparecen. Es el mismo
+patrón de brecha que motivó el proyecto entero (Principio XIII): un dato
+real que existe pero no llega a todos los sitios que deberían mostrarlo.
+No se corrige aquí — es una inconsistencia del propio homelab, fuera del
+código de este proyecto (`heartbeat.py` y `app.py` viven en el repo
+privado) — se documenta y se **decide qué lista usa el origen nuevo**:
+`app.py::MONITOR_JOBS`, porque es literalmente la función que 016 excluyó
+por su nombre (`get_monitor_heartbeats()`) y la que ya alimenta la Central
+de Alarmas real.
+
+**Alcance propuesto (borrador, para que Miquel decida en `clarify`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Diagnosticar en vivo el latido de un job concreto (de los 8 de `MONITOR_JOBS`) — a tiempo, rancio, o nunca ha latido | Dentro |
+| Diagnosticar en diferido un momento pasado | Fuera — sin historial real que consultar, igual que 016 |
+| Corregir la inconsistencia entre `MONITOR_JOBS` y `DEFAULT_MANIFEST` | Fuera — bug real del homelab, no de este proyecto |
+| Cualquier acción correctiva (relanzar un monitor) | Fuera — solo diagnóstico |
+| Mostrar el diagnóstico en el dashboard | Fuera — sigue siendo solo por línea de comandos |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El motor de diagnóstico de episodios (007, generalizado a discos en
+> 009, HA en 010, backups en 011, relays en 012, inventario en 013,
+> hosts externos en 014, el hub de Beszel en 015 y los LaunchAgents en
+> 016) hoy no sabe diagnosticar el mecanismo de latidos de monitores
+> (`get_monitor_heartbeats()`), dejado explícitamente fuera de 016 por
+> ser una fuente de evidencia distinta. Quiero que también pueda
+> diagnosticar el latido de un job concreto de los 8 vigilados hoy por
+> el dashboard: reunir su estado real (si ha latido, hace cuánto, y su
+> último detalle) y formular hipótesis de causa probable cuando esté
+> rancio o ausente, con el mismo rigor que los demás orígenes — varias
+> hipótesis contrastadas, nunca inventar una causa, mismo límite de
+> gasto diario compartido. Igual que los LaunchAgents en 016, este
+> origen no tiene ningún modo diferido: cada latido se sobreescribe en
+> cada ciclo y no existe ninguna tabla histórica, así que solo se puede
+> diagnosticar el estado actual. No incluye corregir la inconsistencia
+> real encontrada entre la lista de jobs del dashboard y la de
+> `heartbeat.py` — es un defecto del homelab, no de este proyecto. No
+> incluye ninguna acción correctiva sobre ningún monitor (relanzarlo).
+> No incluye mostrar este diagnóstico en el dashboard — sigue siendo
+> solo por línea de comandos.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que

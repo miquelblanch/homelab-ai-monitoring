@@ -20,23 +20,30 @@ confirmada), del propio hub de Beszel (feature 015: en vivo si todos
 sus sistemas registrados dejaron de reportar a la vez, o en diferido
 con la densidad de muestras de cada sistema en una ventana — nunca
 presentando una ausencia parcial como si el hub entero estuviera
-caído), o de un LaunchAgent (feature 016: si tiene un proceso activo, y
+caído), de un LaunchAgent (feature 016: si tiene un proceso activo, y
 su último código de salida — **solo en vivo**, sin ningún modo
 diferido: no existe ninguna fuente de evidencia histórica real para
-LaunchAgents) —, pide a DeepSeek varias hipótesis de causa probable ya
-contrastadas contra esa evidencia, y registra cada hipótesis y la
-conclusión final. No ejecuta ni propone ninguna acción correctiva
-sobre el homelab — eso es explícitamente fuera de alcance (spec.md
-FR-012, FR-013a de 007; FR-008 de 009, 010, 011, 012, 013, 014, 015 y
-016).
+LaunchAgents), o del latido de un monitor (feature 017: si ha latido,
+hace cuánto, y su último detalle — el veredicto `ok` calculado
+únicamente por edad, nunca combinado con el estado del último ciclo —
+**solo en vivo**, mismo tipo de limitación real que los LaunchAgents)
+—, pide a DeepSeek varias hipótesis de causa probable ya contrastadas
+contra esa evidencia, y registra cada hipótesis y la conclusión final.
+No ejecuta ni propone ninguna acción correctiva sobre el homelab — eso
+es explícitamente fuera de alcance (spec.md FR-012, FR-013a de 007;
+FR-008 de 009, 010, 011, 012, 013, 014, 015, 016 y 017).
 
-Con el feature 016 se cierran los **nueve** orígenes de la Central de
+Con el feature 016 se cerraron los **nueve** orígenes de la Central de
 Alarmas (feature 006-central-alarmas) que este proyecto se propuso
-generalizar — no queda ningún origen restante. Ver
-specs/007-diagnostico-episodios/, specs/009-diagnostico-discos/,
-specs/010-diagnostico-ha/, specs/011-diagnostico-backups/,
-specs/012-diagnostico-relays/, specs/013-diagnostico-inventario/,
+generalizar. El feature 017 cierra, además, el décimo y último
+mecanismo relacionado que había quedado explícitamente pendiente desde
+016 — los latidos de monitores (`get_monitor_heartbeats()`). No se
+conoce ningún origen ni mecanismo relacionado sin generalizar después
+de este feature. Ver specs/007-diagnostico-episodios/,
+specs/009-diagnostico-discos/, specs/010-diagnostico-ha/,
+specs/011-diagnostico-backups/, specs/012-diagnostico-relays/,
+specs/013-diagnostico-inventario/,
 specs/014-diagnostico-hosts-externos/,
-specs/015-diagnostico-hub-beszel/ y specs/016-diagnostico-agentes/
-para spec, plan y contratos de cada uno.
+specs/015-diagnostico-hub-beszel/, specs/016-diagnostico-agentes/ y
+specs/017-diagnostico-latidos/ para spec, plan y contratos de cada uno.
 """

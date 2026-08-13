@@ -49,14 +49,17 @@ vigilancia, o cuyo fallo no llegaría al dashboard —, un host físico
 externo que Beszel ya vigila (feature 014:
 specs/014-diagnostico-hosts-externos/) — Uptime Kuma o AdGuard Home —,
 el propio hub de Beszel, si deja de vigilar todos sus sistemas a la
-vez (feature 015: specs/015-diagnostico-hub-beszel/), o un LaunchAgent
+vez (feature 015: specs/015-diagnostico-hub-beszel/), un LaunchAgent
 del propio homelab (feature 016: specs/016-diagnostico-agentes/) — si
-tiene un proceso activo, y su último código de salida. A continuación
-tienes la evidencia real congelada de un episodio (métricas, logs,
-estado del contenedor, del disco, de Home Assistant, del backup, del
-relay, del inventario, del host externo, del hub, o del agente, según
-cuál sea). No tienes ninguna fuente de evidencia adicional a la que
-acudir — toda la evidencia disponible ya está aquí.
+tiene un proceso activo, y su último código de salida —, o el latido
+de un monitor del propio homelab (feature 017:
+specs/017-diagnostico-latidos/) — si ha latido, hace cuánto, y su
+último detalle. A continuación tienes la evidencia real congelada de
+un episodio (métricas, logs, estado del contenedor, del disco, de Home
+Assistant, del backup, del relay, del inventario, del host externo,
+del hub, del agente, o del latido, según cuál sea). No tienes ninguna
+fuente de evidencia adicional a la que acudir — toda la evidencia
+disponible ya está aquí.
 
 Formula varias hipótesis de causa probable (más de una si la evidencia lo
 permite) y contrasta cada una contra la evidencia dada en este mismo
@@ -155,6 +158,22 @@ sí y qué no demuestra esta evidencia.
 """
 
 
+_PROMPT_CLAUSULA_LATIDO_ESTADO = """\
+
+El campo "latido_actual.ok" es el veredicto YA CALCULADO de si este
+latido está a tiempo (mismo cálculo que ya hace
+app.py::get_monitor_heartbeats(): solo la edad del latido frente a su
+umbral propio) — no lo recalcules tú combinándolo con "status", que es
+un campo informativo aparte y puede discrepar (un job puede latir a
+tiempo con "status":"error", y sigue siendo "ok":true). Si
+"latido_actual.ok" es true, este latido está a tiempo: concluye
+"no_diagnosticable" — no hay ningún episodio real de ESTE latido que
+explicar, aunque "status" muestre un error del último ciclo o el resto
+de la evidencia compartida muestre problemas de otras partes del
+sistema.
+"""
+
+
 def construir_prompt(snapshot: dict, es_critico: bool) -> str:
     prompt = _PROMPT_INSTRUCCIONES
     if es_critico:
@@ -167,6 +186,8 @@ def construir_prompt(snapshot: dict, es_critico: bool) -> str:
         prompt += _PROMPT_CLAUSULA_HOST_EXTERNO_STATS
     if snapshot.get("hub_beszel_stats") is not None:
         prompt += _PROMPT_CLAUSULA_HUB_BESZEL_STATS
+    if snapshot.get("latido_actual") is not None:
+        prompt += _PROMPT_CLAUSULA_LATIDO_ESTADO
     prompt += "\nEvidencia del episodio:\n"
     prompt += json.dumps(snapshot, ensure_ascii=False, default=str, indent=2)
     return prompt

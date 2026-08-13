@@ -20,6 +20,7 @@ Uso:
     python3 -m diagnostico.cli congelar --hub-beszel-historico MOMENTO_ISO
     python3 -m diagnostico.cli congelar --hub-beszel-vivo
     python3 -m diagnostico.cli congelar --agente-vivo LABEL
+    python3 -m diagnostico.cli congelar --latido-vivo JOB
     python3 -m diagnostico.cli diagnosticar EPISODIO_ID
     python3 -m diagnostico.cli mostrar EPISODIO_ID [--diagnostico DIAGNOSTICO_ID]
     python3 -m diagnostico.cli --selftest
@@ -145,6 +146,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="LABEL",
         help="Congela el estado actual de un LaunchAgent (feature 016). Sin modo diferido — no existe evidencia histórica real.",
     )
+    origen.add_argument(
+        "--latido-vivo",
+        metavar="JOB",
+        help="Congela el estado actual del latido de un monitor (feature 017). Sin modo diferido — no existe evidencia histórica real.",
+    )
 
     diagnosticar_parser = subparsers.add_parser(
         "diagnosticar", help="Diagnostica un episodio ya congelado (FR-003 a FR-011)."
@@ -191,6 +197,7 @@ def main(argv: list[str] | None = None) -> int:
             hub_beszel_vivo=args.hub_beszel_vivo,
             hub_beszel_historico=args.hub_beszel_historico,
             agente_vivo=args.agente_vivo,
+            latido_vivo=args.latido_vivo,
         )
     if args.comando == "diagnosticar":
         return _run_diagnosticar(args.episodio_id)
@@ -229,6 +236,7 @@ def _run_congelar(
     hub_beszel_vivo: bool,
     hub_beszel_historico: str | None,
     agente_vivo: str | None,
+    latido_vivo: str | None,
 ) -> int:
     from datetime import datetime
 
@@ -328,8 +336,11 @@ def _run_congelar(
                     conn, datetime.fromisoformat(hub_beszel_historico)
                 )
                 modo = "histórico"
-            else:
+            elif agente_vivo is not None:
                 episodio = evidencia.congelar_agente_vivo(conn, agente_vivo)
+                modo = "en vivo"
+            else:
+                episodio = evidencia.congelar_latido_vivo(conn, latido_vivo)
                 modo = "en vivo"
     except ValueError as e:
         # FR-010: los checks de la cerradura se rechazan explícitamente

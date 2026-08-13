@@ -782,3 +782,61 @@ def test_parsear_respuesta_rechaza_desenlace_invalido() -> None:
         "hipotesis": [{"descripcion": "a", "comprobacion": "b", "desenlace": "quizas"}],
     })
     check("desenlace fuera del vocabulario se rechaza", deepseek.parsear_respuesta(respuesta) is None)
+
+
+# ── Latidos de monitores (feature 017: specs/017-diagnostico-latidos/) ─────
+
+
+def test_construir_prompt_latido_menciona_origen_nuevo() -> None:
+    """feature 017: décimo y último origen — a diferencia de agente
+    (016), aquí sí hay un veredicto ya calculado (`ok`) que replicar,
+    igual que en HA (010), así que sí lleva cláusula nueva
+    (research.md §4 de 017)."""
+    snapshot = {"latido_actual": {"job": "docker-monitor", "ok": True, "status": "ok"}}
+    prompt = deepseek.construir_prompt(snapshot, es_critico=False)
+
+    check("prompt generalizado menciona latido", "latido" in prompt)
+    check(
+        "episodio de latido no lleva la cláusula de contenedor crítico",
+        "NO propongas ninguna acción correctiva" not in prompt,
+    )
+
+
+def test_construir_prompt_latido_incluye_clausula_de_estado_solo_si_hay_latido_actual() -> None:
+    """Mismo patrón que la cláusula de HA (010): la cláusula solo se
+    incluye cuando el snapshot trae `latido_actual` resuelto — un
+    episodio de otro origen no debe llevarla."""
+    snapshot_con_latido = {"latido_actual": {"job": "docker-monitor", "ok": True, "status": "error"}}
+    prompt_latido = deepseek.construir_prompt(snapshot_con_latido, es_critico=False)
+    check(
+        "con latido_actual presente, la cláusula se incluye",
+        "latido_actual.ok" in prompt_latido and "no lo recalcules" in prompt_latido,
+    )
+
+    snapshot_sin_latido = {"agente_actual": {"label": "amsterdam9.docker-monitor", "status": "running"}}
+    prompt_sin_latido = deepseek.construir_prompt(snapshot_sin_latido, es_critico=False)
+    check(
+        "un episodio de agente (sin latido_actual) no lleva la cláusula de latido",
+        "latido_actual.ok" not in prompt_sin_latido,
+    )
+
+
+def test_parsear_respuesta_latido_con_varias_hipotesis() -> None:
+    """SC-002, escrito desde el diseño — mismo criterio ya aplicado en
+    013-016 tras el hallazgo recurrente C1 de 009-012."""
+    respuesta = _respuesta_deepseek({
+        "conclusion_tipo": "causa_probable",
+        "conclusion_texto": "el latido de docker-monitor lleva rancio más del doble de su umbral",
+        "hipotesis": [
+            {"descripcion": "el LaunchAgent que ejecuta el monitor dejó de cargarse",
+             "comprobacion": "edad del latido muy superior al umbral, sin ningún latido reciente",
+             "desenlace": "confirmada"},
+            {"descripcion": "el propio Mac estuvo apagado o suspendido",
+             "comprobacion": "no hay evidencia de apagado en este snapshot",
+             "desenlace": "sin_evidencia_suficiente"},
+        ],
+    })
+    parsed = deepseek.parsear_respuesta(respuesta)
+
+    check("respuesta de latido bien formada se acepta", parsed is not None)
+    check("SC-002: más de una hipótesis registrada para un episodio de latido", len(parsed["hipotesis"]) > 1)

@@ -39,12 +39,15 @@ class Episodio:
     `nombre_actual` de un componente del inventario, el nombre
     canónico de un host externo, el momento ISO de un episodio del hub
     —sin ningún nombre, igual que backup, porque solo existe un hub—,
-    o el `label` de un LaunchAgent), `origen` distingue cuál de los
-    nueve es (`"contenedor"`/`"disco"`/`"ha"`/`"backup"`/`"relay"`/
-    `"inventario"`/`"host_externo"`/`"hub_beszel"`/`"agente"`) — el
-    noveno y último origen de la Central de Alarmas. Ninguno de los
-    valores nuevos exige migración de esquema — `origen` ya es TEXT
-    libre desde 009 (research.md §1 de 010)."""
+    el `label` de un LaunchAgent, o el `job` de un latido de monitor),
+    `origen` distingue cuál de los diez es (`"contenedor"`/`"disco"`/
+    `"ha"`/`"backup"`/`"relay"`/`"inventario"`/`"host_externo"`/
+    `"hub_beszel"`/`"agente"`/`"latido"`) — el décimo y último origen,
+    y con él se cierra también el último mecanismo relacionado con la
+    Central de Alarmas que quedaba pendiente desde 016 (feature 017:
+    specs/017-diagnostico-latidos/). Ninguno de los valores nuevos
+    exige migración de esquema — `origen` ya es TEXT libre desde 009
+    (research.md §1 de 010)."""
 
     componente: str
     es_critico: bool
