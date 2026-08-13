@@ -68,8 +68,8 @@ medir cómo de bien funciona el método para construirlo.
 ## Estado actual
 
 El proyecto tiene dos frentes. El primero está cerrado. Del segundo,
-la mitad de diagnóstico está cerrada; la mitad de remediación
-automática no ha empezado.
+el diagnóstico está cerrado en los 10 orígenes, y la remediación
+automática ya tiene su primer tipo de acción real en producción.
 
 ### Frente 1 — Cobertura sistemática (cerrado)
 
@@ -90,7 +90,7 @@ real:
 Resultado medible: la primera ejecución real encontró 385 brechas sobre
 830 componentes. Hoy, cero.
 
-### Frente 2 — Diagnóstico (cerrado, los 10 orígenes) y remediación (sin empezar)
+### Frente 2 — Diagnóstico (cerrado, los 10 orígenes) y remediación (primera pieza real)
 
 **Diagnóstico**: ante un episodio de cualquiera de los 10 orígenes de
 alarma del homelab, un motor (`src/diagnostico/`) reúne su evidencia
@@ -115,11 +115,24 @@ superficie en el dashboard:
 | [`017-diagnostico-latidos`](specs/017-diagnostico-latidos/) | Generaliza a los latidos de monitores — el mecanismo relacionado que había quedado fuera de 016 |
 | [`018-visor-diagnosticos-origenes`](specs/018-visor-diagnosticos-origenes/) | Generaliza el visor del dashboard a los 10 orígenes, corrige el bug de contenedor, y arregla hacia adelante la limitación de relay |
 
-**Remediación automática: sin empezar.** Ejecutar, dentro de una lista
-cerrada de acciones reversibles con rollback escrito, la corrección de
-una causa ya diagnosticada con certeza (Principios V y VI de la
-constitución). `docker_monitor.py` sigue siendo el único mecanismo que
-remedia algo hoy, y solo reinicia contenedores.
+**Remediación automática**: ejecuta, dentro de una lista cerrada de
+acciones reversibles con rollback escrito, la corrección de una causa
+conocida y verificada (Principios V y VI de la constitución) —
+condiciones deterministas en v1, sin depender del motor DeepSeek (de
+36 diagnósticos reales producidos hasta ahora, ninguno ha concluido
+`causa_probable`, así que atarla a ese motor la habría dejado sin
+ningún caso real que validar). `docker_monitor.py` sigue siendo,
+además, el único mecanismo que remedia contenedores — esta capa no lo
+sustituye.
+
+| Feature | Qué cierra |
+|---|---|
+| [`019-remediacion-automatica`](specs/019-remediacion-automatica/) | Primer tipo de acción real, `rotar_log` — rota (nunca borra) un log que supera un umbral, sobre una lista cerrada de 17 logs reales, con interruptor manual/automático por tipo de acción que Miquel controla siempre desde el CLI. Retención de 4 rotaciones archivadas por log |
+| [`020-visor-remediacion`](specs/020-visor-remediacion/) | Primera superficie visual del Frente 2 de remediación — sección de solo lectura en el dashboard con el estado de los 17 logs y sus totales, sin ningún control de acción |
+
+Quedan fuera todavía, documentados como candidatos futuros y no como
+una omisión: los relays que escriben su log en `/tmp`, y dar cobertura
+de acciones a los contenedores sin healthcheck.
 
 ## Estructura del repo
 
@@ -133,8 +146,9 @@ BITACORA.md                        Una línea por sesión: qué midió el métod
 specs/0NN-*/                       Un directorio por feature: spec, plan, tasks, research...
 src/inventory/                     El inventario de cobertura (feature 001)
 src/diagnostico/                   El motor de diagnóstico (features 007-017), 10 orígenes
-tests/selftest/                    Autocomprobaciones del inventario y del motor de
-                                    diagnóstico — sin tocar datos reales ni llamar a DeepSeek
+src/remediacion/                   Remediación automática (features 019-020), rotar_log
+tests/selftest/                    Autocomprobaciones de los tres paquetes — sin tocar
+                                    datos reales, sin llamar a DeepSeek, sin tocar logs reales
 ```
 
 ## El inventario de cobertura

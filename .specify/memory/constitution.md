@@ -1,16 +1,19 @@
 <!--
 ## Sync Impact Report
 
-**Version change**: 1.2.1 → 1.2.2
+**Version change**: 1.2.2 → 1.2.3
 **Principles added**: None
 **Principles modified**: None (Principios I–XIII sin cambios)
 **Sections added**: None
 **Sections removed**: N/A
-**Sections clarified**: "Alcance y Límites" seguía diciendo "los nueve orígenes...
-generalizados desde el feature 016" — quedó desactualizada en cuanto el feature 017
-añadió el décimo (latido de monitores) y el feature 018 generalizó también el visor del
-dashboard a los 10. Corregido el recuento y las referencias a specs/. Deuda detectada
-revisando el estado del proyecto a fondo el 2026-08-13, no durante ningún /speckit-analyze.
+**Sections clarified**: "Alcance y Límites" decía que la remediación automática estaba
+"fuera de alcance" y que "solo docker_monitor.py remedia hoy, y solo contenedores" — falso
+desde los features 019/020 (specs/019-remediacion-automatica/,
+specs/020-visor-remediacion/): rotar_log ya ejecuta acciones reversibles reales sobre
+logs del homelab, con interruptor manual/automático por tipo de acción, y su estado es
+visible en el dashboard. Corregido para reflejar que remediación automática ya tiene su
+primer tipo de acción real, no que sigue sin empezar. Deuda detectada revisando el estado
+del proyecto a fondo el 2026-08-13.
 **Deferred TODOs**: None
 -->
 
@@ -172,10 +175,19 @@ backup, relay socat, inventario, host externo, hub de Beszel, agente, latido de 
 están en alcance de diagnóstico y generalizados desde el feature 017 — ver
 `specs/007-diagnostico-episodios/` a `specs/017-diagnostico-latidos/`. El feature 018
 generalizó, además, la superficie del dashboard (Principio XII) a esos mismos 10 orígenes
-— antes solo contenedor era visible fuera de la línea de comandos. Lo que sigue fuera de
-alcance es la capa de **remediación automática** (ejecución de acciones correctivas más
-allá de causas ya diagnosticadas con certeza, según el párrafo anterior) para los orígenes
-009–017: solo `docker_monitor.py` remedia hoy, y solo contenedores.
+— antes solo contenedor era visible fuera de la línea de comandos.
+
+La capa de **remediación automática** tiene su primer tipo de acción real desde el feature
+019 (`specs/019-remediacion-automatica/`): `rotar_log`, sobre una lista cerrada de logs del
+homelab, con interruptor manual/automático por tipo de acción controlado siempre por
+Miquel (nunca autopromovido — Principio VII) y rollback escrito y verificado (Principio
+VI). El feature 020 (`specs/020-visor-remediacion/`) hizo visible su estado en el
+dashboard, de solo lectura. `docker_monitor.py` sigue siendo, además, el único mecanismo
+que remedia contenedores — `rotar_log` no lo sustituye ni lo toca (Principio VII). Quedan
+fuera de alcance, documentados explícitamente como candidatos futuros y no como una
+omisión: los relays que escriben su log en `/tmp`, y dar cobertura de acciones a los
+contenedores sin healthcheck (que además no encaja bien en el modelo de "acción reversible
+puntual").
 
 **No reemplaza**: `docker_monitor.py` y su ciclo de remediación automática. El agente se
 añade como capa de diagnóstico.
