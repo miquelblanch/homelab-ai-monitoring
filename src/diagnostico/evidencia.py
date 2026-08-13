@@ -807,7 +807,16 @@ RELAY_AGREGADO_MAX_LINEAS = 100  # research.md §5 de 012 — límite
 # defensivo, no motivado por un caso real: a intervalos de 5 min, la
 # propia ventana ya acota a ~72 líneas como máximo.
 
-_PATRON_LINEA_RELAY = re.compile(r"\[(?P<ts>[^\]]+)\].*?(?P<ok>\d+)/(?P<total>\d+) ok")
+_PATRON_LINEA_RELAY = re.compile(
+    r"\[(?P<ts>[^\]]+)\].*?(?P<ok>\d+)/(?P<total>\d+) ok(?: — fallan: (?P<fallan>.+))?"
+)
+# `dump_socat_status.py` (fuera de este repo) empezó a loguear qué
+# relay concreto falla, no solo el recuento, el 2026-08-13 — a
+# petición explícita de Miquel tras encontrar que la limitación de
+# "nunca cuál relay concreto" documentada en 012 era corregible hacia
+# adelante. Las líneas de antes de esa fecha no llevan "fallan" y
+# siguen sin nombre — el grupo es opcional a propósito, nunca inventa
+# un nombre para una línea antigua.
 
 
 def _relay_actual(nombre: str) -> dict | None:
@@ -848,8 +857,12 @@ def _agregado_relays_ventana(
 ) -> list[dict]:
     """Recuento agregado ("N de M ok") de cada línea de
     `DASHBOARD_SOCAT_LOG` dentro de `[momento - ventana, momento +
-    ventana]` — nunca el detalle de qué relay concreto, que no existe
-    (research.md §5 de 012). Acotado a `RELAY_AGREGADO_MAX_LINEAS`."""
+    ventana]`, con el nombre de los relays caídos en esa línea cuando
+    el propio log lo trae — solo desde el 2026-08-13
+    (`dump_socat_status.py` no lo registraba antes; ver
+    `_PATRON_LINEA_RELAY`). `"fallan"` es `[]` para cualquier línea sin
+    ese detalle: sigue sin inventarse nada para el histórico anterior.
+    Acotado a `RELAY_AGREGADO_MAX_LINEAS`."""
     if not DASHBOARD_SOCAT_LOG.is_file():
         return []
     tolerancia = timedelta(minutes=ventana_minutos)
@@ -871,12 +884,31 @@ def _agregado_relays_ventana(
         except ValueError:
             continue
         if inicio <= ts <= fin:
-            resultado.append(
-                {"momento": ts.isoformat(), "ok": int(m.group("ok")), "total": int(m.group("total"))}
-            )
+            fallan_raw = m.group("fallan")
+            fallan = [n.strip() for n in fallan_raw.split(",")] if fallan_raw else []
+            resultado.append({
+                "momento": ts.isoformat(), "ok": int(m.group("ok")), "total": int(m.group("total")),
+                "fallan": fallan,
+            })
             if len(resultado) >= RELAY_AGREGADO_MAX_LINEAS:
                 break
     return resultado
+
+
+def nombres_relay_evidenciados(agregado: list[dict] | None) -> set[str]:
+    """Nombres de relay que sí aparecen como caídos en alguna entrada
+    de `relay_agregado` — usado por `deepseek.py` para permitir que un
+    diagnóstico en diferido nombre un relay concreto SOLO cuando hay
+    evidencia real de que fue justo ese el que falló en la ventana.
+    Vacío para cualquier episodio congelado antes del 2026-08-13 (el
+    log no traía el detalle todavía) o si en la ventana no cayó ningún
+    relay con nombre conocido."""
+    if not agregado:
+        return set()
+    nombres: set[str] = set()
+    for entrada in agregado:
+        nombres.update(entrada.get("fallan", []))
+    return nombres
 
 
 def _snapshot_relay_vacio() -> dict:
@@ -929,10 +961,12 @@ def congelar_relay_vivo(conn: sqlite3.Connection, nombre: str) -> Episodio:
 
 def congelar_relay_historico(conn: sqlite3.Connection, momento: datetime) -> Episodio:
     """Congela la evidencia agregada de una ventana alrededor de
-    `momento` — nunca el detalle de qué relay concreto falló, que no
-    existe (research.md §2/§5 de 012). `componente` es siempre el
-    momento pedido, incluso sin ningún dato en la ventana (research.md
-    §9 de 012, lección de 011 aplicada por diseño)."""
+    `momento` — con el nombre de los relays caídos cuando el log lo
+    trae (desde el 2026-08-13; antes de esa fecha, o si el log no
+    llegó a registrar el fallo, sigue sin haber ningún nombre —
+    research.md §2/§5 de 012). `componente` es siempre el momento
+    pedido, incluso sin ningún dato en la ventana (research.md §9 de
+    012, lección de 011 aplicada por diseño)."""
     inicio = momento - timedelta(minutes=VENTANA_RELAY_MINUTOS)
     fin = momento + timedelta(minutes=VENTANA_RELAY_MINUTOS)
     agregado = _agregado_relays_ventana(momento)

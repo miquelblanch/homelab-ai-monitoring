@@ -825,8 +825,12 @@ def test_agregado_relays_ventana_dentro_y_fuera() -> None:
             len(agregado) == 3,
         )
         check(
-            "cada entrada trae momento/ok/total, no qué relay concreto",
-            all(set(e.keys()) == {"momento", "ok", "total"} for e in agregado),
+            "cada entrada trae momento/ok/total/fallan",
+            all(set(e.keys()) == {"momento", "ok", "total", "fallan"} for e in agregado),
+        )
+        check(
+            "líneas sin detalle de nombre traen fallan=[] (histórico anterior al 2026-08-13)",
+            all(e["fallan"] == [] for e in agregado),
         )
         check("la entrada del fallo real refleja 9 de 10", agregado[1]["ok"] == 9 and agregado[1]["total"] == 10)
 
@@ -847,6 +851,45 @@ def test_agregado_relays_ventana_acota_max_lineas() -> None:
             f"agregado se acota a {evidencia.RELAY_AGREGADO_MAX_LINEAS}, no 180",
             len(agregado) == evidencia.RELAY_AGREGADO_MAX_LINEAS,
         )
+
+
+_DASHBOARD_SOCAT_LOG_CON_NOMBRES_FAKE = "\n".join([
+    "[2026-08-13T10:00:00] socat_relays.json written — 10/10 ok",
+    "[2026-08-13T10:05:00] socat_relays.json written — 8/10 ok — fallan: HA Shelly, Beszel AdGuard",
+    "[2026-08-13T10:10:00] socat_relays.json written — 9/10 ok — fallan: HA Shelly",
+    "[2026-08-13T10:15:00] socat_relays.json written — 10/10 ok",
+]) + "\n"
+
+
+def test_agregado_relays_ventana_parsea_fallan_desde_2026_08_13() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        log_path = Path(tmp) / "dashboard-socat.log"
+        log_path.write_text(_DASHBOARD_SOCAT_LOG_CON_NOMBRES_FAKE)
+        momento = evidencia.datetime(2026, 8, 13, 10, 10, 0)
+        with patch.object(evidencia, "DASHBOARD_SOCAT_LOG", log_path):
+            agregado = evidencia._agregado_relays_ventana(momento)
+
+        check("las 4 líneas caen dentro de la ventana", len(agregado) == 4)
+        check("línea sana ⇒ fallan=[]", agregado[0]["fallan"] == [])
+        check(
+            "línea con dos relays caídos ⇒ fallan los nombra a los dos",
+            agregado[1]["fallan"] == ["HA Shelly", "Beszel AdGuard"],
+        )
+        check("línea con un solo relay caído ⇒ fallan=['HA Shelly']", agregado[2]["fallan"] == ["HA Shelly"])
+
+
+def test_nombres_relay_evidenciados() -> None:
+    agregado = [
+        {"momento": "x", "ok": 10, "total": 10, "fallan": []},
+        {"momento": "y", "ok": 8, "total": 10, "fallan": ["HA Shelly", "Beszel AdGuard"]},
+        {"momento": "z", "ok": 9, "total": 10, "fallan": ["HA Shelly"]},
+    ]
+    check(
+        "une los nombres de todas las entradas, sin duplicados",
+        evidencia.nombres_relay_evidenciados(agregado) == {"HA Shelly", "Beszel AdGuard"},
+    )
+    check("agregado vacío o None ⇒ conjunto vacío, sin lanzar", evidencia.nombres_relay_evidenciados(None) == set())
+    check("agregado=[] ⇒ conjunto vacío", evidencia.nombres_relay_evidenciados([]) == set())
 
 
 def test_congelar_relay_historico_es_reproducible_y_usa_el_momento_pedido() -> None:

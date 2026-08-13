@@ -105,11 +105,11 @@ def test_construir_prompt_relay_clausula_agregado_solo_en_diferido() -> None:
     check("prompt generalizado menciona relay", "relay" in prompt_vivo)
     check(
         "episodio en vivo (relay_estado_actual) no lleva la cláusula de agregado",
-        "NO nombres" not in prompt_vivo,
+        "SOLO puedes nombrar un relay" not in prompt_vivo,
     )
     check(
         "episodio en diferido (relay_agregado) sí lleva la cláusula de agregado",
-        "NO nombres" in prompt_diferido,
+        "SOLO puedes nombrar un relay" in prompt_diferido,
     )
     check(
         "episodio de backup/HA no lleva la cláusula de crítico",
@@ -216,6 +216,55 @@ def test_diagnosticar_episodio_relay_rechaza_respuesta_que_nombra_un_relay() -> 
         )
 
 
+def test_diagnosticar_episodio_relay_acepta_nombre_con_evidencia_real() -> None:
+    """2026-08-13: dump_socat_status.py empezó a loguear qué relay
+    falla, no solo el recuento — un episodio cuyo relay_agregado sí
+    trae ese relay en "fallan" ya no debe rechazarse por nombrarlo,
+    a diferencia de test_diagnosticar_episodio_relay_rechaza_respuesta_que_nombra_un_relay
+    (donde el episodio no tiene ningún nombre evidenciado)."""
+    import tempfile
+    from pathlib import Path
+
+    from diagnostico import evidencia, store
+    from diagnostico.model import Episodio
+
+    respuesta_con_evidencia = {
+        "choices": [{"message": {"content": json.dumps({
+            "conclusion_tipo": "causa_probable",
+            "conclusion_texto": "el relay Beszel AdGuard es la causa probable, según fallan",
+            "hipotesis": [{"descripcion": "fallo de Beszel AdGuard", "comprobacion": "aparece en fallan",
+                           "desenlace": "confirmada"}],
+        }, ensure_ascii=False)}}],
+        "usage": {"prompt_tokens": 400, "completion_tokens": 200},
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "diagnostico.db"
+        with store.connect(db) as conn:
+            episodio_id = store.insert_episodio(
+                conn,
+                Episodio(
+                    componente="2026-08-13T10:10:00", origen="relay", es_critico=False, en_vivo=False,
+                    ventana_inicio="a", ventana_fin="b",
+                    snapshot_evidencia={"relay_agregado": [
+                        {"momento": "2026-08-13T10:10:00", "ok": 9, "total": 10, "fallan": ["Beszel AdGuard"]},
+                    ]},
+                ),
+            )
+            episodio = store.get_episodio(conn, episodio_id)
+
+            with patch.object(deepseek.bridge, "get_secret", return_value="fake-key-for-test"), \
+                 patch.object(deepseek, "llamar_deepseek", return_value=respuesta_con_evidencia), \
+                 patch.object(evidencia, "listar_nombres_relay", return_value={"Beszel AdGuard", "HA Shelly"}):
+                diagnostico, hipotesis = deepseek.diagnosticar_episodio(conn, episodio)
+
+        check(
+            "respuesta que nombra un relay CON evidencia real en fallan se acepta",
+            diagnostico.conclusion_tipo == "causa_probable",
+        )
+        check("la hipótesis confirmada se persiste", len(hipotesis) == 1 and hipotesis[0].desenlace == "confirmada")
+
+
 def test_construir_prompt_inventario_menciona_origen_nuevo() -> None:
     """feature 013: sin cláusula nueva de restricción de contenido — a
     diferencia de relay, la exclusión de condicion_incumplida ya se
@@ -233,7 +282,10 @@ def test_construir_prompt_inventario_menciona_origen_nuevo() -> None:
         "episodio de inventario no lleva la cláusula de contenedor crítico",
         "NO propongas ninguna acción correctiva" not in prompt,
     )
-    check("episodio de inventario no lleva la cláusula de relay agregado", "NO nombres" not in prompt)
+    check(
+        "episodio de inventario no lleva la cláusula de relay agregado",
+        "SOLO puedes nombrar un relay" not in prompt,
+    )
 
 
 def test_parsear_respuesta_inventario_con_varias_hipotesis() -> None:

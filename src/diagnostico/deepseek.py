@@ -117,12 +117,17 @@ concreto, que no está fallando.
 _PROMPT_CLAUSULA_RELAY_AGREGADO = """\
 
 El campo "relay_agregado" es evidencia de CUÁNTOS de los relays
-vigilados fallaban en cada instante de esta ventana, nunca de CUÁL en
-concreto — ese detalle nunca se archivó y no existe. NO nombres, ni en
-"conclusion_texto" ni en ninguna "comprobacion", ningún relay concreto
-como la causa de este episodio — como mucho, describe el patrón
-agregado (cuántos caían, durante cuánto tiempo) y trátalo como una
-limitación real de la evidencia, no algo que puedas deducir.
+vigilados fallaban en cada instante de esta ventana. Desde el
+2026-08-13 cada entrada también puede traer "fallan": los nombres de
+los relays que sí estaban caídos en ese instante concreto — las
+entradas de antes de esa fecha, o cualquier instante sin ese detalle,
+traen "fallan" vacío. SOLO puedes nombrar un relay, en
+"conclusion_texto" o en cualquier "comprobacion", si aparece de verdad
+en alguna lista "fallan" de la evidencia — nunca uno que no aparezca
+ahí, aunque el resto del contexto te haga sospechar cuál pudo ser. Si
+ninguna entrada trae nombres, trátalo como la limitación real que es:
+describe el patrón agregado (cuántos caían, durante cuánto tiempo) sin
+nombrar ningún relay concreto.
 """
 
 
@@ -195,9 +200,12 @@ def construir_prompt(snapshot: dict, es_critico: bool) -> str:
 
 def _menciona_relay_concreto(parsed: dict, nombres: set[str]) -> bool:
     """Comprueba si la respuesta ya parseada nombra literalmente uno de
-    `nombres` — usado solo para episodios de relay en diferido, donde
-    esa información no existe (FR-006, hallazgo F1 de /speckit-analyze,
-    2026-08-12; research.md §10 de specs/012-diagnostico-relays/)."""
+    `nombres` — usado solo para episodios de relay en diferido, con
+    `nombres` restringido a los relays que NO tienen evidencia real en
+    esta ventana (FR-006, hallazgo F1 de /speckit-analyze, 2026-08-12;
+    research.md §10 de specs/012-diagnostico-relays/). Desde el
+    2026-08-13, un relay que sí aparece en `relay_agregado[].fallan`
+    puede nombrarse — solo se rechaza nombrar uno sin evidencia."""
     if not nombres:
         return False
     textos = [parsed.get("conclusion_texto", "") or ""]
@@ -371,13 +379,21 @@ def diagnosticar_episodio(
     # F1 de /speckit-analyze, 2026-08-12; research.md §10 de
     # specs/012-diagnostico-relays/) — mismo tratamiento que una
     # respuesta inconsistente: la llamada sí ocurrió, se registra el
-    # coste real, pero se rechaza el contenido.
+    # coste real, pero se rechaza el contenido. Desde el 2026-08-13
+    # (dump_socat_status.py empezó a loguear qué relay falla, no solo
+    # el recuento) solo se prohíben los nombres SIN evidencia real en
+    # esta ventana — uno que sí aparece en relay_agregado[].fallan ya
+    # no se rechaza.
     if episodio.origen == "relay" and episodio.snapshot_evidencia.get("relay_agregado") is not None:
-        if _menciona_relay_concreto(parsed, evidencia.listar_nombres_relay()):
+        evidenciados = evidencia.nombres_relay_evidenciados(
+            episodio.snapshot_evidencia.get("relay_agregado")
+        )
+        prohibidos = evidencia.listar_nombres_relay() - evidenciados
+        if _menciona_relay_concreto(parsed, prohibidos):
             coste = gasto.registrar_coste(conn, parsed["tokens_entrada"], parsed["tokens_salida"])
             return _persistir_sin_llamada(
-                "respuesta de DeepSeek nombra un relay concreto en un episodio en "
-                "diferido, sin evidencia real de cuál falló — rechazada (FR-006)",
+                "respuesta de DeepSeek nombra un relay concreto sin evidencia real de "
+                "que fuera ese el que falló en esta ventana — rechazada (FR-006)",
                 parsed["tokens_entrada"], parsed["tokens_salida"], coste,
             )
 
