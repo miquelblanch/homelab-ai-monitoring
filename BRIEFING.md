@@ -2121,6 +2121,118 @@ adaptar):
 
 ---
 
+## Feature 021 — material de partida (2026-08-13): remediación se hace cargo del reinicio de contenedores
+
+Tras pasar `rotar_log` a automático (con aviso por Telegram solo en
+fallo, ver más arriba), Miquel preguntó por qué no traer aquí también
+la remediación de contenedores — "que remediación reinicie por sí
+sola los contenedores y deje de hacer el otro sistema". Es el cambio
+de mayor riesgo real que se le ha planteado a este proyecto: sustituye
+un mecanismo de producción que lleva meses funcionando sobre los 39
+contenedores del homelab, no un log que nadie más toca.
+
+**Dos decisiones ya confirmadas con Miquel (`AskUserQuestion`,
+2026-08-13), antes de escribir nada:**
+
+1. **Los 12 contenedores críticos siguen totalmente fuera, en
+   cualquier modo.** No es una regla de este proyecto — es la regla 3
+   del `CLAUDE.md` general del homelab ("no reiniciar contenedores
+   críticos sin confirmación explícita"), y aplica a todo el homelab,
+   no solo a lo que construya este agente. Ningún diseño de esta
+   feature puede dejar un camino, ni siquiera indirecto, para que un
+   crítico se reinicie sin que Miquel lo apruebe explícitamente ese
+   día.
+2. **Va por el proceso completo** — spec → clarify → plan → tasks →
+   analyze → implement, igual que 007-020. Nada de implementar esto
+   directamente en una conversación, a diferencia del aviso de
+   Telegram de la sesión anterior (que sí se hizo ad-hoc, por ser una
+   adición pequeña y de bajo riesgo sobre una feature ya cerrada).
+
+**Lo que hace hoy `docker_monitor.py` (cada 5 minutos), investigado
+antes de especificar — para no reinventar ni perder nada al migrar:**
+
+```python
+NEVER_RESTART = {"frigate"}
+CRITICAL = {  # 12 — solo alerta, nunca se tocan
+    "homeassistant", "vaultwarden", "nextcloud", "nextcloud-db",
+    "nextcloud_redis", "immich_server", "immich_machine_learning",
+    "immich_postgres", "immich_redis", "pangolin-server", "gerbil",
+    "traefik",
+}
+CB_WINDOW_HOURS = 6
+CB_MAX_ATTEMPTS = 3
+```
+
+- Los 26 restantes se reinician solos si no están `running and
+  healthy`, con un cortacircuito real: 3 intentos en 6 h, y si se
+  supera, se detiene y alerta — "requiere intervención" — en vez de
+  seguir reintentando en bucle.
+- `restart_container()` no se fía del código de salida de `docker
+  restart`: espera `VERIFY_DELAY_S` y comprueba que el contenedor
+  siga `running` de verdad. Se cambió así el 2026-07-26 tras
+  encontrar reinicios marcados `success` que en realidad habían
+  quedado a cero memoria — la razón exacta por la que el histórico
+  anterior a esa fecha marca 100% de éxito y no es de fiar.
+- Cada intento (éxito, fallo, `circuit_breaker`, o `skipped` por ser
+  crítico) se registra en `restart_history` (`homelab.db`, tabla de
+  `metrics_db.py`) — es la misma tabla que ya usa el criterio de
+  muerte del caso 1 de este briefing (los 49 reinicios de `beszel`).
+  Cualquier diseño nuevo tiene que decidir qué pasa con esa tabla y
+  con las herramientas que ya la leen.
+- Alerta por Telegram en tres momentos: contenedor crítico caído
+  (siempre, nunca se reinicia), cortacircuito abierto (siempre), y
+  recuperación tras una caída (si estuvo mal y ahora está bien). Nada
+  de esto es silencioso — al contrario que `rotar_log`, que solo avisa
+  del fallo.
+
+**Tensiones reales, sin resolver todavía — para `/speckit-clarify`,
+no para decidir aquí:**
+
+1. **Granularidad del interruptor.** `rotar_log` fijó "por tipo de
+   acción" (research.md §1 de 019: un interruptor para los 17 logs a
+   la vez) porque en ese caso todos los componentes son intercambiables.
+   Miquel ha pedido explícitamente "automático para algunos de ellos"
+   — granularidad por contenedor, no por tipo. Eso no encaja en el
+   modelo de datos actual (`configuracion_accion.tipo_accion` es la
+   clave primaria, una fila por tipo). O se replantea la granularidad
+   para este tipo de acción, o se acepta un interruptor por
+   contenedor como excepción justificada al patrón de 019 — decisión
+   real de diseño, no de implementación.
+2. **Alcance exacto de "deje de hacer el otro sistema".**
+   `docker_monitor.py` no solo reinicia — también registra métricas
+   de los 39 contenedores cada 5 min, comprueba 3 discos, y persiste
+   en `container_metrics`/`disk_metrics`. ¿Se retira solo la parte que
+   reinicia (lo demás sigue igual, un mismo script con menos
+   responsabilidad), o se plantea retirar el script entero? Lo primero
+   parece lo razonable, pero hay que decirlo explícitamente en el spec
+   para no migrar de más ni de menos.
+3. **Qué significa "reversible" para un reinicio.** El Principio VI
+   (rollback escrito) es trivial para `rotar_log` — renombrar un
+   fichero se deshace renombrando de vuelta. Un contenedor reiniciado
+   no tiene una operación inversa real: no se puede "des-reiniciar".
+   Hace falta decidir explícitamente qué cubre la reversibilidad aquí
+   — probablemente algo distinto de lo que significa para logs, no
+   una adaptación forzada del mismo modelo.
+4. **Qué pasa con el cortacircuito y las alertas ya existentes.**
+   ¿Se reimplementan dentro de `remediacion` (duplicando lo que ya
+   funciona), o `remediacion` llama a la lógica ya probada de
+   `docker_monitor.py` reutilizándola? Migrar sin repetir errores ya
+   corregidos (como el de "success" basado en código de salida) es
+   más importante aquí que en cualquier feature anterior.
+5. **Silencio en éxito, a diferencia de `rotar_log`.**
+   `docker_monitor.py` hoy SÍ notifica una recuperación exitosa tras
+   caída. Si `remediacion` adopta el mismo silencio-en-éxito de
+   `rotar_log` (research.md §11 de 019), se pierde esa señal. Decidir
+   explícitamente si el patrón de aviso de contenedores hereda el de
+   logs o mantiene el suyo propio.
+
+**No incluye, salvo que se decida lo contrario explícitamente:**
+tocar la lista de contenedores críticos, ni el propio mecanismo de
+verificación post-reinicio (`VERIFY_DELAY_S` + comprobación real de
+`running`), que ya se corrigió una vez y no hace falta rehacer.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que
