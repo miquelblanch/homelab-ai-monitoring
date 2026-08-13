@@ -35,11 +35,11 @@ rompe y el sistema no avisa.
 | --- | --- | --- |
 | **1 · Reinicios de beszel** | Un contenedor se reinició 49 veces en siete semanas. Cero alertas. | Investigado a fondo (ver más abajo). Causa raíz no encontrada — y con la evidencia disponible, no se puede encontrar (ver "Criterio de muerte"). |
 | **2 · Barrido del 01-08-2026** | Revisión manual de 86 puntos del dashboard y Home Assistant: 11 problemas reales, 0 visibles en el dashboard. | Investigado a fondo. Causas conocidas y escritas en `BARRIDO-2026-08-01.md`. |
-| **3 · Beszel no vigila bien lo que vigila** | El propio Beszel —la herramienta que vigila CPU/memoria/disco de otras máquinas— muestra 2 de sus 3 sistemas en rojo (`AdGuardHome`, `UptimeKuma`). Solo `Mac Mini Server` en verde. | **Sin investigar todavía.** Visto el 06-08-2026. No se sabe si es un fallo real de esos sistemas, un fallo de la propia conexión de Beszel, o algo ya sabido y sin resolver (Uptime Kuma cambió de IP el 04-08 y no tiene reserva DHCP fija). |
-| **4 · Recordatorios de Nextcloud** | Los recordatorios de Tareas/Calendario de Nextcloud, que deberían avisar por Telegram, no llegan. | **Sin investigar todavía.** Reportado por Miquel. No se sabe si falla el propio Nextcloud, el puente a Telegram, o la configuración del recordatorio. |
+| **3 · Beszel no vigila bien lo que vigila** | El propio Beszel —la herramienta que vigila CPU/memoria/disco de otras máquinas— muestra 2 de sus 3 sistemas en rojo (`AdGuardHome`, `UptimeKuma`). Solo `Mac Mini Server` en verde. | Investigado a fondo. El síntoma original no se reprodujo (ver "Feature 003 — material de partida"); el hueco real que sí quedaba —si el hub deja de reportar para los tres a la vez, nada lo distingue de "los tres están bien"— lo cierra `specs/003-latidos-beszel-calendario/` (latido de `beszel-hosts`, verificado en producción el 13-08-2026). |
+| **4 · Recordatorios de Nextcloud** | Los recordatorios de Tareas/Calendario de Nextcloud, que deberían avisar por Telegram, no llegan. | Investigado a fondo. `BARRIDO-2026-08-07.md` encontró y arregló un fallo silencioso real en `recordatorios_hoy()`; el hueco que quedaba —`bautista-calendar.sh` sin latido propio— lo cierra `specs/003-latidos-beszel-calendario/`, verificado en producción el 13-08-2026. |
 
-Los casos 1 y 2 ya se investigaron a fondo — el resto de este documento explica
-qué se encontró. Los casos 3 y 4 son nuevos y todavía no se han investigado.
+Los cuatro casos están investigados a fondo — el resto de este documento y
+`specs/003-latidos-beszel-calendario/` explican qué se encontró en cada uno.
 
 **Importante:** esto no es una lista cerrada. Son los cuatro casos que se han
 encontrado *por casualidad*, mirando distintas cosas en distintos momentos.
@@ -324,6 +324,26 @@ bundlarlos en un solo feature 003 en vez de separarlos — la objeción que
 tenía (madurez distinta) queda parcialmente resuelta: los dos resultan
 ser extensiones baratas de mecanismos ya desplegados, no dos alcances de
 tamaño distinto.
+
+> **Cierre confirmado (2026-08-13).** `specs/003-latidos-beszel-calendario/`
+> se implementó el 09-08-2026 — lo de arriba queda como el material de
+> partida, no como el estado actual. Verificado en producción hoy, no
+> solo en el código: `bautista-calendar.sh` **sí** llama a
+> `heartbeat.write()` en cada ejecución (la frase de más arriba, "no llama
+> a `heartbeat.write()` en ningún punto", ya no es cierta), y tanto
+> `bautista-calendar` como `beszel-hosts` están dados de alta en
+> `MONITOR_JOBS` del dashboard, con latidos frescos reales (266 s y 9,3 h
+> de antigüedad respectivamente, ambos bajo su umbral). Los casos 3 y 4
+> quedan cerrados. Único matiz revisado y descartado como bug: el latido
+> de `bautista-calendar.sh` marca `status='ok'` incluso cuando el detalle
+> es "error real detectado" — pero ese fallo real ya se notifica al
+> instante por Telegram (`recordatorios_hoy()` tiene su propio
+> distingo desde el barrido del 07-08), y el mismo patrón de
+> `status='ok'` siempre lo usan los otros cinco monitores con latido
+> (`docker-monitor`, `ha-monitor`, `dns-pi-monitor`, `verify-backups`,
+> `beszel-hosts`): el campo indica que el ciclo del monitor se completó,
+> no que lo vigilado esté sano — eso va por su propio canal de alerta.
+> Cambiarlo solo aquí rompería esa consistencia; queda anotado, no hecho.
 
 **Descripción de partida para `/speckit-specify`** (pegar tal cual o
 adaptar):
