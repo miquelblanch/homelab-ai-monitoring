@@ -206,3 +206,39 @@ en `~/Library/Logs/`); y ficheros que no son logs de este proyecto en
 absoluto (`.DS_Store`, `PhotosUpgrade.aapbz`, `SparkleUpdateLog.log`,
 `fsck_hfs.log` — artefactos de macOS/apps de terceros, fuera del
 universo que este feature debe tocar).
+
+## §8 — Retención de rotaciones: 4 como mucho, mismo número que rotate_hermes_logs.sh
+
+**Hallazgo real**: nada purgaba nunca los ficheros `.rotado-*` — cada
+rotación se queda archivada para siempre, así que `~/Library/Logs/`
+acabaría acumulando un fichero más por cada rotación de cada log, sin
+límite. Encontrado al usar el dashboard (feature 020) y ver que los
+dos logs ya rotados dejaban su histórico visible.
+
+**Decisión, confirmada con Miquel**: `ROTACIONES_A_CONSERVAR = 4` —
+mismo número que ya usa `rotate_hermes_logs.sh` (`KEEP=4`) para el
+otro mecanismo de rotación del homelab, por consistencia. Con el
+ritmo de crecimiento real observado (`health-docker.log` tardó ~12
+días en pasar de 63 a 71 MB sin rotar), 4 rotaciones cubren varios
+meses de histórico; en el peor caso (los 17 logs rotando justo al
+umbral de 10 MB) son ~680 MB — nada frente a los TBs libres del
+homelab.
+
+`_purgar_rotaciones_antiguas()` se llama automáticamente al final de
+`ejecutar_rotar_log()` — cada rotación deja como mucho 4 ficheros
+`.rotado-*` para ese log, borrando los más antiguos por fecha (el
+formato `%Y%m%dT%H%M%S` del propio nombre ordena igual
+alfabéticamente que cronológicamente, sin necesidad de leer ningún
+`mtime`). Nunca lanza — un fallo al purgar no debe romper la rotación
+que ya se hizo.
+
+**Efecto secundario real, documentado explícitamente**: `deshacer`
+(User Story 5) ya no puede garantizarse para siempre — si han pasado
+4 rotaciones más desde que se ejecutó un intento concreto, su fichero
+rotado ya se purgó. `resolver_deshacer()` lo detecta explícitamente
+antes de intentar el rename y falla con un mensaje claro
+(`ValueError`), en vez de dejar escapar un `OSError` sin explicar —
+mismo criterio de honestidad que el resto del proyecto: la
+reversibilidad (Principio VI) sigue siendo real mientras la rotación
+esté dentro de la ventana de retención, y se dice explícitamente
+cuándo deja de estarlo, en vez de fingir que siempre es posible.

@@ -58,14 +58,15 @@ admite `deshacer` (FR-010) — pasa a `"deshecho"`, también final.
 | `REMEDIACION_LOGS_DIR` | `~/Library/Logs`, configurable por variable de entorno | Directorio donde viven los logs vigilados — configurable para poder probar por CLI sin tocar los reales (research.md §3). |
 | `UMBRAL_ROTACION_BYTES_DEFAULT` | `10 * 1024 * 1024` (10 MB), configurable por `REMEDIACION_UMBRAL_ROTACION_BYTES` | Umbral de la condición determinista (research.md §3). |
 | `LOGS_VIGILADOS` | Lista cerrada de 17 `(nombre, nombre_fichero, umbral_bytes)` (ampliada 2026-08-13, research.md §7) | Universo cerrado de nombres de fichero — uno fuera de esta lista nunca se evalúa (FR-005); la ruta real se arma con `REMEDIACION_LOGS_DIR`. |
+| `ROTACIONES_A_CONSERVAR` | `4` (ampliado 2026-08-13, research.md §8) | Cuántos ficheros `.rotado-*` se conservan por log — el resto se purga automáticamente en cada rotación nueva. |
 
 ## Funciones (`acciones.py`)
 
 | Función | Uso |
 |---|---|
 | `comprobar_rotar_log(conn)` | Recorre `LOGS_VIGILADOS`; para cada uno por encima de su umbral y sin ya una `pendiente` (FR-008), crea un intento — en `pendiente` si el modo es manual, ejecutando directo si es automático. |
-| `ejecutar_rotar_log(intento)` | Renombra el fichero real (research.md §4) — nunca trunca ni borra. |
-| `deshacer_rotar_log(intento)` | Procedimiento de dos pasos de research.md §4 — nunca sobreescribe lo escrito después de la rotación. |
+| `ejecutar_rotar_log(intento)` | Renombra el fichero real (research.md §4) — nunca trunca ni borra; purga las rotaciones más antiguas por encima de `ROTACIONES_A_CONSERVAR` (research.md §8). |
+| `deshacer_rotar_log(intento)` | Procedimiento de dos pasos de research.md §4 — nunca sobreescribe lo escrito después de la rotación. `resolver_deshacer()` falla explícitamente si el fichero rotado ya se purgó (research.md §8). |
 
 ## Esquema SQLite (`remediacion.db`)
 

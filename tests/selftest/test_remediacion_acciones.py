@@ -349,3 +349,83 @@ def test_escribir_snapshot_nunca_lanza_si_no_puede_escribir() -> None:
                 except Exception:
                     lanzo = True
         check("un fallo real de escritura no propaga la excepción (contrato garantía 1)", lanzo is False)
+
+
+# ── Retención de rotaciones (ROTACIONES_A_CONSERVAR, confirmado con Miquel 2026-08-13) ──
+
+
+def test_purgar_rotaciones_antiguas_conserva_solo_las_4_mas_recientes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        ruta = Path(tmp) / "prueba.log"
+        ruta.write_bytes(b"actual")
+        # 6 rotaciones falsas, con marcas de tiempo crecientes y conocidas —
+        # más simple y determinista que rotar 6 veces de verdad.
+        marcas = [f"2026010{i}T000000" for i in range(1, 7)]  # 20260101..20260106
+        for marca in marcas:
+            (Path(tmp) / f"prueba.log.rotado-{marca}").write_bytes(b"x")
+
+        acciones._purgar_rotaciones_antiguas(ruta)
+
+        restantes = sorted(p.name for p in Path(tmp).glob("prueba.log.rotado-*"))
+        check("quedan exactamente 4 rotaciones", len(restantes) == 4)
+        check(
+            "sobreviven las 4 más recientes (03 a 06), se borran las 2 más antiguas (01, 02)",
+            restantes == [f"prueba.log.rotado-2026010{i}T000000" for i in (3, 4, 5, 6)],
+        )
+
+
+def test_purgar_rotaciones_antiguas_con_pocas_no_borra_nada() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        ruta = Path(tmp) / "prueba.log"
+        ruta.write_bytes(b"actual")
+        (Path(tmp) / "prueba.log.rotado-20260101T000000").write_bytes(b"x")
+        (Path(tmp) / "prueba.log.rotado-20260102T000000").write_bytes(b"x")
+
+        acciones._purgar_rotaciones_antiguas(ruta)
+
+        restantes = list(Path(tmp).glob("prueba.log.rotado-*"))
+        check("con menos de 4 rotaciones, no se borra ninguna", len(restantes) == 2)
+
+
+def test_ejecutar_rotar_log_purga_automaticamente() -> None:
+    """ejecutar_rotar_log() ya deja como mucho 4 rotaciones tras cada
+    llamada, sin necesidad de invocar la purga aparte."""
+    with tempfile.TemporaryDirectory() as tmp:
+        ruta = Path(tmp) / "prueba.log"
+        marcas = [f"2026010{i}T000000" for i in range(1, 5)]  # 4 rotaciones previas ya al límite
+        for marca in marcas:
+            (Path(tmp) / f"prueba.log.rotado-{marca}").write_bytes(b"x")
+        _escribir(ruta, 1000)
+
+        acciones.ejecutar_rotar_log(ruta)
+
+        restantes = list(Path(tmp).glob("prueba.log.rotado-*"))
+        check(
+            "tras una rotación nueva con 4 ya existentes, sigue habiendo como mucho 4",
+            len(restantes) == acciones.ROTACIONES_A_CONSERVAR,
+        )
+
+
+def test_resolver_deshacer_fichero_rotado_purgado() -> None:
+    with tempfile.TemporaryDirectory() as logs_dir, tempfile.TemporaryDirectory() as db_dir:
+        ruta = Path(logs_dir) / "health-docker.log"
+        _escribir(ruta, 11 * 1024 * 1024)
+
+        with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(logs_dir)), \
+             patch.object(acciones, "LOGS_VIGILADOS", [("health-docker", "health-docker.log", 10 * 1024 * 1024)]):
+            with store.connect(_db(db_dir)) as conn:
+                creados = acciones.comprobar_rotar_log(conn)
+                resuelto = acciones.resolver_aprobacion(conn, creados[0].id)
+                # simula que la retención ya purgó este fichero rotado
+                Path(resuelto.fichero_rotado).unlink()
+
+                lanzo = False
+                try:
+                    acciones.resolver_deshacer(conn, creados[0].id)
+                except ValueError:
+                    lanzo = True
+
+        check(
+            "deshacer un intento cuyo fichero rotado ya se purgó falla con un mensaje claro, no un OSError crudo",
+            lanzo is True,
+        )

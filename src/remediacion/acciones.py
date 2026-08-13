@@ -71,18 +71,42 @@ LOGS_VIGILADOS: list[tuple[str, str, int]] = [
 
 TIPO_ACCION_ROTAR_LOG = "rotar_log"
 
+# Mismo número que ya usa rotate_hermes_logs.sh (KEEP=4) para el otro
+# mecanismo de rotación del homelab — sin este límite,
+# ~/Library/Logs/ acumularía ficheros .rotado-* sin fin. Confirmado
+# con Miquel el 2026-08-13.
+ROTACIONES_A_CONSERVAR = 4
+
 
 def _marca_tiempo_compacta() -> str:
     return datetime.now().strftime("%Y%m%dT%H%M%S")
 
 
+def _purgar_rotaciones_antiguas(ruta_original: Path) -> None:
+    """Conserva como mucho ROTACIONES_A_CONSERVAR ficheros
+    `<nombre>.rotado-*` para este log — borra los más antiguos por
+    fecha (el formato `%Y%m%dT%H%M%S` ordena igual alfabéticamente que
+    cronológicamente). Nunca lanza: un fallo al purgar no debe romper
+    la rotación que ya se hizo."""
+    try:
+        rotaciones = sorted(ruta_original.parent.glob(f"{ruta_original.name}.rotado-*"))
+        de_mas = len(rotaciones) - ROTACIONES_A_CONSERVAR
+        for antigua in rotaciones[:de_mas] if de_mas > 0 else []:
+            antigua.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def ejecutar_rotar_log(ruta: Path) -> str:
     """Renombra `ruta` a `ruta.rotado-<marca>` y crea un fichero vacío
     nuevo en su lugar — nunca trunca ni borra (research.md §4,
-    FR-009). Devuelve la ruta del fichero rotado, como texto."""
+    FR-009). Devuelve la ruta del fichero rotado, como texto. Purga
+    las rotaciones más antiguas si ya hay más de
+    ROTACIONES_A_CONSERVAR para este log (research.md §8 de 019)."""
     rotado = ruta.with_name(f"{ruta.name}.rotado-{_marca_tiempo_compacta()}")
     ruta.rename(rotado)
     ruta.touch()
+    _purgar_rotaciones_antiguas(ruta)
     return str(rotado)
 
 
@@ -188,7 +212,10 @@ def resolver_rechazo(conn: sqlite3.Connection, intento_id: int) -> IntentoRemedi
 
 def resolver_deshacer(conn: sqlite3.Connection, intento_id: int) -> IntentoRemediacion:
     """User Story 5: deshace un intento `ejecutado`. Exige que exista
-    y esté `ejecutado` (FR-010, Edge Cases de spec.md)."""
+    y esté `ejecutado` (FR-010, Edge Cases de spec.md), y que su
+    fichero rotado todavía exista — la purga de retención
+    (ROTACIONES_A_CONSERVAR, research.md §8 de 019) puede haberlo
+    borrado si han pasado más de 4 rotaciones desde entonces."""
     intento = get_intento(conn, intento_id)
     if intento is None:
         raise ValueError(f"intento {intento_id} no existe")
@@ -196,6 +223,11 @@ def resolver_deshacer(conn: sqlite3.Connection, intento_id: int) -> IntentoRemed
         raise ValueError(f"intento {intento_id} no está ejecutado (estado={intento.estado})")
     if not intento.fichero_rotado:
         raise ValueError(f"intento {intento_id} no tiene fichero rotado registrado")
+    if not Path(intento.fichero_rotado).exists():
+        raise ValueError(
+            f"intento {intento_id}: {intento.fichero_rotado} ya no existe "
+            f"(purgado por retención — más de {ROTACIONES_A_CONSERVAR} rotaciones después)"
+        )
 
     conservado = deshacer_rotar_log(Path(intento.ruta), Path(intento.fichero_rotado))
     detalle = "deshecho"
