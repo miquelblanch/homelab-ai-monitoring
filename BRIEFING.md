@@ -1777,6 +1777,118 @@ adaptar):
 
 ---
 
+## Feature 018 — material de partida (2026-08-13): generalizar el visor de diagnósticos a los 9 orígenes restantes (y arreglar el de contenedor)
+
+Con los 10 orígenes de `src/diagnostico/` cerrados (007-017), el visor
+del dashboard (feature 008) solo muestra diagnósticos de `contenedor`
+— el resto son solo consultables por CLI. Este feature generaliza esa
+superficie, igual que 009-017 generalizaron el motor.
+
+**Hallazgo crítico, comprobado en vivo antes de especificar: el visor
+de `contenedor` está roto en producción ahora mismo.**
+`get_diagnostico_para_alarma()` (`app.py`, feature 008) sigue
+consultando `WHERE contenedor = ?`, pero el feature 009 (mismo día,
+después) migró el esquema a `componente`+`origen`
+(`_migrar_episodios_contenedor_a_componente`, `store.py`). Comprobado
+contra la base real:
+
+```
+$ sqlite3 diagnostico.db "SELECT ... FROM episodios WHERE contenedor = 'beszel';"
+Error: in prepare, no such column: contenedor
+```
+
+El fallo se traga en silencio (`_diagnostico_db_query` atrapa
+cualquier excepción y devuelve `None`, a propósito — FR-008 de 008: un
+origen roto no debe tumbar el resto de `/api/data`). Consecuencia: la
+pestaña "Alarmas" lleva **desde el 2026-08-11 sin mostrar ningún
+diagnóstico**, ni siquiera de contenedor — viola el Principio XII
+(Precisión del Dashboard, NO NEGOCIABLE) ahora mismo, sin que nadie lo
+haya notado porque el silencio es indistinguible de "no hay
+diagnóstico todavía". Se arregla como prerrequisito de este feature,
+no como un feature aparte — no tiene sentido generalizar una consulta
+rota.
+
+**El frontend ya es agnóstico al origen — sin cambios de JS.**
+`diagnosticoHtml(a)` se llama para cualquier alarma con `a.diagnostico`
+no nulo, sin distinguir de qué origen es (comprobado leyendo
+`app.py`, la función y su único punto de llamada en `renderAlarmas`).
+Todo el trabajo de este feature es backend (Python), en un único
+fichero fuera de este repo, sin control de versiones:
+`/Volumes/FastData/homelab/docker/homelab-dashboard/scripts/app.py`
+— mismo patrón que 008 (dashboard-only), con el riesgo añadido de que
+no hay `git diff` ni revert fácil: se hace copia de seguridad del
+fichero antes de tocarlo, y se verifica el contenedor tras cada cambio
+(`docker compose up -d --build` en
+`docker/homelab-dashboard/`, no está en la lista de contenedores
+críticos que exigen aprobación).
+
+**Los 10 orígenes de alarma del dashboard no emparejan igual con
+`diagnostico.db` — comprobado uno a uno leyendo `get_active_alarms()`
+antes de diseñar nada:**
+
+| Alarma (`add(...)`) | Origen de `diagnostico.db` | Identidad real para emparejar | Ventana temporal disponible |
+|---|---|---|---|
+| `contenedores` | `contenedor` | `c["name"]` | `down_since` → misma tolerancia de 30 min ya validada (008) |
+| `ha` | `ha` | `cid` (el diccionario ya distingue `cid` de `label`; la alarma muestra `label`, pero `diagnostico.db` guarda `cid`) | `down_since` |
+| `discos` | `disco` | `d["label"]` | Ninguna — la alarma no pasa `antiguedad_s` |
+| `backup` | `backup` | Ninguna — `componente` es el momento ISO del propio diagnóstico, no un nombre estable (`data-model.md` de 011) | Ninguna — toca el episodio más reciente de ese origen, sin más filtro |
+| `monitores` | `latido` | `m["job"]` (la alarma muestra `label`, p. ej. "Monitor de Docker"; `diagnostico.db` guarda el `job`, p. ej. "docker-monitor" — feature 017) | Ninguna con sentido real: `latido` no tiene modo diferido, solo existe "el último episodio vivo de este job" |
+| `relays` | `relay` | `r["name"]` | Ninguna — **y solo empareja si ese relay se diagnosticó en vivo por nombre**: en diferido, `relay_agregado` nunca identifica cuál relay concreto (research.md de 012) — limitación real, no un fallo de este feature |
+| `hosts_externos` | `host_externo` | Nombre canónico, no el de pantalla — mapeo `HOSTS_EXTERNOS` de `evidencia.py` ("Host de Uptime Kuma" → "UptimeKuma"), que hay que replicar en `app.py` igual que ya replica `EXTERNAL_HOSTS`/`MONITOR_JOBS` | Ninguna — la alarma no pasa `antiguedad_s` |
+| `beszel_hub` | `hub_beszel` | Ninguna — mismo caso que `backup`, `componente` es el momento ISO (solo existe un hub) | Ninguna — episodio más reciente de ese origen |
+| `agentes` (LaunchAgents) | `agente` | `a["label"]` completo (la alarma muestra `a["short"]`; hay que pasar el `label` real para emparejar, no lo que se ve en pantalla) | Ninguna — sin modo diferido |
+| `agentes` (Crons de Hermes) | **ninguno** | — | **Fuera de alcance real, no una alarma sin emparejar**: ningún origen de `diagnostico.py` cubre los crons de Hermes — son un mecanismo distinto (`get_crons()`), nunca generalizado. Su `diagnostico` queda `None` siempre |
+| `inventario` | `inventario` | `b.get("componente", "")` | Ninguna — la alarma no pasa `antiguedad_s` |
+
+**Decisión de diseño**: una única función generalizada,
+`get_diagnostico_para_origen(origen, identidad, down_since=None)`,
+sustituye a `get_diagnostico_para_alarma()` (que solo servía a
+contenedor). Con `down_since`, aplica la misma tolerancia de ventana ya
+validada por 008 (research.md §2-§3 de esa feature). Sin él —el caso de
+8 de los 10 orígenes—, toma el episodio más reciente para esa
+`(origen, identidad)`, sin ventana: no hay ningún ancla temporal real
+que comparar, y forzar una ventana arbitraria sería inventar precisión
+que la evidencia no tiene (mismo criterio que 014/015 con "no
+presentes la ausencia como una prueba de caída").
+
+**Alcance propuesto (borrador, para que Miquel decida en `clarify`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Arreglar el emparejamiento roto de `contenedor` (bug crítico, Principio XII) | Dentro — prerrequisito |
+| Generalizar a `ha`, `discos`, `relays`, `host_externos`, `agentes` (LaunchAgents), `inventario`, `monitores` (latido) — 7 orígenes con identidad estable | Dentro |
+| Generalizar a `backup`, `beszel_hub` — 2 orígenes singleton, sin identidad estable, solo "el más reciente" | Dentro |
+| Cobertura de los crons de Hermes en la alarma `agentes` | Fuera — ningún origen de `diagnostico.py` los cubre; ampliar eso es un feature nuevo, no de este |
+| Cambios en el frontend (JS/CSS) | Fuera — ya es agnóstico al origen, comprobado |
+| Lanzar un diagnóstico nuevo desde el navegador | Fuera — sigue siendo solo por CLI (igual que 008) |
+| Corregir la propia limitación estructural de `relay` (no poder saber cuál relay concreto en diferido) | Fuera — es del motor (012), no de este visor |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El visor de diagnósticos en el dashboard (feature 008) solo muestra
+> el diagnóstico de contenedores caídos, y además está roto: sigue
+> consultando una columna (`contenedor`) que el feature 009 renombró a
+> `componente`+`origen` el mismo día, así que lleva desde el
+> 2026-08-11 sin mostrar ningún diagnóstico en producción, ni siquiera
+> el de contenedor — se traga el error en silencio. Quiero arreglar
+> ese emparejamiento primero, y luego generalizarlo a los 9 orígenes
+> restantes del motor de diagnóstico (disco, HA, backup, relay,
+> inventario, host externo, hub de Beszel, agente, latido) para que
+> cualquier alarma activa con un diagnóstico ya hecho lo muestre,
+> igual que ya hace contenedor. Para los orígenes con modo diferido y
+> un ancla temporal real en la alarma (contenedor, HA), el
+> emparejamiento respeta la misma ventana de tolerancia que ya usa
+> contenedor. Para el resto, que no tienen ese ancla o no tienen modo
+> diferido, basta con el episodio más reciente de ese origen. No
+> incluye dar cobertura de diagnóstico a los crons de Hermes, que hoy
+> comparten la alarma "agentes" con los LaunchAgents pero no los cubre
+> ningún origen del motor. No incluye ningún cambio de frontend — ya
+> es agnóstico al origen. No incluye poder lanzar un diagnóstico nuevo
+> desde el navegador.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que
