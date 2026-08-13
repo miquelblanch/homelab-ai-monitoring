@@ -77,6 +77,7 @@ def _run_comprobar() -> int:
 
     with store.connect() as conn:
         creados = acciones.comprobar_rotar_log(conn)
+        acciones.escribir_snapshot(conn)  # feature 020 — para el dashboard
 
     if not creados:
         print("nada por encima del umbral, o ya había una propuesta pendiente")

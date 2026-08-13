@@ -2042,6 +2042,65 @@ adaptar):
 
 ---
 
+## Feature 020 — material de partida (2026-08-13): visor de remediación en el dashboard
+
+Con 019 cerrado y `LOGS_VIGILADOS` ampliado a 17 logs, Miquel pidió
+ver esa lista con sus tamaños en el dashboard — la primera superficie
+visual para el Frente 2 de remediación (FR-014 de 019 dejó
+explícitamente el CLI como única interfaz en v1; este feature la
+amplía, no la contradice).
+
+**Hallazgo real que cambia la arquitectura, encontrado antes de
+diseñar nada**: el contenedor `homelab-dashboard` **no monta**
+`~/Library/Logs/` — comprobado en `docker-compose.yml` (solo monta
+`/data`, `~/.hermes`, `/Volumes/FastData` y `/Volumes/Storage`). El
+dashboard nunca ha podido leer esos ficheros directamente, y no es
+razonable que empiece ahora tocando ese volumen sin más.
+
+**Decisión, confirmada con Miquel (`AskUserQuestion`)**: mismo patrón
+ya establecido en todo el homelab (`dump_socat_status.py`,
+`docker_monitor.py`) — un proceso en el host escribe un JSON a `/data`
+(ya montado), el dashboard solo lee ese JSON. Concretamente:
+
+- `remediacion.cli comprobar` escribe, además de lo que ya hacía, un
+  snapshot JSON con el estado de los 17 logs vigilados (tamaño actual,
+  umbral, si está por encima, y el modo vigente de `rotar_log`).
+- LaunchAgent nuevo, `amsterdam9.remediacion.comprobar`, que ejecuta
+  `comprobar` cada 15 min — mismo cadencia que otros monitores
+  ligeros del homelab (`ha_monitor.py`). No cambia el modo por
+  defecto de `rotar_log` (sigue en manual); en automático, este cron
+  sería el que dispara la ejecución real, exactamente para eso sirve
+  el interruptor.
+- `app.py` (dashboard) lee ese JSON de solo lectura, mismo patrón que
+  `get_socat_relays()`/`get_external_hosts()`.
+
+**Alcance propuesto (borrador, para `/speckit-plan`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| `remediacion.cli comprobar` escribe el snapshot JSON | Dentro |
+| LaunchAgent que dispara `comprobar` cada 15 min | Dentro (fuera de este repo) |
+| Nueva sección en el dashboard con la lista de logs, tamaño, umbral y estado | Dentro (fuera de este repo) |
+| Aprobar/rechazar/deshacer/cambiar modo desde el dashboard | Fuera — el CLI sigue siendo la única forma de actuar, esto es solo lectura |
+| Notificación por Telegram si un log supera el umbral | Fuera — ya excluido en 019, sin cambios |
+| Montar `~/Library/Logs` en el contenedor | Fuera — decisión explícita, mismo patrón JSON que el resto del homelab |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> La feature 019 (remediación automática) dejó el CLI como única
+> superficie. Quiero ver en el dashboard la lista de los 17 logs
+> vigilados con su tamaño actual, su umbral y si están por encima —
+> de solo lectura, sin poder actuar desde ahí. El contenedor del
+> dashboard no tiene acceso a ~/Library/Logs, así que
+> `remediacion.cli comprobar` escribe un snapshot JSON a /data (mismo
+> patrón que el resto del homelab), y un LaunchAgent nuevo lo dispara
+> cada 15 minutos. No incluye aprobar, rechazar, deshacer ni cambiar
+> el modo desde el dashboard — solo lectura. No incluye notificación
+> por Telegram.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que

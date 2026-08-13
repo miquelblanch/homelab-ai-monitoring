@@ -5,9 +5,10 @@ rotar_log. Condición determinista, sin DeepSeek (FR-013, research.md
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .model import IntentoRemediacion
@@ -18,6 +19,14 @@ from .store import (
     pendiente_existente,
     update_intento_estado,
 )
+
+_DEFAULT_SNAPSHOT_PATH = (
+    "/Volumes/FastData/homelab/docker/homelab-orchestrator/data/remediacion_estado.json"
+)
+
+
+def _snapshot_path() -> Path:
+    return Path(os.environ.get("REMEDIACION_SNAPSHOT_PATH", _DEFAULT_SNAPSHOT_PATH))
 
 REMEDIACION_LOGS_DIR = Path(
     os.environ.get("REMEDIACION_LOGS_DIR", str(Path.home() / "Library/Logs"))
@@ -194,3 +203,35 @@ def resolver_deshacer(conn: sqlite3.Connection, intento_id: int) -> IntentoRemed
         detalle += f" — contenido posterior conservado en {conservado}"
     update_intento_estado(conn, intento_id, "deshecho", detalle)
     return get_intento(conn, intento_id)
+
+
+def escribir_snapshot(conn: sqlite3.Connection) -> None:
+    """Escribe `remediacion_estado.json` con el estado real de los 17
+    logs vigilados y el modo vigente de `rotar_log` — feature 020,
+    para que el dashboard (sin acceso a REMEDIACION_LOGS_DIR) pueda
+    leerlo sin montar ningún volumen nuevo (research.md §1/§2 de
+    specs/020-visor-remediacion/). Nunca lanza: un fallo de escritura
+    no debe tumbar `comprobar` (contracts/snapshot-json.md, garantía 1)."""
+    modo = get_modo(conn, TIPO_ACCION_ROTAR_LOG)
+    logs = []
+    for nombre, nombre_fichero, umbral_bytes in LOGS_VIGILADOS:
+        ruta = REMEDIACION_LOGS_DIR / nombre_fichero
+        tamano = ruta.stat().st_size if ruta.exists() else 0
+        logs.append({
+            "nombre": nombre,
+            "tamano_bytes": tamano,
+            "umbral_bytes": umbral_bytes,
+            "supera_umbral": tamano > umbral_bytes,
+        })
+
+    payload = {
+        "generado_en": datetime.now(timezone.utc).isoformat(),
+        "modo_rotar_log": modo,
+        "logs": logs,
+    }
+    try:
+        destino = _snapshot_path()
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+    except OSError:
+        pass

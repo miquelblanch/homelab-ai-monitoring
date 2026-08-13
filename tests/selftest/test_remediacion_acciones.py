@@ -282,3 +282,70 @@ def test_resolver_aprobacion_fichero_ya_no_existe() -> None:
                 resuelto = acciones.resolver_aprobacion(conn, creados[0].id)
 
         check("fichero desaparecido entre medias ⇒ fallido, sin lanzar", resuelto.estado == "fallido")
+
+
+# ── escribir_snapshot (feature 020: specs/020-visor-remediacion/) ──
+
+
+def test_escribir_snapshot_forma_correcta() -> None:
+    with tempfile.TemporaryDirectory() as logs_dir, tempfile.TemporaryDirectory() as db_dir, \
+         tempfile.TemporaryDirectory() as snap_dir:
+        _escribir(Path(logs_dir) / "health-docker.log", 11 * 1024 * 1024)
+        # health-ha.log deliberadamente ausente — comprueba tamano_bytes=0
+
+        lista = [
+            ("health-docker", "health-docker.log", 10 * 1024 * 1024),
+            ("health-ha", "health-ha.log", 10 * 1024 * 1024),
+        ]
+        snap_path = Path(snap_dir) / "remediacion_estado.json"
+
+        with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(logs_dir)), \
+             patch.object(acciones, "LOGS_VIGILADOS", lista), \
+             patch.object(acciones, "_snapshot_path", return_value=snap_path):
+            with store.connect(_db(db_dir)) as conn:
+                acciones.escribir_snapshot(conn)
+
+        import json
+        payload = json.loads(snap_path.read_text())
+
+        check("generado_en presente", "generado_en" in payload)
+        check("modo_rotar_log presente, manual por defecto", payload["modo_rotar_log"] == "manual")
+        check("2 entradas en logs, una por cada LOGS_VIGILADOS", len(payload["logs"]) == 2)
+
+        por_nombre = {l["nombre"]: l for l in payload["logs"]}
+        check("health-docker refleja el tamaño real y supera_umbral=True",
+              por_nombre["health-docker"]["tamano_bytes"] == 11 * 1024 * 1024
+              and por_nombre["health-docker"]["supera_umbral"] is True)
+        check("health-ha ausente ⇒ tamano_bytes=0, supera_umbral=False",
+              por_nombre["health-ha"]["tamano_bytes"] == 0
+              and por_nombre["health-ha"]["supera_umbral"] is False)
+
+
+def test_escribir_snapshot_crea_el_directorio_si_hace_falta() -> None:
+    with tempfile.TemporaryDirectory() as logs_dir, tempfile.TemporaryDirectory() as db_dir:
+        ruta_en_subdir_inexistente = Path(logs_dir) / "no-existe" / "sub" / "remediacion_estado.json"
+        with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(logs_dir)), \
+             patch.object(acciones, "_snapshot_path", return_value=ruta_en_subdir_inexistente):
+            with store.connect(_db(db_dir)) as conn:
+                acciones.escribir_snapshot(conn)
+        check("crea los directorios intermedios y escribe el fichero", ruta_en_subdir_inexistente.exists())
+
+
+def test_escribir_snapshot_nunca_lanza_si_no_puede_escribir() -> None:
+    with tempfile.TemporaryDirectory() as logs_dir, tempfile.TemporaryDirectory() as db_dir:
+        # "bloqueo" es un FICHERO, no un directorio — mkdir(parents=True)
+        # sobre una ruta que lo atraviesa debe fallar con OSError real,
+        # no con un directorio que simplemente no existía todavía.
+        bloqueo = Path(logs_dir) / "bloqueo"
+        bloqueo.write_text("no soy un directorio")
+        ruta_imposible = bloqueo / "remediacion_estado.json"
+
+        with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(logs_dir)), \
+             patch.object(acciones, "_snapshot_path", return_value=ruta_imposible):
+            with store.connect(_db(db_dir)) as conn:
+                lanzo = False
+                try:
+                    acciones.escribir_snapshot(conn)
+                except Exception:
+                    lanzo = True
+        check("un fallo real de escritura no propaga la excepción (contrato garantía 1)", lanzo is False)
