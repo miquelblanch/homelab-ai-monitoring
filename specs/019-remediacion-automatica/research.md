@@ -173,3 +173,36 @@ determinista — se ejecuta bajo demanda por Miquel en v1 (sin
 LaunchAgent propio, FR-014 ya excluye notificación automática; un
 cron que la dispare sola queda para cuando haya confianza suficiente
 como para no necesitar revisar cada ejecución a mano).
+
+## §7 — Ampliación de `LOGS_VIGILADOS`, 2026-08-13, mismo día tras validar
+
+**Hallazgo real, pedido por Miquel al revisar el tamaño de los dos
+logs rotados**: `health-docker.log`/`health-ha.log` no eran casos
+aislados — ningún log de `~/Library/Logs/` tenía rotación, solo los
+de `~/.hermes/profiles/bautista/logs/` (cubiertos por
+`rotate_hermes_logs.sh`, mecanismo distinto y ya existente, con sus
+propios umbrales de 500 KB-2 MB). El resto (`dashboard-socat.log` a
+1,78 MB, `hermes-dashboard.log` a 1,34 MB...) tenía el mismo problema
+de fondo, solo que más joven — sin límite, seguirían creciendo igual.
+
+**Decisión**: ampliar `LOGS_VIGILADOS` de 2 a 17 entradas — todos los
+ficheros `.log` que aparecen como `StandardOutPath`/`StandardErrorPath`
+de un LaunchAgent `amsterdam9.*` en `~/Library/Logs/`, confirmado por
+`grep` directo sobre los `.plist` reales (no una lista aproximada de
+`ls`). Mismo umbral por defecto (10 MB) para los 17 — ninguno se
+acercaba siquiera a 2 MB al ampliar la lista, así que no hace falta
+un umbral distinto por fichero todavía; se puede ajustar por variable
+de entorno si algún caso real lo pidiera más adelante.
+
+**Quedan fuera, explícitamente**: los 4 logs de
+`~/.hermes/profiles/bautista/logs/` (ya cubiertos por el mecanismo
+existente — ampliar aquí también sería un tercer sistema de rotación
+compitiendo con uno que ya funciona, violando el Principio VII, un
+actor por acción); `metrics-retention.out`/`.err` (extensión distinta,
+`.out`, no `.log` — mismo criterio de lista cerrada y explícita, no se
+amplía el patrón sin comprobarlo primero); los logs de
+`ebook2audiobook` (viven en un subdirectorio propio, no directamente
+en `~/Library/Logs/`); y ficheros que no son logs de este proyecto en
+absoluto (`.DS_Store`, `PhotosUpgrade.aapbz`, `SparkleUpdateLog.log`,
+`fsck_hfs.log` — artefactos de macOS/apps de terceros, fuera del
+universo que este feature debe tocar).

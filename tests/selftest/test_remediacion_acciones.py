@@ -20,6 +20,34 @@ def _escribir(ruta: Path, tamano_bytes: int) -> None:
     ruta.write_bytes(b"x" * tamano_bytes)
 
 
+# ── LOGS_VIGILADOS (lista cerrada real, ampliada 2026-08-13, research.md §7) ──
+
+
+def test_logs_vigilados_lista_real() -> None:
+    check("17 logs vigilados tras la ampliación", len(acciones.LOGS_VIGILADOS) == 17)
+
+    nombres = [n for n, _, _ in acciones.LOGS_VIGILADOS]
+    check("sin nombres duplicados", len(nombres) == len(set(nombres)))
+
+    ficheros = [f for _, f, _ in acciones.LOGS_VIGILADOS]
+    check("sin ficheros duplicados", len(ficheros) == len(set(ficheros)))
+    check("los dos originales siguen presentes",
+          "health-docker.log" in ficheros and "health-ha.log" in ficheros)
+    check("un candidato real de la ampliación está presente",
+          "dashboard-socat.log" in ficheros)
+
+    CRITICOS = {
+        "homeassistant", "vaultwarden", "nextcloud", "nextcloud-db",
+        "nextcloud_redis", "immich_server", "immich_postgres",
+        "pangolin-server", "gerbil", "traefik",
+    }
+    check(
+        "ningún nombre de log coincide con un componente crítico (FR-012)",
+        all(n not in CRITICOS for n in nombres),
+    )
+    check("todos los umbrales son positivos", all(u > 0 for _, _, u in acciones.LOGS_VIGILADOS))
+
+
 # ── ejecutar_rotar_log / deshacer_rotar_log (lógica de ficheros pura) ──
 
 

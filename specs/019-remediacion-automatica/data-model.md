@@ -57,7 +57,7 @@ admite `deshacer` (FR-010) — pasa a `"deshecho"`, también final.
 |---|---|---|
 | `REMEDIACION_LOGS_DIR` | `~/Library/Logs`, configurable por variable de entorno | Directorio donde viven los logs vigilados — configurable para poder probar por CLI sin tocar los reales (research.md §3). |
 | `UMBRAL_ROTACION_BYTES_DEFAULT` | `10 * 1024 * 1024` (10 MB), configurable por `REMEDIACION_UMBRAL_ROTACION_BYTES` | Umbral de la condición determinista (research.md §3). |
-| `LOGS_VIGILADOS` | Lista cerrada de 2 `(nombre, nombre_fichero, umbral_bytes)` | Universo cerrado de nombres de fichero — uno fuera de esta lista nunca se evalúa (FR-005); la ruta real se arma con `REMEDIACION_LOGS_DIR`. |
+| `LOGS_VIGILADOS` | Lista cerrada de 17 `(nombre, nombre_fichero, umbral_bytes)` (ampliada 2026-08-13, research.md §7) | Universo cerrado de nombres de fichero — uno fuera de esta lista nunca se evalúa (FR-005); la ruta real se arma con `REMEDIACION_LOGS_DIR`. |
 
 ## Funciones (`acciones.py`)
 

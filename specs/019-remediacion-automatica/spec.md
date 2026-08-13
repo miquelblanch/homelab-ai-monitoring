@@ -255,10 +255,11 @@ disponible sin haberse perdido nunca.
 
 ## Assumptions
 
-- **Ningún log de la lista vigilada en v1 pertenece a un componente
-  crítico** — comprobado antes de especificar: los logs candidatos
-  (`health-docker.log`, `health-ha.log`) son logs de monitores propios
-  del homelab, no de `homeassistant`/`vaultwarden`/`nextcloud*`/
+- **Ningún log de la lista vigilada pertenece a un componente
+  crítico** — comprobado antes de especificar, y de nuevo al ampliar
+  la lista de 2 a 17 el mismo día (research.md §7): todos son logs de
+  monitores/automatizaciones propias del homelab
+  (`amsterdam9.*`), no de `homeassistant`/`vaultwarden`/`nextcloud*`/
   `immich*`/`pangolin-server`/`gerbil`/`traefik` (la lista de críticos
   del `CLAUDE.md` general).
 - **Sin dependencia del motor DeepSeek en v1** — decisión explícita

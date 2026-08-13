@@ -30,13 +30,34 @@ UMBRAL_ROTACION_BYTES_DEFAULT = int(
     os.environ.get("REMEDIACION_UMBRAL_ROTACION_BYTES", str(10 * 1024 * 1024))  # 10 MB
 )
 
-# (nombre, nombre_fichero, umbral_bytes) — lista cerrada (research.md
-# §3/§5 de 019): los dos únicos casos reales y activos del barrido de
-# agosto que seguían sin resolver el 2026-08-13. Ninguno pertenece a
-# un componente crítico (spec.md Assumptions, FR-012).
+# (nombre, nombre_fichero, umbral_bytes) — lista cerrada, ampliada el
+# 2026-08-13 (research.md §7 de 019) a los 17 logs reales que escriben
+# los LaunchAgents `amsterdam9.*` en ~/Library/Logs (StandardOutPath/
+# StandardErrorPath, confirmado por grep directo sobre los .plist
+# reales — no una lista aproximada de `ls`). Excluye
+# `~/.hermes/profiles/bautista/logs/`, ya cubierta por
+# `rotate_hermes_logs.sh` (mecanismo distinto, research.md §7).
+# Ninguno pertenece a un componente crítico (spec.md Assumptions,
+# FR-012) — todos son logs de monitores/automatizaciones, no de los
+# contenedores críticos en sí.
 LOGS_VIGILADOS: list[tuple[str, str, int]] = [
     ("health-docker", "health-docker.log", UMBRAL_ROTACION_BYTES_DEFAULT),
     ("health-ha", "health-ha.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("health-dns-pi", "health-dns-pi.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("health-dns-pi-err", "health-dns-pi.err.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("health-telegram", "health-telegram.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("dashboard-socat", "dashboard-socat.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("dashboard-socat-err", "dashboard-socat.err.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("dashboard-disk", "dashboard-disk.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("dashboard-disk-err", "dashboard-disk.err.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("hermes-dashboard", "hermes-dashboard.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("hermes-dashboard-err", "hermes-dashboard.err.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("beszel-hosts-reader", "beszel-hosts-reader.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("beszel-hosts-reader-err", "beszel-hosts-reader.err.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("gbrain-reindex", "gbrain-reindex.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("immich-album-sync", "immich-album-sync.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("inventario-cobertura", "inventario-cobertura.log", UMBRAL_ROTACION_BYTES_DEFAULT),
+    ("morning-report", "morning-report.log", UMBRAL_ROTACION_BYTES_DEFAULT),
 ]
 
 TIPO_ACCION_ROTAR_LOG = "rotar_log"
