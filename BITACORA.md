@@ -6,6 +6,76 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Feature 019, ciclo completo (specify → implement): remediación automática, primera pieza — el sistema escribe sobre el homelab real por primera vez
+
+Mismo modo que 013-018: investigación propia en esta sesión, material
+de partida escrito antes de especificar. Es el feature de mayor riesgo
+real de todo el proyecto — el primero que actúa sobre el homelab, no
+solo lo lee.
+
+- **Qué se pidió**: Miquel pidió arrancar Frente 2/remediación con un
+  sistema de interruptor manual/automático por tipo de acción, que él
+  controla siempre, sin que el sistema se autopromueva.
+- **Tres decisiones de diseño confirmadas por `AskUserQuestion` (todas
+  la opción recomendada)**: granularidad por tipo de acción (no por
+  componente individual), interfaz solo CLI, y el requisito para pasar
+  a automático es únicamente la decisión de Miquel (con historial
+  visible, sin barrera de aciertos mínimos).
+- **Hallazgo real que obligó a repensar el alcance**: de los 36
+  diagnósticos reales producidos por el motor DeepSeek (007-017),
+  **ninguno** ha concluido `causa_probable` — todos honestos
+  `no_diagnosticable`. Atar la remediación a ese motor la habría
+  dejado sin ningún caso real que validar hoy. Segunda ronda de
+  `AskUserQuestion`, también recomendada: la v1 actúa sobre
+  condiciones deterministas (mismo patrón que `docker_monitor.py`, sin
+  IA), y el primer y único tipo de acción es "rotar un log sin rotar",
+  comprobado como problema real y activo (`health-docker.log` a 71 MB,
+  `health-ha.log` a 11,7 MB) — los otros candidatos del barrido de
+  agosto (plists corruptos, `beszel-agent.log`) ya estaban arreglados
+  o el fichero ya no existía.
+- **Tensión real con el Principio IV y el Modelo Operacional B,
+  documentada explícitamente en el plan**: "diagnóstico" se usa en dos
+  sentidos en este proyecto (el artefacto formal de `src/diagnostico/`
+  y el sentido genérico de causa conocida y verificada); una condición
+  determinista satisface el segundo sentido. Y estar en la lista
+  cerrada de acciones reversibles es condición necesaria para actuar,
+  nunca suficiente por sí sola — cada tipo de acción sigue empezando
+  en modo manual hasta que Miquel lo activa. Mismo criterio de
+  honestidad ya aplicado al Principio XI en 016.
+- **Analyze encontró una inconsistencia real**: `data-model.md` listaba
+  un estado `"aprobado"` intermedio que el diseño real nunca escribe
+  (`aprobar` ejecuta la rotación en la misma llamada) — corregido en
+  spec.md, data-model.md y tasks.md antes de implementar.
+- **Paquete nuevo, `src/remediacion/`**, independiente de
+  `src/diagnostico/` — sin DeepSeek, sin dependencia cruzada. La
+  propiedad de diseño más cuidada: la rotación de un log **nunca
+  trunca ni borra**, siempre renombra; deshacer tiene un procedimiento
+  de dos pasos para nunca sobreescribir contenido escrito después de
+  la rotación (verificado explícitamente con un test que escribe
+  contenido nuevo tras rotar y comprueba que sobrevive).
+- **Validación en vivo, incluyendo la producción real** — con permiso
+  explícito de Miquel (`AskUserQuestion`) para el paso final: los 6
+  escenarios de `quickstart.md`, los 5 primeros contra logs de prueba
+  en un directorio temporal (nunca los reales), y el sexto contra
+  `health-docker.log`/`health-ha.log` de verdad — **aprobados y
+  rotados de verdad**: 71,4 MB y 11,7 MB conservados íntegros en sus
+  ficheros rotados, originales a 0 bytes, listos para que los
+  LaunchAgents sigan escribiendo en el siguiente ciclo sin reiniciar
+  nada.
+- **Selftest**: ~35 aserciones nuevas repartidas en 3 módulos
+  (`test_remediacion_store`, `test_remediacion_acciones`,
+  `test_remediacion_cli`), un fallo propio encontrado y corregido en
+  la primera pasada (un test de CLI comprobaba el tamaño del fichero
+  *después* de ya haber llamado `deshacer`, no antes) — no un fallo
+  del código, del propio test.
+- **Dato para el método**: la disciplina de "investigar antes de
+  especificar" pagó de la forma más importante hasta ahora — sin
+  comprobar cuántos `causa_probable` reales existían, esta feature se
+  habría diseñado atada a un motor sin ningún caso real que ofrecerle,
+  y se habría descubierto el problema mucho más tarde, con código ya
+  escrito. Encontrarlo en la fase de investigación costó una consulta
+  SQL.
+
 ## 2026-08-13 — Cierra la limitación de `relay` documentada en 012 (sin feature, sin ciclo SDD)
 
 Tras el feature 018, Miquel preguntó por la limitación de `relay`
