@@ -6,6 +6,41 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Bug real: `--selftest` sobreescribía el snapshot de producción del dashboard
+
+Miquel reportó que la pestaña "Sistema" del dashboard solo mostraba
+una línea (`health-docker`) en vez de los 17 logs.
+
+- **Causa raíz**: `test_cli_comprobar_y_pendientes` y
+  `test_cli_aprobar_rechazar_deshacer`
+  (`tests/selftest/test_remediacion_cli.py`) llaman a
+  `cli.main(["comprobar"])`, que desde el feature 020 también ejecuta
+  `escribir_snapshot()`. Los dos tests parcheaban
+  `REMEDIACION_LOGS_DIR`/`LOGS_VIGILADOS`/`store.db_path` para no
+  tocar datos reales, pero **no** `acciones._snapshot_path` — así que
+  cada `--selftest` sobreescribía el `remediacion_estado.json` **real**
+  con datos de prueba (un solo log falso, tamaño fijo de 11 MB,
+  apuntando a un directorio temporal ya borrado). Cada vez que se
+  ejecutó el selftest tras validar la feature 020 (varias veces,
+  incluida la sesión de retención de rotaciones), se pisó el snapshot
+  real sin que ningún test lo detectara — los propios tests solo
+  comprobaban códigos de salida, nunca el contenido del fichero.
+- **Arreglo**: los dos tests ahora parchean también
+  `acciones._snapshot_path` a una ruta temporal propia, con una
+  aserción nueva que confirma explícitamente que el snapshot de
+  prueba se escribió en su sitio — no solo que el comando devolvió 0.
+  Verificado con un antes/después del `mtime` real: el selftest ya no
+  lo toca.
+- **Snapshot real regenerado**: `remediacion.cli comprobar` de verdad,
+  vuelve a mostrar los 17 logs reales en el dashboard.
+- **Dato para el método**: un test que aísla la mayoría de los efectos
+  secundarios de una función pero se olvida de uno solo puede seguir
+  contaminando datos reales en producción sin que el propio test lo
+  note — la aserción "el comando terminó en 0" no basta cuando el
+  comando tiene más de un efecto lateral. Aislar TODOS los efectos
+  secundarios de una llamada nueva a una función ya wireada en el CLI,
+  no solo los que motivaron el test.
+
 ## 2026-08-13 — Retención de rotaciones: 4 como mucho (sin nuevo número de feature)
 
 Al usar el visor nuevo del dashboard, Miquel notó que los dos logs ya
