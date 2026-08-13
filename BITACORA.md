@@ -6,6 +6,38 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Corrección de deuda documental en la constitución (sin feature, sin ciclo SDD)
+
+Tras cerrar los 9 orígenes con el feature 016, se preguntó a Miquel qué
+quedaba pendiente del proyecto. Entre los cuatro puntos identificados
+(remediación automática nunca iniciada, visor del dashboard limitado
+al origen `contenedor`, "Latidos de monitores" fuera de alcance de
+016, y esta deuda documental), eligió el de menor detalle.
+
+- **Qué se corrigió**: `.specify/memory/constitution.md`, sección
+  "Alcance y Límites → Fuera de alcance en v1", seguía diciendo
+  "diagnóstico de Home Assistant y relays socat" como fuera de
+  alcance, pese a llevar implementados desde los features 010 y 012.
+  Se había detectado ya durante el `/speckit-analyze` del feature 015
+  y quedó anotado sin corregir.
+- **Cambio**: se retira esa mención del "fuera de alcance" y se añade
+  un párrafo explícito listando los nueve orígenes ya generalizados
+  (contenedor, disco, HA, backup, relay, inventario, host externo, hub
+  de Beszel, agente), dejando claro que lo que sigue fuera de alcance
+  para 009–016 es la capa de **remediación automática**, no el
+  diagnóstico. Versión de la constitución: 1.2.0 → 1.2.1 (aclaración,
+  sin cambio de principios).
+- **No es una sesión SDD**: no se ejecutó `/speckit-*` — es una
+  corrección directa de un documento de gobierno, fuera del ciclo de
+  features.
+- **Dato para el método**: una nota de "detectado pero no corregido"
+  dejada durante un `/speckit-analyze` (como la de 015) puede
+  quedarse pendiente varias sesiones sin que nadie la retome hasta que
+  se pregunta explícitamente "¿qué falta?". Vale la pena que ese tipo
+  de nota incluya dónde vive el defecto exacto (fichero y sección),
+  no solo que existe — aquí sí lo tenía, y eso fue lo que hizo la
+  corrección trivial en vez de una nueva investigación.
+
 ## 2026-08-12 — Feature 016, ciclo completo (specify → implement), noveno y último origen — cierra la Central de Alarmas
 
 **Mismo modo que 014/015**: investigación propia en esta sesión,

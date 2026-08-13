@@ -1,17 +1,17 @@
 <!--
 ## Sync Impact Report
 
-**Version change**: 1.1.2 → 1.2.0
-**Principles added**: XIII. Cobertura Sistemática, No Anecdótica
-**Principles modified**: None (Principios I–XII sin cambios)
+**Version change**: 1.2.0 → 1.2.1
+**Principles added**: None
+**Principles modified**: None (Principios I–XIII sin cambios)
 **Sections added**: None
 **Sections removed**: N/A
-**Sections clarified**: "Alcance y Límites → En alcance" — ampliado de "diagnóstico
-de incidencias de contenedores" a cobertura sistemática de todo el homelab
-(contenedores, integraciones como los recordatorios de Nextcloud, y la propia
-infraestructura de monitorización). El giro lo motiva BRIEFING.md: los cuatro casos
-que dieron origen al proyecto se encontraron por casualidad, no buscándolos —lo que
-demuestra que el objetivo nunca fue esa lista de casos, sino la cobertura misma
+**Sections clarified**: "Alcance y Límites → Fuera de alcance en v1" — eliminada la
+mención a "diagnóstico de Home Assistant y relays socat" como fuera de alcance: ambos
+entraron en alcance y se implementaron (features 010 y 012), y la constitución había
+quedado desactualizada desde entonces. Deuda documental detectada durante el análisis
+del feature 015 y corregida aquí. Con el feature 016 los nueve orígenes de la Central
+de Alarmas quedan generalizados; se añade una nota al respecto.
 **Deferred TODOs**: None
 -->
 
@@ -166,8 +166,15 @@ siempre dentro de la lista cerrada de acciones reversibles con rollback escrito
 (Principios V y VI) y bajo el Modelo Operacional B.
 
 **Fuera de alcance en v1**: ejecución de acciones correctivas sobre contenedores críticos
-(lista del monitor), diagnóstico de Home Assistant y relays socat, cualquier incidencia que
-el monitor actual resuelva sin ayuda.
+(lista del monitor), cualquier incidencia que el monitor actual resuelva sin ayuda.
+
+Los nueve orígenes de la Central de Alarmas (contenedor, disco, Home Assistant, backup,
+relay socat, inventario, host externo, hub de Beszel, agente) están en alcance de
+diagnóstico y generalizados desde el feature 016 — ver `specs/007-diagnostico-episodios/`
+a `specs/016-diagnostico-agentes/`. Lo que sigue fuera de alcance es la capa de
+**remediación automática** (ejecución de acciones correctivas más allá de causas ya
+diagnosticadas con certeza, según el párrafo anterior) para los orígenes 009–016: solo
+`docker_monitor.py` remedia hoy, y solo contenedores.
 
 **No reemplaza**: `docker_monitor.py` y su ciclo de remediación automática. El agente se
 añade como capa de diagnóstico.
