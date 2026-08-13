@@ -6,6 +6,29 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Dos totales agregados en la sección de remediación (sin nuevo número de feature)
+
+Miquel pidió ver, además de la tabla por log, el total de los
+ficheros activos y el total de todo (activos + rotaciones archivadas).
+
+- `escribir_snapshot()` ahora calcula `total_activos_bytes` (suma de
+  los 17 ficheros activos) y `total_con_rotaciones_bytes` (+ todas
+  las rotaciones `.rotado-*` de cada uno, research.md §8 de 019) — se
+  recalculan enteros en cada `comprobar`, nunca se acumulan.
+- Mostrados en la cabecera de la sección del dashboard, no como filas
+  nuevas de la tabla. Sin ningún control nuevo — sigue siendo
+  estrictamente de lectura, verificado igual que antes por inspección
+  del JS servido.
+- Validado en vivo: `total_activos_bytes` ≈ 6,25 MB (los 17 logs
+  activos, pequeños tras la rotación reciente),
+  `total_con_rotaciones_bytes` ≈ 89,35 MB (+ los ~83 MB de los dos
+  ficheros ya rotados de `health-docker`/`health-ha`) — cuadra con lo
+  esperado.
+- Aprendida la lección de la sesión anterior: el test de
+  `escribir_snapshot()` que ya aislaba el snapshot en una ruta propia
+  se amplió para cubrir los totales sin tocar nunca el fichero real
+  — verificado de nuevo con el `mtime` antes/después.
+
 ## 2026-08-13 — Bug real: `--selftest` sobreescribía el snapshot de producción del dashboard
 
 Miquel reportó que la pestaña "Sistema" del dashboard solo mostraba
