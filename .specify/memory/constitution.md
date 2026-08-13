@@ -1,17 +1,16 @@
 <!--
 ## Sync Impact Report
 
-**Version change**: 1.2.0 → 1.2.1
+**Version change**: 1.2.1 → 1.2.2
 **Principles added**: None
 **Principles modified**: None (Principios I–XIII sin cambios)
 **Sections added**: None
 **Sections removed**: N/A
-**Sections clarified**: "Alcance y Límites → Fuera de alcance en v1" — eliminada la
-mención a "diagnóstico de Home Assistant y relays socat" como fuera de alcance: ambos
-entraron en alcance y se implementaron (features 010 y 012), y la constitución había
-quedado desactualizada desde entonces. Deuda documental detectada durante el análisis
-del feature 015 y corregida aquí. Con el feature 016 los nueve orígenes de la Central
-de Alarmas quedan generalizados; se añade una nota al respecto.
+**Sections clarified**: "Alcance y Límites" seguía diciendo "los nueve orígenes...
+generalizados desde el feature 016" — quedó desactualizada en cuanto el feature 017
+añadió el décimo (latido de monitores) y el feature 018 generalizó también el visor del
+dashboard a los 10. Corregido el recuento y las referencias a specs/. Deuda detectada
+revisando el estado del proyecto a fondo el 2026-08-13, no durante ningún /speckit-analyze.
 **Deferred TODOs**: None
 -->
 
@@ -168,13 +167,15 @@ siempre dentro de la lista cerrada de acciones reversibles con rollback escrito
 **Fuera de alcance en v1**: ejecución de acciones correctivas sobre contenedores críticos
 (lista del monitor), cualquier incidencia que el monitor actual resuelva sin ayuda.
 
-Los nueve orígenes de la Central de Alarmas (contenedor, disco, Home Assistant, backup,
-relay socat, inventario, host externo, hub de Beszel, agente) están en alcance de
-diagnóstico y generalizados desde el feature 016 — ver `specs/007-diagnostico-episodios/`
-a `specs/016-diagnostico-agentes/`. Lo que sigue fuera de alcance es la capa de
-**remediación automática** (ejecución de acciones correctivas más allá de causas ya
-diagnosticadas con certeza, según el párrafo anterior) para los orígenes 009–016: solo
-`docker_monitor.py` remedia hoy, y solo contenedores.
+Los diez orígenes/mecanismos de la Central de Alarmas (contenedor, disco, Home Assistant,
+backup, relay socat, inventario, host externo, hub de Beszel, agente, latido de monitores)
+están en alcance de diagnóstico y generalizados desde el feature 017 — ver
+`specs/007-diagnostico-episodios/` a `specs/017-diagnostico-latidos/`. El feature 018
+generalizó, además, la superficie del dashboard (Principio XII) a esos mismos 10 orígenes
+— antes solo contenedor era visible fuera de la línea de comandos. Lo que sigue fuera de
+alcance es la capa de **remediación automática** (ejecución de acciones correctivas más
+allá de causas ya diagnosticadas con certeza, según el párrafo anterior) para los orígenes
+009–017: solo `docker_monitor.py` remedia hoy, y solo contenedores.
 
 **No reemplaza**: `docker_monitor.py` y su ciclo de remediación automática. El agente se
 añade como capa de diagnóstico.

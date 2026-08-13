@@ -157,6 +157,19 @@ NO NEGOCIABLE.**
 
 ## En alcance ahora
 
+> **Nota (2026-08-13): esta sección y la siguiente son de la fase de
+> planificación original, anteriores al feature 002 — más antiguas que
+> todo lo demás en este documento.** No se reescriben para que parezcan
+> siempre acertadas (mismo criterio que ya aplican `BRIEFING.md` para
+> el desajuste de numeración de 006 y `specs/008-.../spec.md` para
+> "Correcciones" vs. "Alarmas"): se documenta aquí el desajuste real,
+> encontrado al revisar el estado del proyecto a fondo. En concreto,
+> "Fuera de alcance por ahora" decía que diagnosticar Home Assistant y
+> los relays era "otro terreno" — dejó de ser cierto en cuanto los
+> features 010 y 012 los generalizaron, y nadie actualizó esta sección
+> entonces. El estado real y vigente de qué está en alcance es el de
+> `constitution.md` ("Alcance y Límites"), no el de esta sección.
+
 - **Inventario sistemático de cobertura**: recorrer todo el homelab —no solo
   los cuatro casos conocidos— y para cada pieza comprobar si tiene estado
   esperado declarado, si se vigila, y si un fallo llegaría al dashboard. Esto
