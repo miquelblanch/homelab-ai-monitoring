@@ -2231,6 +2231,21 @@ tocar la lista de contenedores críticos, ni el propio mecanismo de
 verificación post-reinicio (`VERIFY_DELAY_S` + comprobación real de
 `running`), que ya se corrigió una vez y no hace falta rehacer.
 
+> **Giro real de planteamiento (2026-08-13), a mitad de `/speckit-plan`.**
+> Lo de arriba describía una condición fija: "contenedor no crítico
+> caído → reiniciar". Miquel lo interrumpió para corregirlo: no
+> quiere una condición fija, quiere que DeepSeek analice la evidencia
+> real (alarma, logs, lo que ya reúne `src/diagnostico/`) y decida si
+> `reiniciar_contenedor` aplica a cada caso — para ciertos sistemas no
+> críticos, sin aprobación. Confirmado explícitamente con él: DeepSeek
+> nunca elige fuera de la lista cerrada de acciones ya aprobadas
+> (Principios V/VI intactos), el alcance sigue siendo solo
+> contenedores, y la pregunta a DeepSeek es nueva y directa —no
+> depende de que el motor de diagnóstico concluya `causa_probable`,
+> que hoy nunca ocurre (0 de 36). `spec.md` de 021 ya se reescribió
+> con este planteamiento; lo de arriba queda como registro de cómo
+> empezó, no como lo que se está construyendo.
+
 ---
 
 ## Método de trabajo
