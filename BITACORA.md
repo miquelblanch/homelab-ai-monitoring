@@ -6,6 +6,34 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Amplía `LOGS_VIGILADOS` de 019 de 2 a 17 logs (sin nuevo número de feature)
+
+Al ver los tamaños reales de los logs recién rotados, Miquel preguntó
+si el resto de `~/Library/Logs/` tenía el mismo problema.
+
+- **Investigación real**: `grep` directo sobre los `StandardOutPath`/
+  `StandardErrorPath` de los `.plist` de `amsterdam9.*` (no una lista
+  aproximada de `ls`) — 16 ficheros `.log` reales, ninguno con
+  rotación. Encontrado también un mecanismo de rotación **ya
+  existente** (`rotate_hermes_logs.sh`, diario a las 04:00) pero
+  limitado a `~/.hermes/profiles/bautista/logs/`, una carpeta
+  distinta — por eso `~/Library/Logs/` llevaba sin ningún límite
+  desde siempre.
+- **Ampliación**: `LOGS_VIGILADOS` pasa de 2 a 17 entradas, mismo
+  umbral (10 MB) para todas — ninguna se acercaba ni a 2 MB al
+  ampliar. Quedan fuera explícitamente los 4 logs ya cubiertos por
+  `rotate_hermes_logs.sh` (no duplicar un mecanismo que ya funciona,
+  Principio VII) y los ficheros que no son logs de este proyecto
+  (`.DS_Store`, artefactos de macOS/apps de terceros).
+- **Sin ciclo SDD nuevo**: es una extensión de datos de la feature 019
+  ya cerrada (mismo mecanismo, ya validado a fondo), no una capacidad
+  nueva — documentada como research.md §7 de esa misma feature, con
+  un test nuevo que fija la lista real (17, sin duplicados, ninguna
+  coincide con un componente crítico).
+- **Validado en vivo**: `comprobar` contra los 17 logs reales no crea
+  ninguna propuesta — los 15 nuevos siguen muy por debajo del umbral,
+  confirmando que la ampliación no genera falsos positivos.
+
 ## 2026-08-13 — Feature 019, ciclo completo (specify → implement): remediación automática, primera pieza — el sistema escribe sobre el homelab real por primera vez
 
 Mismo modo que 013-018: investigación propia en esta sesión, material
