@@ -1902,6 +1902,146 @@ adaptar):
 
 ---
 
+## Feature 019 — material de partida (2026-08-13): remediación automática, primera pieza
+
+Con el diagnóstico cerrado en los 10 orígenes (007-017) y su visor
+generalizado (018), toca el Frente 2 que nunca se empezó: la
+**remediación automática** (Principios IV-VIII, Modelo Operacional B).
+Es la primera vez que este proyecto escribe sobre el homelab real, no
+solo lo lee — mayor riesgo real que cualquier feature anterior.
+
+**Lo que pidió Miquel, en sus palabras**: un sistema para poder pasar
+cada tipo de remediación de manual a automática (y viceversa) cuando
+él decida confiar en ella — no todo-o-nada desde el principio.
+
+**Tres decisiones de diseño confirmadas con Miquel (AskUserQuestion,
+2026-08-13), las tres con la opción recomendada**:
+
+1. **Granularidad del interruptor: por tipo de acción**, no por
+   componente individual — un interruptor para "rotar log", válido
+   para todos los logs elegibles a la vez. Mismo nivel que ya usa
+   `docker_monitor.py` para tratar a los contenedores no críticos como
+   grupo.
+2. **Interfaz: solo CLI** — mismo patrón que `diagnostico.cli`, ningún
+   cambio de modo por accidente ni desde el móvil.
+3. **Requisito para pasar a automático: solo la decisión de Miquel, en
+   cualquier momento** — el sistema lleva la cuenta de aciertos/fallos
+   por tipo de acción y se la enseña, pero nunca se autopromueve solo
+   (Principio VII, un actor por acción). Sin barrera de "N aciertos
+   mínimos".
+
+**Hallazgo real que cambió el planteamiento, encontrado investigando
+antes de especificar**: la constitución dice que el alcance de
+remediación es *"para causas ya diagnosticadas con certeza"*. Se
+comprobó cuántos diagnósticos `causa_probable` existen hoy en
+`diagnostico.db`, de los 36 producidos por el motor (007-017):
+
+```
+$ sqlite3 diagnostico.db "SELECT conclusion_tipo, count(*) FROM diagnosticos GROUP BY conclusion_tipo;"
+no_diagnosticable|36
+```
+
+**Cero.** Todos honestos "no se puede diagnosticar" — nunca ha habido
+un caso real malo en el momento de validar cada feature. Atar la
+remediación a que el motor DeepSeek confirme una causa dejaría esta
+feature sin ningún caso real contra el que validarla hoy, rompiendo la
+disciplina que ha seguido todo el proyecto desde 007 (siempre contra
+evidencia real, nunca solo sintética).
+
+**Decisión, confirmada con Miquel (segunda AskUserQuestion)**: la v1
+de remediación actúa sobre **condiciones deterministas simples**
+("condición conocida → acción conocida"), sin pasar por el motor
+DeepSeek — mismo patrón que ya usa `docker_monitor.py` (que tampoco
+usa IA). El primer y único tipo de acción de esta feature: **rotar un
+log que ha crecido sin rotación**, comprobado como problema real y
+activo hoy, no del barrido de hace dos semanas:
+
+```
+$ ls -la ~/Library/Logs/health-docker.log ~/Library/Logs/health-ha.log
+-rw-r--r--  ...  71288308  ... health-docker.log   (63 MB el 01-08, sigue creciendo)
+-rw-r--r--  ...  11640902  ... health-ha.log        (8,1 MB el 01-08, sigue creciendo)
+```
+
+De paso se comprobaron los otros hallazgos del barrido: los 4 plists
+corruptos ya están arreglados (`plutil -lint` da OK en los 4) y
+`beszel-agent.log` ya no existe — ninguno de los dos sigue siendo un
+caso real hoy, así que no entran en el alcance de esta feature.
+
+**Tensión real con el Principio IV, a resolver explícitamente en el
+plan**: *"Ninguna acción correctiva se ejecuta sin un diagnóstico que
+la justifique"*. Este proyecto usa "diagnóstico" en dos sentidos: el
+artefacto formal de `src/diagnostico/` (`Diagnostico`/`Hipotesis`,
+007-017), y el sentido genérico de "una causa conocida y verificada".
+Una condición determinista y verificada en el momento (un fichero
+concreto supera un umbral de tamaño porque nada lo rota) es un
+diagnóstico en el segundo sentido —conocido, verificable, sin
+inventar nada— aunque no pase por DeepSeek. Se documentará esta
+distinción explícitamente en el `Constitution Check` del plan, mismo
+criterio que ya aclaró el alcance real de Principio XI en 016.
+
+**Arquitectura propuesta (borrador, para `/speckit-plan`)**:
+
+- Paquete nuevo `src/remediacion/`, independiente de
+  `src/diagnostico/` (sin dependencia entre ambos en v1 — se podría
+  tender un puente en un feature futuro si el motor empieza a producir
+  `causa_probable` de verdad).
+- Estado propio en `remediacion.db` (nueva base, mismo patrón sqlite
+  que `diagnostico.db`): `configuracion_accion` (`tipo_accion` PK,
+  `modo` ∈ {manual, automatico}, por defecto manual — "si hay duda, se
+  trata como de alto riesgo"), y `intentos_remediacion` (historial:
+  propuesto/aprobado/rechazado/ejecutado/fallido, con detalle —
+  Principio VIII extendido de hipótesis a acciones).
+- CLI `remediacion.cli`, mismo patrón que `diagnostico.cli`:
+  `comprobar` (evalúa la condición determinista, registra una
+  propuesta), `pendientes` (lista lo que espera aprobación en modo
+  manual), `aprobar ID` / `rechazar ID`, `modo TIPO_ACCION
+  --automatico|--manual`, `historial TIPO_ACCION`.
+- Reversibilidad escrita (Principio VI) para "rotar log": la acción
+  **renombra**, nunca borra — `foo.log` → `foo.log.rotado-<ISO>`, y
+  crea un `foo.log` vacío. El rollback es literalmente devolver el
+  fichero rotado a su nombre original; nada se pierde nunca.
+
+**Alcance propuesto (borrador, para que Miquel confirme en
+`clarify`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Interruptor manual/automático por tipo de acción, con historial | Dentro |
+| Un único tipo de acción: rotar un log que supera un umbral de tamaño sin rotación | Dentro |
+| Cualquier otro tipo de acción del barrido (plists, logs en `/tmp`...) | Fuera — no son problemas reales activos hoy, o quedan para un feature futuro |
+| Atar la remediación al motor DeepSeek (`causa_probable`) | Fuera de v1 — sin ningún caso real hoy; posible puente futuro |
+| Acciones sobre contenedores o componentes críticos | Fuera siempre, sin excepción — Principio VII, regla 3 del `CLAUDE.md` general |
+| Notificar a Miquel por Telegram | Fuera — el CLI es la única superficie en v1 (decisión de "interfaz" ya confirmada) |
+| Mostrar el estado de remediación en el dashboard | Fuera — sigue el mismo patrón que el motor de diagnóstico: CLI primero |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> El proyecto tiene diagnóstico cerrado en los 10 orígenes (007-017)
+> pero remediación automática nunca empezó (Principios IV-VIII,
+> Modelo Operacional B). Quiero un sistema de remediación con un
+> interruptor manual/automático por tipo de acción (no por componente
+> individual), que Miquel controla siempre él mismo desde un CLI (sin
+> autopromoción ni barrera de aciertos mínimos, aunque el sistema le
+> enseña el historial de aciertos/fallos de cada tipo al decidir). Por
+> defecto toda acción nueva empieza en modo manual: el sistema propone
+> y espera aprobación explícita antes de ejecutar; en modo automático,
+> ejecuta directamente y registra el resultado para revisión posterior
+> — igual en ambos modos: solo actúa dentro de una lista cerrada de
+> acciones reversibles con rollback escrito (Principios V/VI), nunca
+> sobre un componente crítico. La v1 actúa sobre condiciones
+> deterministas verificables en el momento, sin depender de que el
+> motor DeepSeek (007-017) confirme una causa — hoy ese motor no ha
+> producido nunca un `causa_probable` real, así que no hay ningún caso
+> contra el que validar esa vía todavía. El único tipo de acción de
+> esta primera feature: rotar (nunca borrar) un log que ha crecido por
+> encima de un umbral sin que nada lo rote — problema real y activo
+> hoy mismo. No incluye ningún otro tipo de acción del barrido de
+> agosto. No incluye notificar por Telegram ni mostrar nada en el
+> dashboard — el CLI es la única superficie.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que
