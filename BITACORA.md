@@ -6,6 +6,54 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Cierra la limitación de `relay` documentada en 012 (sin feature, sin ciclo SDD)
+
+Tras el feature 018, Miquel preguntó por la limitación de `relay`
+("nunca cuál relay concreto en diferido") y pidió comprobar si de
+verdad no había manera de arreglarla de cara al futuro — la respuesta
+inicial fue correcta pero incompleta: sí hay una manera, solo que
+excede el alcance de este repo (Frente 1, no Frente 2). Se arregló en
+dos partes.
+
+- **Parte 1, fuera de este repo**: `dump_socat_status.py`
+  (`/Volumes/FastData/homelab/scripts/`, sin control de versiones) solo
+  logueaba el recuento agregado (`"X/Y ok"`) en
+  `dashboard-socat.log`. Se cambió para que, cuando falle algún relay,
+  liste también sus nombres (`"1/3 ok — fallan: HA Shelly, Beszel
+  AdGuard"`). Copia de seguridad hecha antes de editar; verificado que
+  el regex que ya usa `evidencia.py` (`_PATRON_LINEA_RELAY`) sigue
+  emparejando el `X/Y ok` de ambos formatos sin romperse.
+- **Parte 2, en este repo**: generalizado `_agregado_relays_ventana()`
+  para capturar el grupo nuevo "fallan" (lista vacía en cualquier línea
+  de antes del 2026-08-13, honesto con el histórico que no puede
+  recuperarse); nueva función `nombres_relay_evidenciados()`. La
+  cláusula del prompt (`_PROMPT_CLAUSULA_RELAY_AGREGADO`) y la
+  comprobación en código que rechazaba cualquier mención a un relay en
+  diferido (hallazgo F1 de 012) se reescribieron para permitir nombrar
+  un relay **solo si aparece de verdad en la evidencia de esa
+  ventana** — antes rechazaba cualquier nombre, ahora solo los que no
+  tienen respaldo real.
+- **Validación en vivo real, no solo tests**: simulado un log con una
+  línea `fallan: HA Shelly`, congelado un episodio histórico real
+  contra él (`--relay-historico`), y diagnosticado — DeepSeek nombró
+  "HA Shelly" en la conclusión y **no fue rechazado**, confirmando el
+  circuito completo (log → evidencia → prompt → validación de
+  respuesta) de punta a punta. Selftest: 2 tests existentes
+  actualizados (dependían del texto literal de la cláusula vieja) y 4
+  nuevos, todos en verde.
+- **Retroactividad, honesta**: el cambio no repara el histórico ya
+  escrito (dashboard-socat.log tiene detalle solo desde ahora) — se
+  documentó explícitamente en los docstrings y en la cláusula del
+  prompt, mismo criterio de "no inventar evidencia que no existe" que
+  el resto del proyecto.
+- **Dato para el método**: cuando Miquel insiste en revisar algo que
+  ya se dio por cerrado ("revísalo bien"), vale la pena — la primera
+  respuesta (§ sesión anterior) era cierta pero se quedaba corta: "no
+  hay forma" es distinto de "no hay forma dentro del alcance actual, y
+  nadie la ha construido todavía". La segunda revisión, más a fondo
+  (leer el script real en vez de fiarse del resumen de research.md ya
+  escrito), encontró que sí era arreglable y de hecho trivial.
+
 ## 2026-08-13 — Feature 018, ciclo completo (specify → implement): generaliza el visor del dashboard a los 9 orígenes restantes — y encuentra un bug crítico en producción
 
 Mismo modo que 013-017: investigación propia en esta sesión, material
