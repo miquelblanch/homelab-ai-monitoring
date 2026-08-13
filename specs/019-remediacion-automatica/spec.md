@@ -219,9 +219,15 @@ disponible sin haberse perdido nunca.
 - **FR-013**: El sistema NO DEBE depender de ningún diagnóstico del
   motor DeepSeek (`src/diagnostico/`, 007-017) para proponer o
   ejecutar esta acción — la condición se evalúa de forma determinista.
-- **FR-014**: El sistema NO DEBE enviar ninguna notificación (Telegram
-  u otro canal) ni exponer ningún estado en el dashboard — el CLI es
-  la única superficie de esta feature.
+- **FR-014**: El sistema NO DEBE exponer ningún estado accionable en el
+  dashboard — el CLI sigue siendo la única superficie de control de
+  esta feature (la superficie de solo lectura de la feature 020 no
+  cuenta como excepción, ver su propio spec). Enmendado el
+  2026-08-13 (research.md §11, a petición explícita de Miquel): el
+  sistema SÍ DEBE enviar un aviso por Telegram cuando una rotación en
+  modo automático falla — y solo entonces. Un éxito nunca notifica; un
+  fallo en modo manual tampoco, porque ya hay un humano mirando el
+  resultado del propio comando que lo aprobó.
 
 ### Key Entities
 

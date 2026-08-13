@@ -182,6 +182,64 @@ def test_comprobar_rotar_log_modo_automatico_ejecuta_directo() -> None:
         )
 
 
+def test_comprobar_rotar_log_modo_automatico_fallido_notifica() -> None:
+    """FR-014 enmendado (research.md §11): un fallo real en modo
+    automático sí notifica — pedido explícito de Miquel. La función de
+    envío real (con la llamada de red) nunca se invoca aquí: se
+    sustituye por un contador, mismo principio que el resto de tests
+    de este módulo — nunca tocar Telegram de verdad desde --selftest."""
+    with tempfile.TemporaryDirectory() as logs_dir, tempfile.TemporaryDirectory() as db_dir:
+        _escribir(Path(logs_dir) / "health-docker.log", 11 * 1024 * 1024)
+        llamadas: list[tuple[str, str]] = []
+
+        with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(logs_dir)), \
+             patch.object(acciones, "LOGS_VIGILADOS", [("health-docker", "health-docker.log", 10 * 1024 * 1024)]), \
+             patch.object(acciones, "ejecutar_rotar_log", side_effect=OSError("disco lleno (simulado)")), \
+             patch.object(acciones, "_notificar_fallo_automatico", side_effect=lambda c, d: llamadas.append((c, d))):
+            with store.connect(_db(db_dir)) as conn:
+                store.set_modo(conn, "rotar_log", "automatico")
+                creados = acciones.comprobar_rotar_log(conn)
+
+        check("modo automático + fallo real de rotación ⇒ estado fallido", creados[0].estado == "fallido")
+        check("el fallo automático dispara exactamente un aviso", len(llamadas) == 1)
+        check("el aviso lleva el componente que falló", llamadas[0][0] == "health-docker")
+
+
+def test_comprobar_rotar_log_modo_automatico_exito_no_notifica() -> None:
+    with tempfile.TemporaryDirectory() as logs_dir, tempfile.TemporaryDirectory() as db_dir:
+        _escribir(Path(logs_dir) / "health-docker.log", 11 * 1024 * 1024)
+        llamadas: list[tuple[str, str]] = []
+
+        with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(logs_dir)), \
+             patch.object(acciones, "LOGS_VIGILADOS", [("health-docker", "health-docker.log", 10 * 1024 * 1024)]), \
+             patch.object(acciones, "_notificar_fallo_automatico", side_effect=lambda c, d: llamadas.append((c, d))):
+            with store.connect(_db(db_dir)) as conn:
+                store.set_modo(conn, "rotar_log", "automatico")
+                acciones.comprobar_rotar_log(conn)
+
+        check("una rotación automática que sale bien no avisa por Telegram", llamadas == [])
+
+
+def test_resolver_aprobacion_fallido_no_notifica() -> None:
+    """Un fallo en modo manual no notifica — ya hay un humano mirando
+    el resultado del propio comando `aprobar` (research.md §11)."""
+    with tempfile.TemporaryDirectory() as logs_dir, tempfile.TemporaryDirectory() as db_dir:
+        ruta = Path(logs_dir) / "health-docker.log"
+        _escribir(ruta, 11 * 1024 * 1024)
+        llamadas: list[tuple[str, str]] = []
+
+        with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(logs_dir)), \
+             patch.object(acciones, "LOGS_VIGILADOS", [("health-docker", "health-docker.log", 10 * 1024 * 1024)]), \
+             patch.object(acciones, "_notificar_fallo_automatico", side_effect=lambda c, d: llamadas.append((c, d))):
+            with store.connect(_db(db_dir)) as conn:
+                creados = acciones.comprobar_rotar_log(conn)
+                ruta.unlink()
+                resuelto = acciones.resolver_aprobacion(conn, creados[0].id)
+
+        check("aprobación manual con fallo real también llega a fallido", resuelto.estado == "fallido")
+        check("un fallo en modo manual nunca dispara el aviso automático", llamadas == [])
+
+
 # ── resolver_aprobacion / resolver_rechazo / resolver_deshacer ──
 
 

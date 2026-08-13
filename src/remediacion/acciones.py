@@ -8,9 +8,14 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import ssl
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import _homelab_bridge as bridge
 from .model import IntentoRemediacion
 from .store import (
     get_intento,
@@ -132,6 +137,30 @@ def deshacer_rotar_log(ruta_original: Path, ruta_rotada: Path) -> str | None:
     return str(conservado) if conservado is not None else None
 
 
+def _notificar_fallo_automatico(componente: str, detalle: str) -> bool:
+    """Único aviso que envía este paquete — solo cuando una rotación en
+    modo automático falla (FR-014 enmendado, research.md §11). El
+    éxito nunca notifica, ni tampoco un fallo en modo manual (ahí ya
+    hay un humano mirando el resultado del propio comando). Mismo
+    patrón que `inventory.deliver._send_raw`: nunca lanza, devuelve
+    False si no se pudo enviar por cualquier motivo."""
+    token, chat_id = bridge.telegram_credentials()
+    if not token or not chat_id:
+        return False
+    texto = f"⚠️ remediación — rotar_log falló (automático)\n{componente}: {detalle}"
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = urllib.parse.urlencode({"chat_id": chat_id, "text": texto}).encode()
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    try:
+        req = urllib.request.Request(url, data=data, method="POST")
+        with urllib.request.urlopen(req, context=ctx, timeout=10) as r:
+            return json.loads(r.read()).get("ok", False)
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
 def comprobar_rotar_log(conn: sqlite3.Connection) -> list[IntentoRemediacion]:
     """Recorre LOGS_VIGILADOS; para cada uno por encima de su umbral,
     sin ya un intento `pendiente` (FR-008), crea un intento — en modo
@@ -166,6 +195,8 @@ def comprobar_rotar_log(conn: sqlite3.Connection) -> list[IntentoRemediacion]:
         if modo == "automatico":
             _resolver_ejecucion(conn, intento_id, ruta)
             intento = get_intento(conn, intento_id)
+            if intento.estado == "fallido":
+                _notificar_fallo_automatico(intento.componente, intento.detalle)
 
         creados.append(intento)
 

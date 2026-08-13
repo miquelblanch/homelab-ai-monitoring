@@ -266,3 +266,45 @@ fuente de verdad a extender el día que haya un segundo tipo.
 FR-002) sin crearla. Expuesto como `python3 -m remediacion.cli tipos`,
 solo lectura, coherente con la garantía 9 del contrato (sin escritura
 fuera de una rotación real).
+
+## §11 — Aviso por Telegram cuando falla una rotación automática (2026-08-13, enmienda real de FR-014)
+
+**Pedido explícito de Miquel**, al pasar `rotar_log` a modo automático
+por primera vez: "que me avise si falla, sino que tire para adelante".
+FR-014 decía hasta ahora, sin matices, que el sistema "NO DEBE enviar
+ninguna notificación" — cierto cuando se escribió (v1, sin caso real
+de uso automático todavía), pero ya no refleja lo que Miquel necesita
+ahora que sí hay un tipo de acción corriendo sin supervisión directa.
+
+**Alcance exacto de la enmienda** — deliberadamente estrecho, no un
+canal de notificaciones genérico:
+
+- Notifica **solo** un fallo (`estado == "fallido"`) ocurrido **en
+  modo automático**, dentro de `comprobar_rotar_log()`.
+- Un éxito nunca notifica — sigue sin hacer ruido por algo que ya
+  funcionó solo, que es el punto de haberlo puesto en automático.
+- Un fallo en modo **manual** (`resolver_aprobacion()`) tampoco
+  notifica — ahí ya hay un humano mirando la salida del propio
+  comando `aprobar` en el momento; una notificación async sería
+  redundante.
+- Sigue sin haber ninguna escritura en el dashboard más allá de lo que
+  ya hacía la feature 020 (solo lectura) — FR-014 mantiene esa parte
+  intacta, solo se enmendó la prohibición de Telegram.
+
+**Implementación**: `_homelab_bridge.py` nuevo en `remediacion/` —
+copia mínima (solo `telegram_credentials()`) del ya existente en
+`inventory/`, no una importación cruzada entre paquetes, para no
+romper la independencia declarada del paquete (research.md §2).
+`_notificar_fallo_automatico()` sigue el mismo patrón que
+`inventory.deliver._send_raw`: nunca lanza, devuelve `False` si no se
+pudo enviar por cualquier motivo (sin credenciales, sin red, timeout).
+Un fallo al notificar nunca debe impedir que `comprobar` termine con
+código 0 si la propia detección/ejecución fue correcta — el aviso es
+informativo, no parte del resultado que importa.
+
+**Disciplina de test, aprendida de la sesión anterior** (el bug real
+de `--selftest` pisando el snapshot de producción): la función que
+hace la llamada de red real (`_notificar_fallo_automatico`) se
+sustituye siempre por un contador en los tests — ninguno de los tests
+de `--selftest` debe disparar un Telegram real. Verificado: los tests
+nuevos corren instantáneos, sin ningún intento de conexión de red.

@@ -21,7 +21,7 @@ python3 -m remediacion.cli --selftest
 
 | Comando | Efecto |
 |---|---|
-| `comprobar` | Evalúa `LOGS_VIGILADOS` (data-model.md). Por log por encima de su umbral sin ya un intento `pendiente`: en modo manual crea `pendiente`; en modo automático ejecuta directo (`ejecutado`/`fallido`). Imprime un resumen. |
+| `comprobar` | Evalúa `LOGS_VIGILADOS` (data-model.md). Por log por encima de su umbral sin ya un intento `pendiente`: en modo manual crea `pendiente`; en modo automático ejecuta directo (`ejecutado`/`fallido`, y si `fallido`, avisa por Telegram — research.md §11). Imprime un resumen. |
 | `pendientes` | Lista los intentos en estado `pendiente`, con su detalle. |
 | `tipos` | Lista cada tipo de acción registrado en código (`acciones.TIPOS_ACCION`) con su modo actual. Solo lectura — a diferencia de `modo`, nunca crea fila en `configuracion_accion` (research.md §10). |
 | `aprobar INTENTO_ID` | Solo sobre un intento `pendiente`. Ejecuta la rotación real; pasa a `ejecutado` o `fallido` según el resultado. |
@@ -49,11 +49,13 @@ python3 -m remediacion.cli --selftest
 7. **Ninguna acción sobre un componente de la lista de críticos** —
    `LOGS_VIGILADOS` en v1 no contiene ninguno (FR-012, spec.md
    Assumptions).
-8. **Sin ninguna llamada de red ni a DeepSeek** — la condición se
-   evalúa enteramente local (FR-013).
-9. **Sin ninguna notificación ni escritura fuera de `remediacion.db`
-   y los propios ficheros de log vigilados** — ni Telegram, ni
-   dashboard (FR-014).
+8. **Sin ninguna dependencia de DeepSeek** — la condición se evalúa
+   enteramente local, nunca contra un diagnóstico del motor (FR-013).
+9. **Sin ningún estado accionable en el dashboard** — el CLI sigue
+   siendo la única superficie de control (FR-014). **Enmendado el
+   2026-08-13**: sí hay una notificación, y solo una — un aviso por
+   Telegram cuando una rotación en modo automático falla (research.md
+   §11). Un éxito nunca notifica; un fallo en modo manual tampoco.
 
 ## Configuración (variables de entorno)
 
@@ -62,8 +64,9 @@ python3 -m remediacion.cli --selftest
 | `REMEDIACION_DB_PATH` | Junto a `diagnostico.db` (`.../homelab-orchestrator/data/remediacion.db`) | Base de este paquete — independiente de `diagnostico.db` (research.md §2). |
 | `REMEDIACION_UMBRAL_ROTACION_BYTES` | `10485760` (10 MB) | Umbral de la condición determinista (research.md §3). |
 | `REMEDIACION_LOGS_DIR` | `~/Library/Logs` | Directorio donde viven los logs vigilados — configurable para validar por CLI contra ficheros de prueba sin tocar los reales (`quickstart.md`, research.md §3). |
+| `HOMELAB_SCRIPTS_DIR` | `/Volumes/FastData/homelab/scripts` | Ruta de `homelab_secrets.py`, usada solo para el aviso por Telegram de un fallo automático (research.md §11) — mismo patrón que `inventory._homelab_bridge`. Si no está disponible (repo clonado fuera del homelab), el aviso simplemente no se envía, sin lanzar. |
 
-Los **nombres de fichero** de `LOGS_VIGILADOS` (`health-docker.log`,
-`health-ha.log`) son una constante en código, no configurables — mismo
-criterio que `MONITOR_JOBS` en 017: un universo cerrado y conocido, no
-un dato externo. Solo el directorio que los contiene es configurable.
+Los **nombres de fichero** de `LOGS_VIGILADOS` (17 logs — research.md
+§7) son una constante en código, no configurables — mismo criterio
+que `MONITOR_JOBS` en 017: un universo cerrado y conocido, no un dato
+externo. Solo el directorio que los contiene es configurable.

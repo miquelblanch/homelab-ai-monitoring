@@ -6,6 +6,47 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — `rotar_log` pasa a automático; FR-014 enmendado para avisar solo del fallo
+
+Miquel, tras entender por fin qué hace `rotar_log` en términos
+llanos, pidió pasarlo a automático con una condición: "que me avise si
+falla, sino que tire para adelante". Eso chocaba de frente con FR-014
+tal y como estaba escrito ("NO DEBE enviar ninguna notificación") —
+se le presentó como fork explícito antes de tocar nada, y confirmó
+que quería enmendar el requisito, no solo cambiar el modo.
+
+- `remediacion/_homelab_bridge.py` nuevo — copia mínima de
+  `inventory._homelab_bridge` (solo `telegram_credentials()`), no una
+  importación cruzada, para no romper la independencia de paquetes
+  declarada en research.md §2 de 019.
+- `_notificar_fallo_automatico()` — mismo patrón que
+  `inventory.deliver._send_raw`, nunca lanza. Se dispara **solo**
+  cuando `comprobar_rotar_log()` ejecuta en modo automático y el
+  resultado es `fallido`. Un éxito no notifica; un fallo en modo
+  manual tampoco (ya hay un humano mirando el `aprobar` en el
+  momento).
+- FR-014, el docstring del paquete, y el contrato del CLI, corregidos
+  para reflejar la enmienda — de paso se encontró y corrigió otra
+  staleness real: el docstring de `__init__.py` seguía diciendo "lista
+  cerrada de dos" logs cuando son 17 desde research.md §7 (nunca se
+  actualizó al ampliar la lista).
+- 6 aserciones nuevas (459 en total): fallo automático notifica
+  exactamente una vez con el componente correcto; éxito automático no
+  notifica; fallo manual no notifica. La función de red real siempre
+  sustituida por un contador — ninguna dispara Telegram de verdad
+  desde `--selftest` (disciplina aprendida del bug de la sesión
+  anterior, el snapshot pisado en producción).
+- `rotar_log` cambiado a automático de verdad en la BD real, y
+  confirmado que `_homelab_bridge` resuelve credenciales reales de
+  Telegram en este entorno (sin enviar ningún mensaje de prueba).
+- **Dato para el método**: el pedido llegó justo después de una
+  conversación donde Miquel dijo explícitamente "no entiendo
+  absolutamente nada" sobre la arquitectura — la pregunta que de
+  verdad importaba (activar automático con una red de seguridad) solo
+  se pudo formular bien una vez explicada la feature sin jerga. Vale
+  la pena no asumir que una explicación técnica ya dada equivale a
+  que el usuario tenga lo que necesita para pedir lo que quiere.
+
 ## 2026-08-13 — Subcomando `tipos`: cierra un hueco real de descubribilidad
 
 Miquel preguntó, tras confirmar que Frente 2 estaba cerrado: "¿cómo sé
