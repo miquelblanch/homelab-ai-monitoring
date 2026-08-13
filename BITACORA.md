@@ -6,6 +6,32 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Subcomando `tipos`: cierra un hueco real de descubribilidad
+
+Miquel preguntó, tras confirmar que Frente 2 estaba cerrado: "¿cómo sé
+los tipos de acción de remediación? ¿Cómo los obtengo?". No había
+ninguna respuesta desde el propio programa — `modo` y `historial` ya
+exigen saber el nombre del tipo, ninguno sirve para descubrirlo.
+
+- `acciones.TIPOS_ACCION` — registro explícito en código de todos los
+  tipos que existen (uno hoy: `rotar_log`), a extender el día que haya
+  un segundo tipo.
+- `store.listar_modos(conn, tipos_conocidos)` — a diferencia de
+  `get_modo()`, nunca escribe: un tipo sin fila en
+  `configuracion_accion` se reporta `manual` sin crearla. Verificado
+  en vivo contra la BD real (`actualizado_en` sin cambiar tras
+  ejecutar el comando).
+- `python3 -m remediacion.cli tipos` — nuevo subcomando, solo lectura.
+- Documentado en `contracts/cli.md` y `research.md §10` de 019 (misma
+  disciplina que las extensiones anteriores: sin nuevo número de
+  feature, research.md nuevo §N). 7 aserciones nuevas, las 453 pasan.
+- **Dato para el método**: el hueco no lo encontró ninguna revisión de
+  código ni ningún barrido — lo encontró la pregunta más obvia posible
+  de un usuario real usando el programa por primera vez para algo
+  concreto. Un CLI con comandos de escritura (`modo TIPO --automatico`)
+  pero sin el de lectura correspondiente (`tipos`) es un patrón a
+  vigilar en cualquier interfaz nueva de este proyecto.
+
 ## 2026-08-13 — Auditoría de staleness tras cerrar los dos candidatos diferidos
 
 Miquel preguntó "¿y ahora qué falta?" tras el trabajo de relays/healthchecks

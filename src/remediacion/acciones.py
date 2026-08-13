@@ -71,6 +71,12 @@ LOGS_VIGILADOS: list[tuple[str, str, int]] = [
 
 TIPO_ACCION_ROTAR_LOG = "rotar_log"
 
+# Registro de todos los tipos de acción que existen en el código, sepan o no
+# de ellos configuracion_accion todavía (esa tabla solo tiene fila para un
+# tipo tras su primer get_modo()). Única fuente de verdad para "qué tipos
+# de acción existen" — extender aquí cuando se añada un segundo tipo.
+TIPOS_ACCION = (TIPO_ACCION_ROTAR_LOG,)
+
 # Mismo número que ya usa rotate_hermes_logs.sh (KEEP=4) para el otro
 # mecanismo de rotación del homelab — sin este límite,
 # ~/Library/Logs/ acumularía ficheros .rotado-* sin fin. Confirmado

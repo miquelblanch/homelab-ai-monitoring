@@ -46,6 +46,39 @@ def test_set_modo_cambia_y_persiste() -> None:
         check("set_modo() vuelve a manual sin problema", modo == "manual")
 
 
+def test_listar_modos_tipo_nunca_visto_no_escribe() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _db(tmp)
+        with store.connect(path) as conn:
+            modos = store.listar_modos(conn, ("rotar_log",))
+        check("tipo nunca visto ⇒ manual en el listado", modos == [("rotar_log", "manual")])
+
+        with store.connect(path) as conn:
+            filas = conn.execute("SELECT COUNT(*) AS n FROM configuracion_accion").fetchone()
+        check("listar_modos() no crea fila (a diferencia de get_modo)", filas["n"] == 0)
+
+
+def test_listar_modos_respeta_modo_ya_fijado() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _db(tmp)
+        with store.connect(path) as conn:
+            store.set_modo(conn, "rotar_log", "automatico")
+            modos = store.listar_modos(conn, ("rotar_log",))
+        check("listar_modos() refleja un modo ya cambiado", modos == [("rotar_log", "automatico")])
+
+
+def test_listar_modos_conserva_el_orden_de_tipos_conocidos() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _db(tmp)
+        with store.connect(path) as conn:
+            store.set_modo(conn, "b_tipo", "automatico")
+            modos = store.listar_modos(conn, ("a_tipo", "b_tipo"))
+        check(
+            "listar_modos() sigue el orden de tipos_conocidos, no el alfabético de la tabla",
+            modos == [("a_tipo", "manual"), ("b_tipo", "automatico")],
+        )
+
+
 def test_insert_y_get_intento() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         with store.connect(_db(tmp)) as conn:

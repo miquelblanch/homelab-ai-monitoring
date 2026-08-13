@@ -97,6 +97,19 @@ def get_modo(conn: sqlite3.Connection, tipo_accion: str) -> str:
     return "manual"
 
 
+def listar_modos(
+    conn: sqlite3.Connection, tipos_conocidos: tuple[str, ...]
+) -> list[tuple[str, str]]:
+    """Modo vigente de cada tipo de `tipos_conocidos`, en ese orden — a
+    diferencia de get_modo(), nunca escribe: un tipo sin fila todavía en
+    configuracion_accion se reporta "manual" (mismo default que FR-002)
+    sin crearla. Pensado para un listado, no para decidir una ejecución."""
+    filas = dict(
+        conn.execute("SELECT tipo_accion, modo FROM configuracion_accion").fetchall()
+    )
+    return [(tipo, filas.get(tipo, "manual")) for tipo in tipos_conocidos]
+
+
 def set_modo(conn: sqlite3.Connection, tipo_accion: str, modo: str) -> None:
     """Cambia el modo de `tipo_accion` — sin ninguna condición previa
     (FR-003): la decisión es siempre de Miquel, nunca del sistema."""

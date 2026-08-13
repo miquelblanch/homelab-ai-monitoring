@@ -242,3 +242,27 @@ mismo criterio de honestidad que el resto del proyecto: la
 reversibilidad (Principio VI) sigue siendo real mientras la rotación
 esté dentro de la ventana de retención, y se dice explícitamente
 cuándo deja de estarlo, en vez de fingir que siempre es posible.
+
+## §10 — Subcomando `tipos` (2026-08-13, sin nuevo número de feature)
+
+**Hallazgo real, encontrado por Miquel al preguntar "¿cómo sé los tipos
+de acción de remediación? ¿Cómo los obtengo?"**: no había ninguna
+respuesta desde el propio programa. `modo` y `historial` exigen ya
+saber el nombre del tipo como argumento posicional — ninguno sirve
+para descubrirlo. La única vía hasta ahora era leer `acciones.py` o
+consultar `configuracion_accion` a mano.
+
+Agravante de diseño ya existente: `configuracion_accion` solo tiene
+fila para un tipo tras su primer `get_modo()` (inserción perezosa,
+FR-002) — así que ni siquiera consultar la tabla a mano habría
+mostrado un tipo nuevo que todavía no se hubiera evaluado nunca.
+
+**Decisión**: `acciones.TIPOS_ACCION = (TIPO_ACCION_ROTAR_LOG,)` —
+registro explícito en código de todos los tipos que existen, única
+fuente de verdad a extender el día que haya un segundo tipo.
+`store.listar_modos(conn, tipos_conocidos)` cruza ese registro con
+`configuracion_accion`, sin escribir nunca — a diferencia de
+`get_modo()`, un tipo sin fila se reporta `manual` (mismo default de
+FR-002) sin crearla. Expuesto como `python3 -m remediacion.cli tipos`,
+solo lectura, coherente con la garantía 9 del contrato (sin escritura
+fuera de una rotación real).

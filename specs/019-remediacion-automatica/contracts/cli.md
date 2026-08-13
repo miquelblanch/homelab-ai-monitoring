@@ -10,6 +10,7 @@ con `specs/007-.../contracts/cli.md` de `diagnostico.cli`.
 ```
 python3 -m remediacion.cli comprobar
 python3 -m remediacion.cli pendientes
+python3 -m remediacion.cli tipos
 python3 -m remediacion.cli aprobar INTENTO_ID
 python3 -m remediacion.cli rechazar INTENTO_ID
 python3 -m remediacion.cli deshacer INTENTO_ID
@@ -22,6 +23,7 @@ python3 -m remediacion.cli --selftest
 |---|---|
 | `comprobar` | Evalúa `LOGS_VIGILADOS` (data-model.md). Por log por encima de su umbral sin ya un intento `pendiente`: en modo manual crea `pendiente`; en modo automático ejecuta directo (`ejecutado`/`fallido`). Imprime un resumen. |
 | `pendientes` | Lista los intentos en estado `pendiente`, con su detalle. |
+| `tipos` | Lista cada tipo de acción registrado en código (`acciones.TIPOS_ACCION`) con su modo actual. Solo lectura — a diferencia de `modo`, nunca crea fila en `configuracion_accion` (research.md §10). |
 | `aprobar INTENTO_ID` | Solo sobre un intento `pendiente`. Ejecuta la rotación real; pasa a `ejecutado` o `fallido` según el resultado. |
 | `rechazar INTENTO_ID` | Solo sobre un intento `pendiente`. Pasa a `rechazado`, estado final — el fichero no se toca. |
 | `deshacer INTENTO_ID` | Solo sobre un intento `ejecutado`. Aplica el procedimiento de rollback (research.md §4). Pasa a `deshecho`. |

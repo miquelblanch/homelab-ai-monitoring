@@ -57,6 +57,26 @@ def test_cli_modo_y_historial() -> None:
         check("cli historial termina en 0", codigo_historial == 0)
 
 
+def test_cli_tipos_no_escribe_y_refleja_el_modo() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(store, "db_path", return_value=_db(db_dir)):
+            codigo_antes = cli.main(["tipos"])
+            with store.connect(_db(db_dir)) as conn:
+                filas_tras_tipos = conn.execute(
+                    "SELECT COUNT(*) AS n FROM configuracion_accion"
+                ).fetchone()["n"]
+
+            cli.main(["modo", "rotar_log", "--automatico"])
+            codigo_despues = cli.main(["tipos"])
+            with store.connect(_db(db_dir)) as conn:
+                modos = store.listar_modos(conn, acciones.TIPOS_ACCION)
+
+        check("cli tipos termina en 0 antes de cualquier modo fijado", codigo_antes == 0)
+        check("cli tipos no crea fila en configuracion_accion", filas_tras_tipos == 0)
+        check("cli tipos termina en 0 con un modo ya fijado", codigo_despues == 0)
+        check("cli tipos refleja rotar_log en automático tras el cambio", modos == [("rotar_log", "automatico")])
+
+
 def test_cli_aprobar_rechazar_deshacer() -> None:
     with tempfile.TemporaryDirectory() as logs_dir, tempfile.TemporaryDirectory() as db_dir:
         ruta = Path(logs_dir) / "health-docker.log"

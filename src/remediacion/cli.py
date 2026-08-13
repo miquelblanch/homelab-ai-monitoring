@@ -4,6 +4,7 @@ specs/019-remediacion-automatica/contracts/cli.md.
 Uso:
     python3 -m remediacion.cli comprobar
     python3 -m remediacion.cli pendientes
+    python3 -m remediacion.cli tipos
     python3 -m remediacion.cli aprobar INTENTO_ID
     python3 -m remediacion.cli rechazar INTENTO_ID
     python3 -m remediacion.cli deshacer INTENTO_ID
@@ -44,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("comprobar", help="Evalúa la lista cerrada de logs vigilados (FR-005/FR-006/FR-007).")
     subparsers.add_parser("pendientes", help="Lista los intentos pendientes de aprobación.")
+    subparsers.add_parser("tipos", help="Lista los tipos de acción que existen y su modo actual — solo lectura.")
 
     aprobar_parser = subparsers.add_parser("aprobar", help="Aprueba un intento pendiente y ejecuta la rotación.")
     aprobar_parser.add_argument("intento_id", type=int)
@@ -98,6 +100,17 @@ def _run_pendientes() -> int:
         return 0
     for intento in pendientes:
         print(f"intento {intento.id} — {intento.tipo_accion} — {intento.componente} — {intento.detalle}")
+    return 0
+
+
+def _run_tipos() -> int:
+    from . import acciones, store
+
+    with store.connect() as conn:
+        modos = store.listar_modos(conn, acciones.TIPOS_ACCION)
+
+    for tipo_accion, modo in modos:
+        print(f"{tipo_accion} — modo {modo}")
     return 0
 
 
@@ -173,6 +186,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_comprobar()
     if args.comando == "pendientes":
         return _run_pendientes()
+    if args.comando == "tipos":
+        return _run_tipos()
     if args.comando == "aprobar":
         return _run_aprobar(args.intento_id)
     if args.comando == "rechazar":
