@@ -6,6 +6,86 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-13 — Feature 017, ciclo completo (specify → implement): décimo y último mecanismo relacionado — cierra los latidos de monitores
+
+Mismo modo que 014/015/016: investigación propia en esta sesión,
+material de partida escrito antes de especificar, sin pausas. Punto 3
+del listado de "qué falta" de esta misma sesión (tras cerrar la deuda
+documental del punto 4).
+
+- **Qué se pidió**: el último mecanismo relacionado con la Central de
+  Alarmas que quedó explícitamente pendiente desde 016 — los latidos
+  de monitores (`get_monitor_heartbeats()`), que detecta un monitor
+  cargado pero colgado en silencio (a diferencia de 016, que detecta
+  si el propio proceso desapareció).
+- **Tres hallazgos reales encontrados investigando antes de
+  especificar, ninguno conocido de antemano**:
+  1. Existen **dos listas independientes** de "qué jobs tienen
+     latido" que no coinciden: `app.py::MONITOR_JOBS` (8 jobs, la que
+     alimenta el dashboard y las alarmas reales) y
+     `heartbeat.py::DEFAULT_MANIFEST` (7 jobs, la que alimenta
+     `heartbeat.py --report` y el informe de Telegram). Tres jobs
+     (`telegram-monitor`, `beszel-hosts`, `bautista-calendar`)
+     escriben su latido pero son invisibles para el informe de las
+     09:00. Documentado y decidido: este feature usa la lista del
+     dashboard, por ser la que da nombre al mecanismo excluido en 016.
+  2. El propio cálculo de `ok` de `get_monitor_heartbeats()` depende
+     **únicamente** de la edad del latido, nunca del campo `status`
+     que cada latido también guarda — un job a tiempo con
+     `status:"error"` se muestra sano en el dashboard hoy. Distinto
+     del cálculo de `heartbeat.py::report()`, que sí combina ambos.
+     Una **tercera** inconsistencia real entre los dos mecanismos,
+     encontrada leyendo el código exacto antes de implementar.
+  3. Ninguna de las dos inconsistencias se corrige en este feature —
+     son defectos reales del homelab privado (`heartbeat.py`/`app.py`
+     no viven en este repo), documentados y dejados fuera
+     explícitamente (FR-010), igual que 012 no amplió la vigilancia de
+     relays.
+- **Analyze encontró una inconsistencia real de severidad MEDIA**,
+  autocorregida antes de implementar: el texto literal para "sin
+  latido nunca leído" estaba mezclado entre dos frases de mecanismos
+  distintos (`"nunca ha latido"` de `heartbeat.py::report()`, que no
+  es el mecanismo replicado, vs. `"sin latido"` de
+  `get_monitor_heartbeats()`, que sí lo es) — corregido en
+  `data-model.md`, `tasks.md`, `contracts/cli.md` y `plan.md` antes de
+  tocar código.
+- **Segundo feature de la serie sin modo diferido** (el primero fue
+  016, mismo tipo de limitación real: cada `<job>.json` se sobreescribe
+  en cada ciclo, sin tabla histórica en ningún sitio del homelab).
+  Estructuralmente casi idéntico a 016 salvo por una pieza nueva de
+  verdad: sí hay un veredicto `ok` ya calculado que replicar con
+  precisión (como en HA/010), así que sí lleva una cláusula de prompt
+  nueva (`_PROMPT_CLAUSULA_LATIDO_ESTADO`) — 016 no la necesitaba.
+- **Validación en vivo** (quickstart.md, 6 escenarios): episodio 6
+  (007) intacto; dos jobs reales sanos (`docker-monitor`,
+  `inventario-cobertura`) concluyen `no_diagnosticable` sin inventar
+  causa; job inexistente entre los 8 congela con evidencia vacía y
+  concluye honesto; mismo episodio diagnosticado dos veces da el mismo
+  `conclusion_tipo` (SC-001); límite de gasto a 0 € bloquea la llamada;
+  `congelar --help` no muestra ningún `--latido-historico`. 0
+  huérfanos en `diagnostico.db` tras la sesión (16 episodios, 28
+  diagnósticos, 52 hipótesis, acumulado real desde 007).
+- **Selftest**: ~19 aserciones nuevas, todas en verde a la primera
+  ejecución (`Todo OK`).
+- **Fidelidad del spec**: sigue describiendo exactamente lo que hay al
+  cerrar — ninguna sorpresa de última hora en implementación.
+- **Dato para el método**: la investigación previa a especificar sigue
+  encontrando hallazgos reales no triviales incluso en el feature "más
+  simple" de la serie por segunda vez consecutiva (el primero fue 016)
+  — comparar el código exacto de los dos mecanismos relacionados
+  (`heartbeat.py` vs. `app.py`) antes de decidir cuál replicar evitó
+  construir sobre una lista equivocada de jobs, y sirvió además para
+  documentar (sin corregir) un defecto real del propio homelab que
+  nadie había notado hasta ahora.
+- **Con este feature se cierran los 10 de 10** — los 9 orígenes de la
+  Central de Alarmas (006) más el mecanismo relacionado que había
+  quedado pendiente desde 016. No se conoce ningún origen ni mecanismo
+  relacionado sin generalizar. El Frente 2 del proyecto (diagnóstico)
+  queda completo en su generalización; la remediación automática
+  (Principios V-VI) y la superficie en el dashboard para 9 de los 10
+  orígenes siguen fuera de alcance, sin cambios respecto a lo decidido
+  en features anteriores.
+
 ## 2026-08-13 — Corrección de deuda documental en la constitución (sin feature, sin ciclo SDD)
 
 Tras cerrar los 9 orígenes con el feature 016, se preguntó a Miquel qué
