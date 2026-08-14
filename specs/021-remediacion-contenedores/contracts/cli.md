@@ -55,6 +55,16 @@ python3 -m remediacion.cli contenedores
     `deshacer INTENTO_ID` sigue existiendo para `rotar_log`, pero
     rechaza explícitamente cualquier `id` que pertenezca a
     `intentos_reinicio` (FR-016).
+16. **Una incapacidad persistente de evaluar nunca queda en
+    silencio** — al llegar a `REMEDIACION_SIN_EVALUAR_MAX_CONSECUTIVOS`
+    evaluaciones seguidas en `sin_evaluar` para el mismo contenedor, se
+    avisa por Telegram (FR-019, contrapartida del Principio VII
+    enmendado — constitution.md v2.0.0).
+17. **`intentos_remediacion` e `intentos_reinicio` comparten un único
+    espacio de `id`** — nunca colisionan entre sí, para que `aprobar`/
+    `rechazar`/`deshacer INTENTO_ID` resuelvan siempre sobre la tabla
+    correcta (bug real encontrado y corregido validando contra
+    producción, 2026-08-14 — ver `BITACORA.md`).
 
 ## Configuración (variables de entorno nuevas)
 
@@ -62,6 +72,10 @@ python3 -m remediacion.cli contenedores
 |---|---|---|
 | `REMEDIACION_CB_MAX_INTENTOS` | `3` | Mismo valor que `docker_monitor.CB_MAX_ATTEMPTS` — configurable para poder probar el cortacircuito por CLI sin esperar 6 horas reales. |
 | `REMEDIACION_CB_VENTANA_HORAS` | `6` | Mismo valor que `docker_monitor.CB_WINDOW_HOURS`. |
+| `REMEDIACION_SIN_EVALUAR_MAX_CONSECUTIVOS` | `3` | FR-019 (contrapartida del Principio VII enmendado, constitution.md v2.0.0) — número de evaluaciones seguidas en `sin_evaluar` (sin presupuesto, sin respuesta de DeepSeek) que disparan el aviso de incapacidad persistente. Mecanismo independiente del cortacircuito, mismo valor por defecto por familiaridad. |
+| `REMEDIACION_DEEPSEEK_MOCK` | *(sin valor)* | JSON con `accion_aplica`/`razonamiento` ya resuelto — sustituye la llamada real a DeepSeek por esa respuesta, sin gastar presupuesto ni depender de red (quickstart.md, Escenarios 1-5). Nunca activo en producción. |
+| `REMEDIACION_TEST_FORZAR_FALLO` | *(sin valor)* | Fuerza que `_homelab_bridge.restart_container()` devuelva `False` sin tocar Docker — hook de pruebas para el cortacircuito (quickstart.md Escenario 5). Nunca activo en producción. |
+| `REMEDIACION_DEEPSEEK_MODEL` | `deepseek-v4-flash` | Modelo usado en la llamada a DeepSeek de esta feature — independiente de `DIAGNOSTICO_DEEPSEEK_MODEL`, mismo valor por defecto que `diagnostico`. |
 
 Sin variable nueva para el presupuesto diario — reutiliza
 `DIAGNOSTICO_LIMITE_EUR_DIA`, ya existente (research.md §8).

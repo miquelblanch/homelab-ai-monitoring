@@ -90,10 +90,10 @@ los que no estén `running and healthy`.
 | I. Alerta Persistente (NO NEGOCIABLE) | Sí | Un contenedor crítico caído, o un cortacircuito abierto, o "ninguna acción aplica" avisan por Telegram cada vez que se detectan — no una sola vez (FR-012). |
 | II. Salud por Resultado | Sí | El reinicio se verifica contra el estado real `running` del contenedor, nunca contra el código de salida del comando (FR-010) — mismo criterio que ya corrigió `docker_monitor.py` el 2026-07-26. |
 | III. Estado Esperado Declarado | Sí | `running and healthy` sigue siendo el estado esperado de un contenedor no crítico — sin cambios respecto a `docker_monitor.py`. |
-| IV. Diagnóstico Previo a la Acción | **Sí, en su sentido específico esta vez** — a diferencia de 019 | Aquí sí hay un diagnóstico real antes de actuar: DeepSeek evalúa evidencia concreta (reutilizada de `diagnostico.evidencia`) y decide si la acción aplica — no una condición ciega. Es la primera feature de remediación que satisface este principio en el sentido literal del artefacto de diagnóstico, no solo en su sentido genérico. |
+| IV. Diagnóstico Previo a la Acción | **Sí, en un sentido ampliado — no literal** (`/speckit-analyze`, hallazgo A1) | Aquí sí hay un diagnóstico real antes de actuar: DeepSeek evalúa evidencia concreta (reutilizada de `diagnostico.evidencia`) y decide si la acción aplica — no una condición ciega. **Matiz honesto**: el principio exige identificar "la causa probable"; esta feature deliberadamente no pregunta eso (research.md §3, spec.md Clarifications) — pregunta algo más estrecho ("¿aplica esta acción?"). Ningún FR/criterio de aceptación exige que el `razonamiento` de DeepSeek constituya una causa, así que la afirmación de cumplimiento no es verificable desde el spec — se sostiene por el espíritu del principio (diagnóstico real, no condición ciega), no por su letra. |
 | V. Lista Cerrada de Acciones Reversibles (NO NEGOCIABLE) | Sí | DeepSeek elige entre la lista cerrada ya definida en código (`reiniciar_contenedor` de 021, `rotar_log` de 019) — nunca inventa una acción nueva (FR-003, verificado explícitamente con Miquel antes de escribir el spec). |
 | VI. Reversibilidad Escrita | Parcial, documentado explícitamente | Un reinicio no tiene rollback real (FR-016) — a diferencia de `rotar_log`. Se documenta como excepción explícita, no como incumplimiento silencioso: "reversible" para esta acción significa que el propio contenedor puede volver a reiniciarse si algo sale mal, no que exista una operación de deshacer. |
-| VII. Un Actor por Acción | Sí, y es el cambio central de este plan | `docker_monitor.py` deja de decidir reinicios en su propio bucle (FR-017) — pasa a ser una biblioteca de funciones ya probadas que `remediacion` invoca, no un actor independiente compitiendo por el mismo contenedor. Un único actor decide: `remediacion`. |
+| VII. Un Actor por Acción | Sí, tras enmendar el principio (constitution.md v2.0.0, 2026-08-14) | `docker_monitor.py` deja de decidir reinicios en su propio bucle (FR-017) — pasa a ser una biblioteca de funciones ya probadas que `remediacion` invoca, no un actor independiente compitiendo por el mismo contenedor. Un único actor decide: `remediacion`. **La versión anterior del principio no cubría esto**: garantizaba sin condiciones que la remediación existente siguiera funcionando "con independencia del estado del agente" — `/speckit-analyze` lo detectó como conflicto real (hallazgo C1), no solo de redacción, porque si `remediacion`/DeepSeek deja de poder evaluar (sin presupuesto, sin respuesta), los 26 no críticos dejarían de auto-repararse sin que nada lo distinga de "sigue vigilado". Resuelto acotando la garantía de independencia a los contenedores críticos (sin cambios para ellos) y exigiendo, como contrapartida no negociable, un aviso cuando la nueva capa lleve evaluaciones consecutivas sin poder decidir — FR-019, nueva en esta feature tras la sesión de clarificación del 2026-08-14. |
 | VIII. Registro de Acciones e Hipótesis | Sí | Cada evaluación de DeepSeek (con o sin acción recomendada) y cada intento se registran con su razonamiento y desenlace real (FR-018). |
 | IX. Mejora Medida Contra la Línea Base | Sí, con línea base real | A diferencia de 019, aquí sí hay línea base: `restart_history` tiene meses de intentos reales de `docker_monitor.py` — sirve de referencia de tasa de éxito/fallo antes del corte, aunque no se migre (research.md §5). |
 | X. Local por Defecto | Sí | Nombres de contenedor y estado del propio Mac — misma naturaleza que datos ya aceptados desde 007. |
@@ -128,6 +128,20 @@ no negociable de Principio V/FR-003: ningún escenario permite que
 DeepSeek ejecute algo fuera de `TIPOS_ACCION`, y ningún escenario toca
 un contenedor real de producción.
 
+**Re-chequeo tras `/speckit-tasks` + `/speckit-analyze`** (2026-08-14):
+`/speckit-analyze` encontró un **conflicto real** con el Principio VII
+tal y como estaba redactado entonces (hallazgo C1, no una simple
+ambigüedad de redacción) — ver la fila VII arriba. A diferencia de las
+dos excepciones de más abajo (documentadas dentro del principio ya
+vigente), esto exigió una **enmienda formal** de la constitución
+(`.specify/memory/constitution.md`, 1.2.4 → 2.0.0, MAJOR por
+redefinición incompatible), ejecutada con `/speckit-constitution` a
+petición explícita de Miquel. spec.md gana FR-019/SC-007 (aviso por
+`sin_evaluar` persistente) como contrapartida directa de la enmienda —
+sin FR-019, la enmienda de VII quedaría sin la garantía que la
+justifica. **PASS confirmado tras la enmienda**, sin violaciones
+adicionales.
+
 ## Project Structure
 
 ### Documentation (this feature)
@@ -151,7 +165,7 @@ src/remediacion/                    # paquete YA EXISTENTE (019) — se extiende
 ├── model.py                            # + ConfiguracionContenedor, IntentoReinicio, EvaluacionDeepSeek
 ├── store.py                              # + tablas configuracion_contenedor, intentos_reinicio
 ├── acciones.py                             # + reiniciar_contenedor: comprobar/proponer/ejecutar
-├── deepseek_contenedores.py                  # NUEVO — prompt propio + orquesta llamar_deepseek()
+├── deepseek_contenedores.py                  # NUEVO — construir_prompt_remediacion() + parsear_respuesta_remediacion() + soporte de REMEDIACION_DEEPSEEK_MOCK; el orquestador completo (congelar_vivo → presupuesto → llamar_deepseek → parsear → persistir) es acciones.evaluar_contenedor(), no este módulo — ver data-model.md
 ├── _homelab_bridge.py                          # + docker_critical/never_restart/restart_container/breaker_decision
 └── cli.py                                        # + tipos ya lista reiniciar_contenedor; + modo-contenedor, pendientes-contenedor, etc.
 

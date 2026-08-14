@@ -10,6 +10,30 @@
 
 ## Clarifications
 
+### Session 2026-08-14
+
+- **Q: `/speckit-analyze` detectó que FR-017 (`docker_monitor.py` deja de
+  decidir reinicios de no críticos) entra en conflicto con el Principio VII
+  de la constitución tal y como estaba redactado entonces ("la remediación
+  automática existente DEBE seguir funcionando con independencia del estado
+  del agente", sin excepción) — si `remediacion`/DeepSeek no está disponible
+  (sin presupuesto, sin respuesta), los 26 no críticos dejarían de
+  auto-repararse, sin que nada lo distinga de "sigue vigilado". ¿Cómo se
+  resuelve?
+  Why it matters: es un conflicto real con un principio existente, no una
+  ambigüedad de redacción — proceder sin resolverlo dejaría la constitución
+  y el spec diciendo cosas incompatibles.
+  A: Se acota el Principio VII a los contenedores críticos (confirmado con
+  Miquel, `AskUserQuestion`, constitution.md v2.0.0) — para esos, la
+  independencia de `docker_monitor.py` sigue siendo absoluta y sin cambios.
+  Para los no críticos, la cesión de responsabilidad a `remediacion` se
+  acepta explícitamente — es, literalmente, lo pedido desde el Input de este
+  spec ("docker-monitor no tiene que hacer nada", "que las reparaciones
+  siempre las haga deepseek") — con una contrapartida no negociable: un
+  aviso cuando la nueva capa lleve varias evaluaciones seguidas sin poder
+  decidir (FR-019, nueva en esta sesión) — nunca un silencio que parezca
+  vigilancia cuando ya no la hay.
+
 ### Session 2026-08-13
 
 - **Q: Cuando DeepSeek decide la solución, ¿elige entre una lista cerrada de acciones ya aprobadas y reversibles, o puede proponer acciones nuevas que el sistema no conocía de antemano?**
@@ -296,6 +320,16 @@ contenedor de prueba y comprobar que solo afecta a ese contenedor.
 - **FR-018**: El sistema DEBE registrar cada evaluación (con o sin
   acción recomendada), propuesta y ejecución, con su detalle real y
   desenlace, consultable después.
+- **FR-019**: Si un contenedor no crítico acumula un número de
+  evaluaciones consecutivas en `sin_evaluar` (sin presupuesto, sin
+  respuesta de DeepSeek, o respuesta no interpretable — FR-014/FR-015)
+  por encima de un umbral configurable, el sistema DEBE avisar por
+  Telegram — contrapartida no negociable de ceder a `remediacion` la
+  decisión de reinicio que antes tomaba `docker_monitor.py` en
+  solitario (Principio VII enmendado, constitution.md v2.0.0). Un
+  `sin_evaluar` aislado (uno solo, resuelto en el siguiente ciclo) no
+  avisa — solo la persistencia lo hace, mismo criterio de "no ruido
+  por un caso puntual" que ya usa el cortacircuito (FR-011).
 
 ### Key Entities
 
@@ -331,6 +365,10 @@ contenedor de prueba y comprobar que solo afecta a ese contenedor.
 - **SC-006**: El cortacircuito se abre siempre exactamente al tercer
   intento fallido dentro de una ventana de 6 horas, sin importar si el
   intento se originó por una recomendación de DeepSeek.
+- **SC-007**: El 100% de las rachas de `sin_evaluar` que superan el
+  umbral configurable de FR-019 generan un aviso por Telegram —
+  ninguna incapacidad persistente de evaluar un contenedor no crítico
+  queda sin avisar, verificado contra `intentos_reinicio`.
 
 ## Assumptions
 
