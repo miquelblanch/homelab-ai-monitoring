@@ -1,14 +1,23 @@
 """test_remediacion_acciones — comprobar/ejecutar/deshacer rotar_log
 contra logs de prueba en un directorio temporal, nunca los reales de
-~/Library/Logs/ (research.md §4/§5 de specs/019-remediacion-automatica/)."""
+~/Library/Logs/ (research.md §4/§5 de specs/019-remediacion-automatica/).
+
+Desde el final del fichero: reiniciar_contenedor (021) — aprobar/
+rechazar, modo automático con cortacircuito, sin_accion y sin_evaluar
+persistente. `bridge.restart_container`/`breaker_decision` siempre
+mockeados — ningún test toca Docker real."""
 
 from __future__ import annotations
 
+import json
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from diagnostico.model import Episodio
 from remediacion import acciones, store
+from remediacion.model import IntentoReinicio
 from tests.selftest import check
 
 
@@ -497,3 +506,206 @@ def test_resolver_deshacer_fichero_rotado_purgado() -> None:
             "deshacer un intento cuyo fichero rotado ya se purgó falla con un mensaje claro, no un OSError crudo",
             lanzo is True,
         )
+
+
+# ── Contenedores (specs/021-remediacion-contenedores/) ──────────────────
+
+
+def _episodio(componente: str = "test-contenedor") -> Episodio:
+    return Episodio(
+        componente=componente, origen="contenedor", es_critico=False, en_vivo=True,
+        ventana_inicio="2026-08-14T00:00:00", ventana_fin="2026-08-14T00:05:00",
+        snapshot_evidencia={}, id=1,
+    )
+
+
+def _crear_pendiente_reinicio(conn, contenedor: str = "test-contenedor") -> IntentoReinicio:
+    from remediacion.store import insert_intento_reinicio
+
+    intento = IntentoReinicio(
+        contenedor=contenedor, modo_en_deteccion="manual", estado="pendiente",
+        detalle="pendiente de aprobación", accion_recomendada="reiniciar_contenedor",
+        razonamiento_deepseek="prueba",
+    )
+    intento.id = insert_intento_reinicio(conn, intento)
+    return intento
+
+
+def test_pendiente_reinicio_no_toca_el_contenedor() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones.bridge, "restart_container") as mock_restart:
+            with store.connect(_db(db_dir)) as conn:
+                _crear_pendiente_reinicio(conn)
+        check("crear un pendiente nunca llama a restart_container", mock_restart.called is False)
+
+
+def test_resolver_aprobacion_reinicio_ejecuta_y_verifica() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones.bridge, "restart_container", return_value=True) as mock_restart:
+            with store.connect(_db(db_dir)) as conn:
+                pendiente = _crear_pendiente_reinicio(conn)
+                resuelto = acciones.resolver_aprobacion_reinicio(conn, pendiente.id)
+
+        check("aprobar pasa a ejecutado cuando restart_container verifica running", resuelto.estado == "ejecutado")
+        check("se llamó a restart_container exactamente una vez", mock_restart.call_count == 1)
+
+
+def test_resolver_aprobacion_reinicio_fallido() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones.bridge, "restart_container", return_value=False):
+            with store.connect(_db(db_dir)) as conn:
+                pendiente = _crear_pendiente_reinicio(conn)
+                resuelto = acciones.resolver_aprobacion_reinicio(conn, pendiente.id)
+        check("restart_container devuelve False ⇒ fallido, nunca ejecutado", resuelto.estado == "fallido")
+
+
+def test_resolver_rechazo_reinicio_no_toca_el_contenedor() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones.bridge, "restart_container") as mock_restart:
+            with store.connect(_db(db_dir)) as conn:
+                pendiente = _crear_pendiente_reinicio(conn)
+                resuelto = acciones.resolver_rechazo_reinicio(conn, pendiente.id)
+
+        check("rechazar pasa a rechazado", resuelto.estado == "rechazado")
+        check("rechazar nunca llama a restart_container", mock_restart.called is False)
+
+
+def test_resolver_reinicio_sobre_estado_equivocado_se_rechaza() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones.bridge, "restart_container", return_value=True):
+            with store.connect(_db(db_dir)) as conn:
+                pendiente = _crear_pendiente_reinicio(conn)
+                acciones.resolver_rechazo_reinicio(conn, pendiente.id)
+
+                lanzo = False
+                try:
+                    acciones.resolver_aprobacion_reinicio(conn, pendiente.id)
+                except ValueError:
+                    lanzo = True
+        check("aprobar un intento de reinicio ya rechazado se rechaza", lanzo)
+
+
+def test_evaluar_contenedor_modo_automatico_ejecuta_sin_pendiente() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with store.connect(_db(db_dir)) as conn:
+            store.set_modo_contenedor(conn, "test-contenedor", "automatico")
+
+        with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
+             patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
+             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+                 "choices": [{"message": {"content": json.dumps(
+                     {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba"}
+                 )}}],
+                 "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+             }), \
+             patch.object(acciones.bridge, "recent_restart_attempts", return_value=0), \
+             patch.object(acciones.bridge, "restart_container", return_value=True) as mock_restart:
+            with store.connect(_db(db_dir)) as conn:
+                intento = acciones.evaluar_contenedor(conn, conn, "test-contenedor")
+                pendientes = store.listar_pendientes_reinicio(conn)
+
+        check("automático ejecuta directo, nunca pasa por pendiente (FR-008)", intento.estado == "ejecutado")
+        check("sin ningún pendiente tras la ejecución automática", pendientes == [])
+        check("restart_container se llamó exactamente una vez", mock_restart.call_count == 1)
+
+
+def test_evaluar_contenedor_modo_automatico_sin_accion_nunca_reinicia() -> None:
+    """Acceptance Scenario 2 de US3 — el modo automático nunca fuerza
+    reiniciar_contenedor cuando DeepSeek dice que no ayudaría."""
+    with tempfile.TemporaryDirectory() as db_dir:
+        with store.connect(_db(db_dir)) as conn:
+            store.set_modo_contenedor(conn, "test-contenedor", "automatico")
+
+        with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
+             patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
+             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+                 "choices": [{"message": {"content": json.dumps(
+                     {"accion_aplica": None, "razonamiento": "problema externo"}
+                 )}}],
+                 "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+             }), \
+             patch.object(acciones.bridge, "restart_container") as mock_restart, \
+             patch.object(acciones, "_notificar_sin_accion") as mock_aviso:
+            with store.connect(_db(db_dir)) as conn:
+                intento = acciones.evaluar_contenedor(conn, conn, "test-contenedor")
+
+        check("sin_accion también en modo automático", intento.estado == "sin_accion")
+        check("automático nunca reinicia si DeepSeek dice que no aplica", mock_restart.called is False)
+        check("nunca reinicia en ningún modo (FR-009)", mock_aviso.called is True)
+
+
+def test_cortacircuito_abre_al_cuarto_intento() -> None:
+    """SC-006 — el cortacircuito se abre exactamente al 3er intento
+    fallido dentro de la ventana, sin importar que la recomendación
+    venga de DeepSeek en vez de una condición fija."""
+    with tempfile.TemporaryDirectory() as db_dir:
+        with store.connect(_db(db_dir)) as conn:
+            store.set_modo_contenedor(conn, "test-contenedor", "automatico")
+
+        with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
+             patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.0), \
+             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+                 "choices": [{"message": {"content": json.dumps(
+                     {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba"}
+                 )}}],
+                 "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+             }), \
+             patch.object(acciones.bridge, "restart_container", return_value=False) as mock_restart, \
+             patch.object(acciones, "_notificar_cortacircuito") as mock_aviso:
+            with store.connect(_db(db_dir)) as conn:
+                estados = [
+                    acciones.evaluar_contenedor(conn, conn, "test-contenedor").estado
+                    for _ in range(4)
+                ]
+
+        check("los 3 primeros intentos fallan de verdad", estados[:3] == ["fallido", "fallido", "fallido"])
+        check("el 4º intento no llega a restart_container — cortacircuito", estados[3] == "cortacircuito")
+        check("restart_container se llamó exactamente 3 veces, nunca una 4ª", mock_restart.call_count == 3)
+        check("el cortacircuito avisa por Telegram", mock_aviso.called is True)
+
+
+# ── FR-019: aviso por sin_evaluar persistente ──
+
+
+def test_sin_evaluar_persistente_dispara_aviso_al_umbral() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        avisos: list[tuple[str, int]] = []
+        with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=False), \
+             patch.object(acciones, "_notificar_sin_evaluar_persistente",
+                           side_effect=lambda c, r: avisos.append((c, r))):
+            with store.connect(_db(db_dir)) as conn:
+                for _ in range(2):
+                    acciones.evaluar_contenedor(conn, conn, "test-contenedor")
+                check("2 sin_evaluar seguidos, todavía sin alcanzar el umbral (3) ⇒ sin aviso", avisos == [])
+
+                acciones.evaluar_contenedor(conn, conn, "test-contenedor")
+        check("al 3er sin_evaluar consecutivo, se dispara el aviso (FR-019)", len(avisos) == 1 and avisos[0][1] == 3)
+
+
+def test_sin_evaluar_persistente_se_resetea_con_una_evaluacion_real() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        avisos: list[tuple[str, int]] = []
+        with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
+             patch.object(acciones, "_notificar_sin_evaluar_persistente",
+                           side_effect=lambda c, r: avisos.append((c, r))):
+            with store.connect(_db(db_dir)) as conn:
+                with patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=False):
+                    acciones.evaluar_contenedor(conn, conn, "test-contenedor")
+                    acciones.evaluar_contenedor(conn, conn, "test-contenedor")
+
+                try:
+                    os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+                        {"accion_aplica": None, "razonamiento": "evaluación real, resetea la racha"}
+                    )
+                    acciones.evaluar_contenedor(conn, conn, "test-contenedor")
+                finally:
+                    os.environ.pop("REMEDIACION_DEEPSEEK_MOCK", None)
+
+                racha = store.sin_evaluar_consecutivos(conn, "test-contenedor")
+
+        check("una evaluación real (no sin_evaluar) resetea la racha a 0", racha == 0)
+        check("nunca se llegó a avisar (la racha se rompió antes del umbral)", avisos == [])

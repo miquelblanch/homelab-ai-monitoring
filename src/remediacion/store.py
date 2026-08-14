@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-from .model import IntentoRemediacion
+from .model import IntentoRemediacion, IntentoReinicio
 
 _DEFAULT_DB_PATH = (
     "/Volumes/FastData/homelab/docker/homelab-orchestrator/data/remediacion.db"
@@ -46,6 +46,28 @@ CREATE TABLE IF NOT EXISTS intentos_remediacion (
 );
 CREATE INDEX IF NOT EXISTS idx_intentos_tipo_estado
     ON intentos_remediacion(tipo_accion, estado);
+
+CREATE TABLE IF NOT EXISTS configuracion_contenedor (
+    contenedor TEXT PRIMARY KEY,
+    modo TEXT NOT NULL DEFAULT 'manual',
+    actualizado_en TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS intentos_reinicio (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contenedor TEXT NOT NULL,
+    modo_en_deteccion TEXT NOT NULL,
+    episodio_id INTEGER,
+    accion_recomendada TEXT,
+    razonamiento_deepseek TEXT,
+    coste_eur REAL,
+    estado TEXT NOT NULL,
+    detalle TEXT NOT NULL,
+    creado_en TEXT NOT NULL,
+    resuelto_en TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_intentos_reinicio_contenedor_estado
+    ON intentos_reinicio(contenedor, estado);
 """
 
 
@@ -74,6 +96,21 @@ def init_db(path: Path | None = None) -> None:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _siguiente_id_compartido(conn: sqlite3.Connection) -> int:
+    """intentos_remediacion e intentos_reinicio comparten un único
+    espacio de id, calculado contra el máximo de las dos tablas en vez
+    de fiarse del AUTOINCREMENT propio de cada una — si no, dos
+    AUTOINCREMENT independientes, ambos empezando en 1, colisionan en
+    cuanto las dos tablas tienen filas, y localizar_intento() (que
+    prioriza intentos_remediacion) resolvería sobre la tabla
+    equivocada. Descubierto contra la base de producción real durante
+    la validación de quickstart.md de 021 (2026-08-14) — con 019/020
+    ya en uso real, intentos_remediacion no empieza vacía."""
+    max_a = conn.execute("SELECT COALESCE(MAX(id), 0) AS m FROM intentos_remediacion").fetchone()["m"]
+    max_b = conn.execute("SELECT COALESCE(MAX(id), 0) AS m FROM intentos_reinicio").fetchone()["m"]
+    return max(max_a, max_b) + 1
 
 
 # ── Configuración de acción ─────────────────────────────────────────────
@@ -131,12 +168,14 @@ def set_modo(conn: sqlite3.Connection, tipo_accion: str, modo: str) -> None:
 
 def insert_intento(conn: sqlite3.Connection, intento: IntentoRemediacion) -> int:
     creado_en = intento.creado_en or _now_iso()
-    cur = conn.execute(
+    nuevo_id = _siguiente_id_compartido(conn)
+    conn.execute(
         """INSERT INTO intentos_remediacion
-           (tipo_accion, componente, ruta, modo_en_deteccion, estado, detalle,
+           (id, tipo_accion, componente, ruta, modo_en_deteccion, estado, detalle,
             fichero_rotado, creado_en, resuelto_en)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
+            nuevo_id,
             intento.tipo_accion,
             intento.componente,
             intento.ruta,
@@ -149,7 +188,7 @@ def insert_intento(conn: sqlite3.Connection, intento: IntentoRemediacion) -> int
         ),
     )
     conn.commit()
-    return cur.lastrowid
+    return nuevo_id
 
 
 def _fila_a_intento(row: sqlite3.Row) -> IntentoRemediacion:
@@ -225,3 +264,183 @@ def historial(conn: sqlite3.Connection, tipo_accion: str) -> dict[str, int]:
         (tipo_accion,),
     ).fetchall()
     return {r["estado"]: r["n"] for r in rows}
+
+
+# ── Configuración de contenedor (specs/021-remediacion-contenedores/) ───
+
+
+def get_modo_contenedor(conn: sqlite3.Connection, contenedor: str) -> str:
+    """Modo vigente de `contenedor` — "manual" si nunca se ha visto
+    antes (research.md §7 de 021: un contenedor nuevo, no cubierto por
+    la migración inicial de los 26, empieza en manual). Crea la fila si
+    hace falta, mismo patrón que get_modo()."""
+    row = conn.execute(
+        "SELECT modo FROM configuracion_contenedor WHERE contenedor = ?", (contenedor,)
+    ).fetchone()
+    if row is not None:
+        return row["modo"]
+    conn.execute(
+        "INSERT INTO configuracion_contenedor (contenedor, modo, actualizado_en) "
+        "VALUES (?, 'manual', ?)",
+        (contenedor, _now_iso()),
+    )
+    conn.commit()
+    return "manual"
+
+
+def listar_modos_contenedor(
+    conn: sqlite3.Connection, contenedores: tuple[str, ...]
+) -> list[tuple[str, str]]:
+    """Modo vigente de cada contenedor de `contenedores`, en ese orden
+    — a diferencia de get_modo_contenedor(), nunca escribe: uno sin
+    fila todavía se reporta "manual" sin crearla. Pensado para un
+    listado (comando `contenedores`), no para decidir una evaluación."""
+    filas = dict(
+        conn.execute("SELECT contenedor, modo FROM configuracion_contenedor").fetchall()
+    )
+    return [(c, filas.get(c, "manual")) for c in contenedores]
+
+
+def set_modo_contenedor(conn: sqlite3.Connection, contenedor: str, modo: str) -> None:
+    """Cambia el modo de `contenedor` — sin ninguna condición previa
+    (el llamador, en cli.py, ya rechaza críticos/frigate antes de
+    llegar aquí — FR-006)."""
+    if modo not in ("manual", "automatico"):
+        raise ValueError(f"modo inválido: {modo!r}")
+    ahora = _now_iso()
+    conn.execute(
+        "INSERT INTO configuracion_contenedor (contenedor, modo, actualizado_en) "
+        "VALUES (?, ?, ?) "
+        "ON CONFLICT(contenedor) DO UPDATE SET modo = excluded.modo, "
+        "actualizado_en = excluded.actualizado_en",
+        (contenedor, modo, ahora),
+    )
+    conn.commit()
+
+
+# ── Intentos de reinicio (specs/021-remediacion-contenedores/) ──────────
+
+
+def insert_intento_reinicio(conn: sqlite3.Connection, intento: IntentoReinicio) -> int:
+    creado_en = intento.creado_en or _now_iso()
+    nuevo_id = _siguiente_id_compartido(conn)
+    conn.execute(
+        """INSERT INTO intentos_reinicio
+           (id, contenedor, modo_en_deteccion, episodio_id, accion_recomendada,
+            razonamiento_deepseek, coste_eur, estado, detalle, creado_en, resuelto_en)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            nuevo_id,
+            intento.contenedor,
+            intento.modo_en_deteccion,
+            intento.episodio_id,
+            intento.accion_recomendada,
+            intento.razonamiento_deepseek,
+            intento.coste_eur,
+            intento.estado,
+            intento.detalle,
+            creado_en,
+            intento.resuelto_en,
+        ),
+    )
+    conn.commit()
+    return nuevo_id
+
+
+def _fila_a_intento_reinicio(row: sqlite3.Row) -> IntentoReinicio:
+    return IntentoReinicio(
+        id=row["id"],
+        contenedor=row["contenedor"],
+        modo_en_deteccion=row["modo_en_deteccion"],
+        episodio_id=row["episodio_id"],
+        accion_recomendada=row["accion_recomendada"],
+        razonamiento_deepseek=row["razonamiento_deepseek"],
+        coste_eur=row["coste_eur"],
+        estado=row["estado"],
+        detalle=row["detalle"],
+        creado_en=row["creado_en"],
+        resuelto_en=row["resuelto_en"],
+    )
+
+
+def get_intento_reinicio(conn: sqlite3.Connection, intento_id: int) -> IntentoReinicio | None:
+    row = conn.execute(
+        "SELECT * FROM intentos_reinicio WHERE id = ?", (intento_id,)
+    ).fetchone()
+    return _fila_a_intento_reinicio(row) if row is not None else None
+
+
+def update_intento_reinicio_estado(
+    conn: sqlite3.Connection, intento_id: int, estado: str, detalle: str
+) -> None:
+    conn.execute(
+        "UPDATE intentos_reinicio SET estado = ?, detalle = ?, resuelto_en = ? WHERE id = ?",
+        (estado, detalle, _now_iso(), intento_id),
+    )
+    conn.commit()
+
+
+def intento_reciente_pendiente_o_sin_evaluar(conn: sqlite3.Connection, contenedor: str) -> bool:
+    """Evita evaluar de nuevo un contenedor que ya tiene un intento sin
+    resolver — mismo criterio de "no duplicar" que pendiente_existente()
+    de rotar_log, ampliado a sin_evaluar (que tampoco es un desenlace
+    final)."""
+    row = conn.execute(
+        "SELECT 1 FROM intentos_reinicio WHERE contenedor = ? "
+        "AND estado IN ('pendiente', 'sin_evaluar') LIMIT 1",
+        (contenedor,),
+    ).fetchone()
+    return row is not None
+
+
+def listar_pendientes_reinicio(conn: sqlite3.Connection) -> list[IntentoReinicio]:
+    rows = conn.execute(
+        "SELECT * FROM intentos_reinicio WHERE estado = 'pendiente' ORDER BY id"
+    ).fetchall()
+    return [_fila_a_intento_reinicio(r) for r in rows]
+
+
+def intentos_recientes_contenedor(
+    conn: sqlite3.Connection, contenedor: str, desde_iso: str
+) -> list[IntentoReinicio]:
+    """Intentos de `contenedor` creados desde `desde_iso` (inclusive) —
+    alimenta el cortacircuito (US3) y el contador de sin_evaluar
+    consecutivos (FR-019)."""
+    rows = conn.execute(
+        "SELECT * FROM intentos_reinicio WHERE contenedor = ? AND creado_en >= ? "
+        "ORDER BY id DESC",
+        (contenedor, desde_iso),
+    ).fetchall()
+    return [_fila_a_intento_reinicio(r) for r in rows]
+
+
+def sin_evaluar_consecutivos(conn: sqlite3.Connection, contenedor: str) -> int:
+    """Cuenta los intentos_reinicio más recientes de `contenedor`, en
+    orden descendente por id, mientras su estado sea "sin_evaluar" —
+    se detiene en el primero que no lo sea, o devuelve 0 si no hay
+    ninguno (FR-019)."""
+    rows = conn.execute(
+        "SELECT estado FROM intentos_reinicio WHERE contenedor = ? ORDER BY id DESC",
+        (contenedor,),
+    ).fetchall()
+    racha = 0
+    for row in rows:
+        if row["estado"] != "sin_evaluar":
+            break
+        racha += 1
+    return racha
+
+
+def localizar_intento(
+    conn: sqlite3.Connection, intento_id: int
+) -> tuple[str, IntentoRemediacion | IntentoReinicio] | None:
+    """Busca `intento_id` primero en intentos_remediacion, luego en
+    intentos_reinicio — para que pendientes/aprobar/rechazar/deshacer
+    resuelvan sobre la tabla que corresponda (contracts/cli.md de 021)."""
+    intento = get_intento(conn, intento_id)
+    if intento is not None:
+        return ("remediacion", intento)
+    intento_reinicio = get_intento_reinicio(conn, intento_id)
+    if intento_reinicio is not None:
+        return ("reinicio", intento_reinicio)
+    return None

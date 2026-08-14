@@ -15,14 +15,25 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from diagnostico import evidencia as diagnostico_evidencia
+from diagnostico import gasto as diagnostico_gasto
+from diagnostico.deepseek import llamar_deepseek as diagnostico_llamar_deepseek
+
 from . import _homelab_bridge as bridge
-from .model import IntentoRemediacion
+from . import deepseek_contenedores
+from .model import IntentoReinicio, IntentoRemediacion
 from .store import (
     get_intento,
+    get_intento_reinicio,
     get_modo,
+    get_modo_contenedor,
     insert_intento,
+    insert_intento_reinicio,
+    intento_reciente_pendiente_o_sin_evaluar,
     pendiente_existente,
+    sin_evaluar_consecutivos,
     update_intento_estado,
+    update_intento_reinicio_estado,
 )
 
 _DEFAULT_SNAPSHOT_PATH = (
@@ -76,11 +87,16 @@ LOGS_VIGILADOS: list[tuple[str, str, int]] = [
 
 TIPO_ACCION_ROTAR_LOG = "rotar_log"
 
+# specs/021-remediacion-contenedores/ — segundo tipo de acción real. A
+# diferencia de rotar_log, la decisión de si aplica no es una condición
+# fija: la elige DeepSeek con evidencia real (deepseek_contenedores.py).
+TIPO_ACCION_REINICIAR_CONTENEDOR = "reiniciar_contenedor"
+
 # Registro de todos los tipos de acción que existen en el código, sepan o no
 # de ellos configuracion_accion todavía (esa tabla solo tiene fila para un
 # tipo tras su primer get_modo()). Única fuente de verdad para "qué tipos
-# de acción existen" — extender aquí cuando se añada un segundo tipo.
-TIPOS_ACCION = (TIPO_ACCION_ROTAR_LOG,)
+# de acción existen".
+TIPOS_ACCION = (TIPO_ACCION_ROTAR_LOG, TIPO_ACCION_REINICIAR_CONTENEDOR)
 
 # Mismo número que ya usa rotate_hermes_logs.sh (KEEP=4) para el otro
 # mecanismo de rotación del homelab — sin este límite,
@@ -137,17 +153,13 @@ def deshacer_rotar_log(ruta_original: Path, ruta_rotada: Path) -> str | None:
     return str(conservado) if conservado is not None else None
 
 
-def _notificar_fallo_automatico(componente: str, detalle: str) -> bool:
-    """Único aviso que envía este paquete — solo cuando una rotación en
-    modo automático falla (FR-014 enmendado, research.md §11). El
-    éxito nunca notifica, ni tampoco un fallo en modo manual (ahí ya
-    hay un humano mirando el resultado del propio comando). Mismo
-    patrón que `inventory.deliver._send_raw`: nunca lanza, devuelve
-    False si no se pudo enviar por cualquier motivo."""
+def _notificar_telegram(texto: str) -> bool:
+    """Envío crudo compartido por todos los avisos de este paquete —
+    nunca lanza, devuelve False si no se pudo enviar por cualquier
+    motivo. Mismo patrón que `inventory.deliver._send_raw`."""
     token, chat_id = bridge.telegram_credentials()
     if not token or not chat_id:
         return False
-    texto = f"⚠️ remediación — rotar_log falló (automático)\n{componente}: {detalle}"
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     data = urllib.parse.urlencode({"chat_id": chat_id, "text": texto}).encode()
     ctx = ssl.create_default_context()
@@ -159,6 +171,14 @@ def _notificar_fallo_automatico(componente: str, detalle: str) -> bool:
             return json.loads(r.read()).get("ok", False)
     except (urllib.error.URLError, OSError, ValueError):
         return False
+
+
+def _notificar_fallo_automatico(componente: str, detalle: str) -> bool:
+    """Único aviso de rotar_log — solo cuando una rotación en modo
+    automático falla (FR-014 enmendado, research.md §11 de 019). El
+    éxito nunca notifica, ni tampoco un fallo en modo manual (ahí ya
+    hay un humano mirando el resultado del propio comando)."""
+    return _notificar_telegram(f"⚠️ remediación — rotar_log falló (automático)\n{componente}: {detalle}")
 
 
 def comprobar_rotar_log(conn: sqlite3.Connection) -> list[IntentoRemediacion]:
@@ -316,3 +336,247 @@ def escribir_snapshot(conn: sqlite3.Connection) -> None:
         destino.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
     except OSError:
         pass
+
+
+# ── Contenedores (specs/021-remediacion-contenedores/) ──────────────────
+#
+# A diferencia de rotar_log, la decisión no es una condición fija: para
+# cada contenedor no crítico caído se reúne evidencia real y se le
+# pregunta a DeepSeek si reiniciar_contenedor aplica (research.md §1-§3).
+
+REMEDIACION_DEEPSEEK_MODEL_DEFAULT = "deepseek-v4-flash"
+
+# Mismos valores por defecto que docker_monitor.CB_MAX_ATTEMPTS/
+# CB_WINDOW_HOURS — configurables para poder probar el cortacircuito
+# por CLI sin esperar 6 horas reales (contracts/cli.md de 021).
+REMEDIACION_CB_MAX_INTENTOS = int(os.environ.get("REMEDIACION_CB_MAX_INTENTOS", "3"))
+REMEDIACION_CB_VENTANA_HORAS = int(os.environ.get("REMEDIACION_CB_VENTANA_HORAS", "6"))
+
+# FR-019 — contrapartida del Principio VII enmendado (constitution.md
+# v2.0.0): mismo número que el cortacircuito por familiaridad, pero es
+# un mecanismo independiente (no cuenta reinicios, cuenta evaluaciones
+# sin poder decidir).
+REMEDIACION_SIN_EVALUAR_MAX_CONSECUTIVOS = int(
+    os.environ.get("REMEDIACION_SIN_EVALUAR_MAX_CONSECUTIVOS", "3")
+)
+
+
+def _modelo_deepseek() -> str:
+    return os.environ.get("REMEDIACION_DEEPSEEK_MODEL", REMEDIACION_DEEPSEEK_MODEL_DEFAULT)
+
+
+def _estimar_tokens_entrada(prompt: str) -> int:
+    """Estimación previa a la llamada — ~4 caracteres por token, misma
+    regla aproximada que ya usa `diagnostico.deepseek` (no se importa
+    esa función privada, se replica la fórmula: solo decide si se
+    llama o no, gasto.hay_presupuesto)."""
+    return max(1, len(prompt) // 4)
+
+
+def _notificar_sin_accion(contenedor: str, razonamiento: str) -> bool:
+    """FR-009/FR-012d — DeepSeek concluyó que ninguna acción de la
+    lista cerrada aplica: aviso con su razonamiento, no silencio."""
+    return _notificar_telegram(
+        f"ℹ️ remediación — {contenedor}: ninguna acción de la lista cerrada aplica\n{razonamiento}"
+    )
+
+
+def _notificar_cortacircuito(contenedor: str, detalle: str) -> bool:
+    """FR-011/FR-012a — el cortacircuito impide un nuevo intento."""
+    return _notificar_telegram(
+        f"🔴 remediación — {contenedor} en bucle de reinicios\n{detalle}\n"
+        f"⛔ Reinicio automático detenido — requiere intervención"
+    )
+
+
+def _notificar_sin_evaluar_persistente(contenedor: str, racha: int) -> bool:
+    """FR-019 — contrapartida del Principio VII enmendado: una
+    incapacidad persistente de evaluar (sin presupuesto, sin respuesta
+    de DeepSeek) nunca queda en silencio."""
+    return _notificar_telegram(
+        f"⚠️ remediación — {contenedor}: {racha} evaluaciones seguidas sin poder "
+        f"decidir (sin presupuesto o sin respuesta de DeepSeek) — revisar"
+    )
+
+
+def _crear_intento_reinicio(
+    conn: sqlite3.Connection,
+    contenedor: str,
+    modo: str,
+    episodio_id: int | None,
+    estado: str,
+    detalle: str,
+    accion_recomendada: str | None = None,
+    razonamiento: str | None = None,
+    coste_eur: float | None = None,
+) -> IntentoReinicio:
+    """Crea y persiste un intento_reinicio — punto único de escritura
+    para que el aviso de FR-019 (sin_evaluar persistente) se evalúe
+    siempre, sin depender de que cada rama de evaluar_contenedor se
+    acuerde de comprobarlo por separado."""
+    intento = IntentoReinicio(
+        contenedor=contenedor,
+        modo_en_deteccion=modo,
+        episodio_id=episodio_id,
+        accion_recomendada=accion_recomendada,
+        razonamiento_deepseek=razonamiento,
+        coste_eur=coste_eur,
+        estado=estado,
+        detalle=detalle,
+    )
+    intento.id = insert_intento_reinicio(conn, intento)
+    if estado == "sin_evaluar":
+        racha = sin_evaluar_consecutivos(conn, contenedor)
+        if racha >= REMEDIACION_SIN_EVALUAR_MAX_CONSECUTIVOS:
+            _notificar_sin_evaluar_persistente(contenedor, racha)
+    return intento
+
+
+def evaluar_contenedor(
+    conn_remediacion: sqlite3.Connection,
+    conn_diagnostico: sqlite3.Connection,
+    contenedor: str,
+) -> IntentoReinicio:
+    """Orquesta la decisión de DeepSeek para un contenedor no crítico
+    caído (data-model.md de 021): congelar_vivo → hay_presupuesto (o
+    REMEDIACION_DEEPSEEK_MOCK) → llamar_deepseek → parsear → crea el
+    intento_reinicio en el estado que corresponda. El llamador (
+    comprobar_reiniciar_contenedor) es responsable de excluir críticos
+    y NEVER_RESTART (FR-006) — esta función nunca los comprueba porque
+    nunca debería recibirlos."""
+    modo = get_modo_contenedor(conn_remediacion, contenedor)
+    episodio = diagnostico_evidencia.congelar_vivo(conn_diagnostico, contenedor)
+
+    mock = deepseek_contenedores.respuesta_mock()
+    if mock is not None:
+        parsed = mock
+        coste: float | None = None
+    else:
+        prompt = deepseek_contenedores.construir_prompt_remediacion(episodio, TIPOS_ACCION)
+        if not diagnostico_gasto.hay_presupuesto(
+            conn_diagnostico, _estimar_tokens_entrada(prompt)
+        ):
+            return _crear_intento_reinicio(
+                conn_remediacion, contenedor, modo, episodio.id,
+                estado="sin_evaluar",
+                detalle="sin presupuesto diario disponible para preguntar a DeepSeek",
+            )
+        respuesta = diagnostico_llamar_deepseek(prompt, _modelo_deepseek())
+        if respuesta is None:
+            return _crear_intento_reinicio(
+                conn_remediacion, contenedor, modo, episodio.id,
+                estado="sin_evaluar",
+                detalle="DeepSeek no respondió o la llamada falló",
+            )
+        parsed = deepseek_contenedores.parsear_respuesta_remediacion(respuesta)
+        if parsed is None:
+            return _crear_intento_reinicio(
+                conn_remediacion, contenedor, modo, episodio.id,
+                estado="sin_evaluar",
+                detalle="respuesta de DeepSeek inconsistente con el formato esperado",
+            )
+        coste = diagnostico_gasto.registrar_coste(
+            conn_diagnostico, parsed["tokens_entrada"], parsed["tokens_salida"]
+        )
+
+    accion = parsed["accion_aplica"]
+    razonamiento = parsed["razonamiento"]
+
+    if accion is None:
+        intento = _crear_intento_reinicio(
+            conn_remediacion, contenedor, modo, episodio.id,
+            estado="sin_accion", detalle=razonamiento,
+            accion_recomendada=None, razonamiento=razonamiento, coste_eur=coste,
+        )
+        _notificar_sin_accion(contenedor, razonamiento)
+        return intento
+
+    # accion == TIPO_ACCION_REINICIAR_CONTENEDOR — única acción candidata hoy
+    if modo == "manual":
+        return _crear_intento_reinicio(
+            conn_remediacion, contenedor, modo, episodio.id,
+            estado="pendiente", detalle="pendiente de aprobación",
+            accion_recomendada=accion, razonamiento=razonamiento, coste_eur=coste,
+        )
+
+    # modo == "automatico" (FR-008) — mismo cortacircuito que docker_monitor.py
+    intentos_previos = bridge.recent_restart_attempts(
+        conn_remediacion, contenedor, REMEDIACION_CB_VENTANA_HORAS
+    )
+    permite, motivo_breaker = bridge.breaker_decision(intentos_previos, REMEDIACION_CB_MAX_INTENTOS)
+    if not permite:
+        intento = _crear_intento_reinicio(
+            conn_remediacion, contenedor, modo, episodio.id,
+            estado="cortacircuito", detalle=motivo_breaker,
+            accion_recomendada=accion, razonamiento=razonamiento, coste_eur=coste,
+        )
+        _notificar_cortacircuito(contenedor, motivo_breaker)
+        return intento
+
+    ejecutado = bridge.restart_container(contenedor, reason=razonamiento or "")
+    estado_final = "ejecutado" if ejecutado else "fallido"
+    detalle = "reiniciado y verificado" if ejecutado else "reinicio sin efecto — sigue caído"
+    return _crear_intento_reinicio(
+        conn_remediacion, contenedor, modo, episodio.id,
+        estado=estado_final, detalle=detalle,
+        accion_recomendada=accion, razonamiento=razonamiento, coste_eur=coste,
+    )
+
+
+def comprobar_reiniciar_contenedor(
+    conn_remediacion: sqlite3.Connection, conn_diagnostico: sqlite3.Connection
+) -> list[IntentoReinicio]:
+    """Recorre los contenedores que `docker_monitor.py` conoce, excluye
+    críticos y NEVER_RESTART (FR-006 — nunca llegan ni a la evidencia
+    ni a DeepSeek), se queda con los que no están `running and
+    healthy`, salta los que ya tienen un intento `pendiente`/
+    `sin_evaluar` reciente (FR-008 de 019, mismo criterio "no
+    duplicar"), y evalúa el resto."""
+    criticos = bridge.docker_critical()
+    never_restart = bridge.docker_never_restart()
+    creados: list[IntentoReinicio] = []
+
+    for c in bridge.listar_contenedores():
+        nombre = c.get("name")
+        if not nombre or nombre in criticos or nombre in never_restart:
+            continue
+        if c.get("running") and c.get("healthy"):
+            continue
+        if intento_reciente_pendiente_o_sin_evaluar(conn_remediacion, nombre):
+            continue
+        creados.append(evaluar_contenedor(conn_remediacion, conn_diagnostico, nombre))
+
+    return creados
+
+
+def resolver_aprobacion_reinicio(conn: sqlite3.Connection, intento_id: int) -> IntentoReinicio:
+    """User Story 2 de 021: aprueba un intento `pendiente` — ejecuta el
+    reinicio en la misma llamada, con la misma verificación real que
+    ya usa `docker_monitor.py` (FR-010)."""
+    intento = get_intento_reinicio(conn, intento_id)
+    if intento is None:
+        raise ValueError(f"intento {intento_id} no existe")
+    if intento.estado != "pendiente":
+        raise ValueError(f"intento {intento_id} no está pendiente (estado={intento.estado})")
+
+    ejecutado = bridge.restart_container(intento.contenedor, reason=intento.razonamiento_deepseek or "")
+    estado_final = "ejecutado" if ejecutado else "fallido"
+    detalle = (
+        "reiniciado y verificado (aprobado por Miquel)"
+        if ejecutado
+        else "reinicio sin efecto — sigue caído"
+    )
+    update_intento_reinicio_estado(conn, intento_id, estado_final, detalle)
+    return get_intento_reinicio(conn, intento_id)
+
+
+def resolver_rechazo_reinicio(conn: sqlite3.Connection, intento_id: int) -> IntentoReinicio:
+    """User Story 2 de 021: rechaza un intento `pendiente` — el
+    contenedor no se toca, el razonamiento de DeepSeek se conserva."""
+    intento = get_intento_reinicio(conn, intento_id)
+    if intento is None:
+        raise ValueError(f"intento {intento_id} no existe")
+    if intento.estado != "pendiente":
+        raise ValueError(f"intento {intento_id} no está pendiente (estado={intento.estado})")
+    update_intento_reinicio_estado(conn, intento_id, "rechazado", "rechazado por Miquel")
+    return get_intento_reinicio(conn, intento_id)

@@ -45,3 +45,63 @@ class IntentoRemediacion:
     creado_en: str | None = None
     resuelto_en: str | None = None
     id: int | None = None
+
+
+# ── Contenedores (specs/021-remediacion-contenedores/) ──────────────────
+
+# Estado de un intento de reinicio de contenedor — data-model.md de 021.
+# Sin "deshecho": FR-016 no promete una operación de deshacer para esta
+# acción, a diferencia de rotar_log.
+ESTADOS_INTENTO_REINICIO = (
+    "pendiente",
+    "rechazado",
+    "ejecutado",
+    "fallido",
+    "cortacircuito",
+    "sin_accion",
+    "sin_evaluar",
+)
+
+
+@dataclass
+class ConfiguracionContenedor:
+    """El modo vigente de un contenedor no crítico concreto — a
+    diferencia de ConfiguracionAccion, la clave es el componente
+    individual, no un tipo de acción entero (research.md §6 de 021)."""
+
+    contenedor: str
+    modo: str = "manual"
+    actualizado_en: str | None = None
+
+
+@dataclass
+class IntentoReinicio:
+    """Una propuesta o ejecución de reiniciar_contenedor originada por
+    una evaluación de DeepSeek — data-model.md de 021. Sin campo de
+    rollback (FR-016)."""
+
+    contenedor: str
+    modo_en_deteccion: str
+    estado: str
+    detalle: str
+    episodio_id: int | None = None
+    accion_recomendada: str | None = None
+    razonamiento_deepseek: str | None = None
+    coste_eur: float | None = None
+    creado_en: str | None = None
+    resuelto_en: str | None = None
+    id: int | None = None
+
+
+@dataclass
+class EvaluacionDeepSeek:
+    """Resultado interno de preguntarle a DeepSeek si una acción
+    aplica a un contenedor concreto — no tiene tabla propia, se
+    persiste como IntentoReinicio (data-model.md de 021)."""
+
+    accion_recomendada: str | None
+    razonamiento: str | None
+    tokens_entrada: int = 0
+    tokens_salida: int = 0
+    fallo: bool = False
+    motivo_fallo: str | None = None

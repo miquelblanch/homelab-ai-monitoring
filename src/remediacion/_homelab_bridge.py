@@ -1,14 +1,19 @@
-"""_homelab_bridge — puente mínimo hacia `homelab_secrets.py`, que vive
-fuera de este repositorio en la infraestructura privada del homelab
-(`/Volumes/FastData/homelab/scripts/`). Mismo patrón que
+"""_homelab_bridge — puente hacia `homelab_secrets.py` y `docker_monitor.py`,
+que viven fuera de este repositorio en la infraestructura privada del
+homelab (`/Volumes/FastData/homelab/scripts/`). Mismo patrón que
 `inventory._homelab_bridge` (research.md §6 de specs/001-...) — copiado
-en vez de importado desde `inventory` porque `remediacion` es un
-paquete independiente (research.md §2 de specs/019-.../) que no
-importa nada de los otros dos.
+en vez de importado desde `inventory` porque `remediacion` sigue sin
+importar nada de `inventory` (research.md §2 de specs/019-.../, sin
+cambios en 021).
+
+Desde specs/021-remediacion-contenedores/ (research.md §4), este bridge
+también expone las funciones ya probadas de `docker_monitor.py` para el
+reinicio de contenedores — nunca se reimplementan aquí.
 
 Contrato: si el script no está disponible (repo público clonado fuera
-del homelab, por ejemplo), `telegram_credentials()` devuelve un
-resultado inocuo (cadenas vacías) en vez de lanzar excepción — research.md §11.
+del homelab, por ejemplo), las funciones de este módulo devuelven un
+resultado inocuo (cadenas vacías, conjuntos vacíos, listas vacías,
+`False`) en vez de lanzar excepción — research.md §11 de 019.
 """
 
 from __future__ import annotations
@@ -28,6 +33,11 @@ try:
 except ImportError:
     _homelab_secrets = None
 
+try:
+    import docker_monitor as _docker_monitor  # type: ignore[import-not-found]
+except ImportError:
+    _docker_monitor = None
+
 
 def telegram_credentials() -> tuple[str, str]:
     """(token, chat_id) — cadenas vacías si no se pudo resolver."""
@@ -37,3 +47,78 @@ def telegram_credentials() -> tuple[str, str]:
         return _homelab_secrets.telegram()
     except Exception:
         return "", ""
+
+
+# ── Contenedores (specs/021-remediacion-contenedores/) ──────────────────
+
+
+def docker_critical() -> set[str]:
+    if _docker_monitor is None:
+        return set()
+    try:
+        return set(getattr(_docker_monitor, "CRITICAL", set()))
+    except Exception:
+        return set()
+
+
+def docker_never_restart() -> set[str]:
+    if _docker_monitor is None:
+        return set()
+    try:
+        return set(getattr(_docker_monitor, "NEVER_RESTART", set()))
+    except Exception:
+        return set()
+
+
+def listar_contenedores() -> list[dict]:
+    """Todos los contenedores conocidos por `docker_monitor.py`, con su
+    `status`/`health` reales — misma fuente de verdad que ya usa
+    (`docker ps`), para no reimplementarla por separado (research.md
+    §4). Lista vacía si el bridge no está disponible."""
+    if _docker_monitor is None:
+        return []
+    try:
+        return list(_docker_monitor.get_containers())
+    except Exception:
+        return []
+
+
+def restart_container(name: str, reason: str = "") -> bool:
+    """Bridge hacia `docker_monitor.restart_container()` — reutiliza la
+    verificación real post-reinicio ya corregida (FR-010, research.md
+    §4). `REMEDIACION_TEST_FORZAR_FALLO` en el entorno fuerza `False`
+    sin tocar Docker — hook de pruebas para el cortacircuito
+    (quickstart.md Escenario 5 de 021), nunca activo en producción."""
+    if os.environ.get("REMEDIACION_TEST_FORZAR_FALLO"):
+        return False
+    if _docker_monitor is None:
+        return False
+    try:
+        return bool(_docker_monitor.restart_container(name, reason))
+    except Exception:
+        return False
+
+
+def breaker_decision(attempts: int, max_attempts: int = 3) -> tuple[bool, str]:
+    """Bridge hacia `docker_monitor.breaker_decision()` — función pura,
+    sin efectos secundarios (research.md §4)."""
+    if _docker_monitor is None:
+        return True, "docker_monitor no disponible — sin cortacircuito"
+    try:
+        return _docker_monitor.breaker_decision(attempts, max_attempts)
+    except Exception:
+        return True, "fallo al evaluar el cortacircuito — se permite el intento"
+
+
+def recent_restart_attempts(conn_remediacion, contenedor: str, window_hours: int = 6) -> int:
+    """Cuenta, en `intentos_reinicio` (nunca en `restart_history`,
+    research.md §5), los intentos en estado "ejecutado" o "fallido" de
+    `contenedor` dentro de las últimas `window_hours` horas — alimenta
+    `breaker_decision()`."""
+    from datetime import datetime, timedelta, timezone
+
+    from . import store
+
+    desde = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).isoformat()
+    intentos = store.intentos_recientes_contenedor(conn_remediacion, contenedor, desde)
+    return sum(1 for i in intentos if i.estado in ("ejecutado", "fallido"))
