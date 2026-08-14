@@ -53,12 +53,23 @@ def telegram_credentials() -> tuple[str, str]:
 
 
 def docker_critical() -> set[str]:
-    if _docker_monitor is None:
-        return set()
-    try:
-        return set(getattr(_docker_monitor, "CRITICAL", set()))
-    except Exception:
-        return set()
+    """El conjunto real de `docker_monitor.CRITICAL`, más los nombres
+    de `REMEDIACION_TEST_FORZAR_CRITICO` (lista separada por comas) si
+    esa variable está en el entorno — hook de pruebas exclusivo
+    (specs/022-clasificacion-remediacion/, research.md §1b): permite
+    validar el camino de contenedores críticos con uno de prueba
+    desechable, sin tocar la lista real ni arriesgar uno de los 12
+    reales. Nunca activo en producción."""
+    criticos: set[str] = set()
+    if _docker_monitor is not None:
+        try:
+            criticos = set(getattr(_docker_monitor, "CRITICAL", set()))
+        except Exception:
+            criticos = set()
+    forzados = os.environ.get("REMEDIACION_TEST_FORZAR_CRITICO", "")
+    if forzados:
+        criticos |= {nombre.strip() for nombre in forzados.split(",") if nombre.strip()}
+    return criticos
 
 
 def docker_never_restart() -> set[str]:

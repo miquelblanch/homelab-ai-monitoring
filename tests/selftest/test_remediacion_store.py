@@ -1,14 +1,19 @@
 """test_remediacion_store — persistencia pura: configuración de acción
 e intentos, contra una base sqlite en un fichero temporal (nunca la
-real)."""
+real).
+
+Desde el final del fichero: guarda de set_modo_contenedor sobre
+críticos e intento_reinicio_vigente (specs/022-clasificacion-remediacion/)."""
 
 from __future__ import annotations
 
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from remediacion import store
-from remediacion.model import IntentoRemediacion
+from remediacion.model import IntentoRemediacion, IntentoReinicio
 from tests.selftest import check
 
 
@@ -293,3 +298,107 @@ def test_ids_de_intentos_nunca_colisionan_entre_las_dos_tablas() -> None:
                 modo_en_deteccion="manual", estado="pendiente", detalle="x",
             ))
         check("un rotar_log nuevo tampoco colisiona con reinicios ya existentes", id_remediacion > 3)
+
+
+# ── Contenedores críticos (specs/022-clasificacion-remediacion/) ────────
+
+
+def test_set_modo_contenedor_rechaza_automatico_para_critico() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _db(tmp)
+        with patch.object(store.bridge, "docker_critical", return_value={"homeassistant"}):
+            with store.connect(path) as conn:
+                lanzo = False
+                try:
+                    store.set_modo_contenedor(conn, "homeassistant", "automatico")
+                except ValueError:
+                    lanzo = True
+                filas = conn.execute(
+                    "SELECT COUNT(*) AS n FROM configuracion_contenedor"
+                ).fetchone()["n"]
+
+        check("automático sobre un crítico lanza ValueError (FR-008)", lanzo is True)
+        check("no persiste ninguna fila", filas == 0)
+
+
+def test_set_modo_contenedor_acepta_manual_para_critico() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _db(tmp)
+        with patch.object(store.bridge, "docker_critical", return_value={"homeassistant"}):
+            with store.connect(path) as conn:
+                store.set_modo_contenedor(conn, "homeassistant", "manual")
+                modo = store.get_modo_contenedor(conn, "homeassistant")
+        check("manual sobre un crítico se acepta sin error", modo == "manual")
+
+
+def test_set_modo_contenedor_no_critico_sin_cambios() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _db(tmp)
+        with patch.object(store.bridge, "docker_critical", return_value=set()):
+            with store.connect(path) as conn:
+                store.set_modo_contenedor(conn, "jellyfin_audio", "automatico")
+                modo = store.get_modo_contenedor(conn, "jellyfin_audio")
+        check("un contenedor no crítico sigue admitiendo automático (021, sin cambios)", modo == "automatico")
+
+
+def test_intento_reinicio_vigente_pendiente_es_vigente() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        with store.connect(_db(tmp)) as conn:
+            store.insert_intento_reinicio(conn, IntentoReinicio(
+                contenedor="test", modo_en_deteccion="manual", estado="pendiente", detalle="x",
+            ))
+            vigente = store.intento_reinicio_vigente(conn, "test")
+        check("un intento pendiente siempre es vigente", vigente is not None and vigente.estado == "pendiente")
+
+
+def test_intento_reinicio_vigente_sin_ninguno_es_none() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        with store.connect(_db(tmp)) as conn:
+            check("sin ningún intento, vigente es None", store.intento_reinicio_vigente(conn, "test") is None)
+
+
+def test_intento_reinicio_vigente_ejecutado_reciente_es_vigente() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        with store.connect(_db(tmp)) as conn:
+            intento_id = store.insert_intento_reinicio(conn, IntentoReinicio(
+                contenedor="test", modo_en_deteccion="automatico", estado="pendiente", detalle="x",
+            ))
+            store.update_intento_reinicio_estado(conn, intento_id, "ejecutado", "reiniciado y verificado")
+            vigente = store.intento_reinicio_vigente(conn, "test")
+        check("un ejecutado justo ahora sigue vigente", vigente is not None and vigente.estado == "ejecutado")
+
+
+def test_intento_reinicio_vigente_ejecutado_antiguo_no_es_vigente() -> None:
+    """Fabrica un resuelto_en fuera de REMEDIACION_INTENTO_VIGENTE_MINUTOS
+    en vez de dormir minutos reales (hallazgo C1 de /speckit-analyze) —
+    la constante nombrada es justo lo que permite esto."""
+    with tempfile.TemporaryDirectory() as tmp:
+        with store.connect(_db(tmp)) as conn:
+            intento_id = store.insert_intento_reinicio(conn, IntentoReinicio(
+                contenedor="test", modo_en_deteccion="automatico", estado="pendiente", detalle="x",
+            ))
+            store.update_intento_reinicio_estado(conn, intento_id, "ejecutado", "reiniciado y verificado")
+            antiguo = (
+                datetime.now(timezone.utc)
+                - timedelta(minutes=store.REMEDIACION_INTENTO_VIGENTE_MINUTOS + 1)
+            ).isoformat()
+            conn.execute(
+                "UPDATE intentos_reinicio SET resuelto_en = ? WHERE id = ?", (antiguo, intento_id)
+            )
+            conn.commit()
+            vigente = store.intento_reinicio_vigente(conn, "test")
+        check("un ejecutado fuera de la ventana ya no es vigente", vigente is None)
+
+
+def test_intento_reinicio_vigente_prioriza_el_mas_reciente() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        with store.connect(_db(tmp)) as conn:
+            store.insert_intento_reinicio(conn, IntentoReinicio(
+                contenedor="test", modo_en_deteccion="manual", estado="rechazado", detalle="viejo",
+            ))
+            store.insert_intento_reinicio(conn, IntentoReinicio(
+                contenedor="test", modo_en_deteccion="manual", estado="pendiente", detalle="nuevo",
+            ))
+            vigente = store.intento_reinicio_vigente(conn, "test")
+        check("con un pendiente real, ese es el vigente, no el rechazado previo",
+              vigente is not None and vigente.detalle == "nuevo")

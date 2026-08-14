@@ -1,7 +1,40 @@
 <!--
 ## Sync Impact Report
 
-**Version change**: 1.2.4 → 2.0.0
+**Version change**: 2.0.0 → 2.1.0
+**Principles added**: None (nuevo párrafo dentro de un principio existente,
+no un principio nuevo — de ahí MINOR, no MAJOR)
+**Principles modified**: **Principio VII (Un Actor por Acción)** — añadido un
+párrafo nuevo ("Análisis sin acción, para contenedores críticos") que
+distingue explícitamente dos responsabilidades que antes se trataban como
+una sola: **vigilar y avisar** (sigue siendo, sin ningún cambio,
+responsabilidad exclusiva de `docker_monitor.py` para los críticos) y
+**analizar y proponer una acción, sin ejecutarla nunca** (nueva
+responsabilidad de `remediacion`/DeepSeek, feature 022,
+`specs/022-clasificacion-remediacion/`). No es una redefinición incompatible
+con la versión anterior: la garantía que protegía a los contenedores
+críticos —que ninguno se reinicia sin aprobación humana explícita, regla 3
+del `CLAUDE.md` general del homelab— permanece intacta y se refuerza con un
+enunciado explícito nuevo ("ningún interruptor, configuración ni
+comportamiento por defecto puede convertir esa aprobación en automática").
+Lo único que cambia es que antes ningún actor analizaba un contenedor
+crítico con vistas a una acción, y ahora uno lo hace —sin que eso compita
+con la vigilancia de `docker_monitor.py`, ni le retire nada—, por eso es
+MINOR (adición) y no MAJOR (redefinición), a diferencia del cambio de
+2.0.0. Decidido explícitamente con Miquel (`AskUserQuestion`, 2026-08-14),
+tras detectar el conflicto textual con la redacción de 2.0.0 al preparar
+`specs/022-clasificacion-remediacion/spec.md`.
+**Sections added**: None
+**Sections removed**: N/A
+**Sections clarified**: Ninguna otra sección tocada en esta versión — ver
+`specs/022-clasificacion-remediacion/` para el resto del alcance de esa
+feature (columna de clasificación en Inventario, unificación con Alarmas),
+que no requiere más cambios de este documento.
+**Deferred TODOs**: None
+
+---
+
+**Version change (histórico)**: 1.2.4 → 2.0.0
 **Principles added**: None
 **Principles modified**: **Principio VII (Un Actor por Acción)** — redefinición
 incompatible con la versión anterior (MAJOR): la garantía de independencia
@@ -108,13 +141,30 @@ explícita, no implícita: un fallo persistente de la nueva capa para evaluar o 
 alarma (Principio I) — nunca un silencio indistinguible de "sigue vigilado" cuando ya no
 lo está. El spec que hace la cesión DEBE declarar esa contrapartida explícitamente.
 
+**Análisis sin acción, para contenedores críticos (desde el feature 022).** Que
+`docker_monitor.py` sea el único actor de vigilancia y aviso de un contenedor crítico no
+impide que una capa de remediación con su propio diagnóstico (Principio IV) *analice* ese
+mismo contenedor y *proponga* una acción de la lista cerrada — mientras esa propuesta
+nunca se ejecute sin aprobación humana explícita, no hay dos actores compitiendo por la
+misma responsabilidad: uno vigila y avisa (`docker_monitor.py`, sin ningún cambio), el
+otro analiza y propone, nunca ejecuta (`remediacion`/DeepSeek). Para un contenedor
+crítico no existe ni puede existir un modo "automático": toda propuesta de `remediacion`
+sobre un contenedor crítico es siempre una sugerencia pendiente de que Miquel la apruebe
+explícitamente ese día — la misma exigencia que ya impone la regla 3 del `CLAUDE.md`
+general del homelab ("no reiniciar contenedores críticos sin confirmación explícita").
+Ningún interruptor, configuración, ni comportamiento por defecto puede convertir esa
+aprobación en automática para un contenedor de la lista de críticos.
+
 **Rationale**: Si el agente sustituyera al monitor y fallara sin que nadie se enterase, se
 perdería la remediación que lleva meses funcionando sin ayuda de nadie — el motivo
 original de este principio. Acotar la garantía a los críticos permite que una capa de
 remediación más inteligente (que sí diagnostica antes de actuar, Principio IV) asuma
 progresivamente responsabilidades sobre componentes no críticos, siempre que ceder esa
 responsabilidad no cree un punto ciego nuevo: de ahí que la contrapartida del aviso
-persistente no sea opcional.
+persistente no sea opcional. Que un contenedor sea crítico protege la ejecución (nunca se
+reinicia sin aprobación), no el análisis: negarle también el análisis dejaría a los
+componentes más sensibles del homelab como los únicos sin ninguna propuesta razonada
+cuando fallan, justo lo contrario de lo que motivó este proyecto.
 
 ### VIII. Registro de Acciones e Hipótesis
 
@@ -236,6 +286,15 @@ aviso explícito cuando `remediacion` lleva evaluaciones consecutivas sin poder 
 (sin presupuesto, sin respuesta de DeepSeek) — nunca un silencio equivalente a "sigue
 vigilado" cuando ya no lo está (FR-019 de 021).
 
+El feature 022 (`specs/022-clasificacion-remediacion/`) extiende la evaluación de
+DeepSeek a los contenedores **críticos** — antes totalmente excluidos de cualquier
+análisis de `remediacion`. La distinción de Principio VII entre vigilar/avisar y
+analizar/proponer (ver el principio) es lo que permite esta extensión sin volver a acotar
+la garantía de 021: `docker_monitor.py` sigue siendo, sin ningún cambio, el único
+mecanismo de vigilancia y aviso de los críticos, y ningún contenedor de esa lista puede
+tener un modo "automático" — toda propuesta de DeepSeek sobre un crítico espera siempre
+la aprobación explícita de Miquel.
+
 Los dos candidatos que quedaban aquí como fuera de alcance —relays que escribían su log en
 `/tmp`, y contenedores sin healthcheck— se resolvieron el 2026-08-13 mediante intervención
 directa sobre el homelab, no como un nuevo tipo de acción de esta capa: ninguno de los dos
@@ -270,4 +329,4 @@ principio, sobra. Si un principio no tiene componente, falta.
 cada ciclo de implementación. La línea base (Principio IX) DEBE actualizarse cuando se
 establezca un nuevo conjunto de evaluación validado.
 
-**Version**: 2.0.0 | **Ratified**: 2026-08-02 | **Last Amended**: 2026-08-14
+**Version**: 2.1.0 | **Ratified**: 2026-08-02 | **Last Amended**: 2026-08-14

@@ -2248,6 +2248,142 @@ verificación post-reinicio (`VERIFY_DELAY_S` + comprobación real de
 
 ---
 
+## Feature 022 — material de partida (2026-08-14): clasificación manual/automática/IA en Inventario, unificada con Alarmas
+
+Con 021 cerrado, Miquel ha pedido llevar el patrón manual/automática/IA
+—hoy limitado a contenedores (021) y a `rotar_log` (019/020)— a **todo**
+el inventario: que cada componente de la pestaña Inventario muestre una
+columna de remediación (manual / automática / IA), y que la pestaña
+Alarmas actúe según esa clasificación cuando salta una alarma real.
+
+**Investigación previa, antes de especificar.** Hoy solo existen **dos
+acciones cerradas y reversibles** en todo el proyecto
+(`src/remediacion/acciones.py`, `TIPOS_ACCION`):
+
+| Acción | Categoría de inventario que cubre | Quién decide | Quién ejecuta |
+|---|---|---|---|
+| `rotar_log` (019/020) | `infra_monitorizacion` — solo los 17 logs de `LOGS_VIGILADOS` | Regla fija determinista (tamaño > umbral) | Miquel aprueba (modo manual) o se ejecuta sola (modo automático) — interruptor por *tipo de acción*, `configuracion_accion` |
+| `reiniciar_contenedor` (021) | `contenedor` — solo los 26 no críticos | DeepSeek, siempre (nunca una condición fija) | Miquel aprueba (modo manual) o se ejecuta sola (modo automático) — interruptor por *contenedor*, `configuracion_contenedor` |
+
+Para el resto de categorías del inventario (`entidad_ha`,
+`integracion`, `host_externo`, `hermes`, `telegram`, y los contenedores
+críticos/`NEVER_RESTART` dentro de `contenedor`) no existe ninguna
+acción cerrada — ni podría inventarse una sobre la marcha sin violar
+los Principios V/VI (lista cerrada, nunca decidida en caliente). Para
+esos, la única remediación real hoy es que Miquel lea la alarma y actúe
+él mismo — exactamente lo que la pestaña Alarmas ya hace desde 006.
+
+**Tensión real encontrada, no resuelta por la propia pregunta de
+Miquel: "manual/automática/IA" mezcla dos ejes distintos.** La tabla de
+arriba lo deja ver: *quién decide* (una regla fija vs. DeepSeek) y
+*quién ejecuta* (Miquel aprueba vs. se ejecuta sola) son cosas
+distintas, y hoy varían de forma independiente — `rotar_log` puede
+estar en modo automático sin que haya ninguna IA de por medio, y
+`reiniciar_contenedor` en modo manual sigue siendo DeepSeek quien
+decide, solo que Miquel aprueba antes de ejecutar. Encajarlo en tres
+casillas exige una regla de traducción explícita — propuesta de
+partida para que `/speckit-clarify` la confirme o la corrija, no
+decidida aquí:
+
+- **Manual**: no existe ninguna acción cerrada para ese componente
+  (todas las categorías salvo `contenedor` no crítico e
+  `infra_monitorizacion`/logs vigilados), **o** existe pero su
+  decisión es una regla fija y su modo vigente es manual.
+- **Automática**: existe una acción cuya decisión es una regla fija
+  determinista (no un LLM) y su modo vigente es automático — hoy,
+  únicamente `rotar_log` en modo automático.
+- **IA**: existe una acción cuya decisión la toma DeepSeek —
+  independientemente de si el modo vigente es manual o automático (la
+  diferencia manual/automático, para estas, sería un matiz dentro de
+  "IA", no una casilla distinta) — hoy, únicamente `reiniciar_contenedor`.
+
+**Decisiones ya confirmadas con Miquel (`AskUserQuestion`,
+2026-08-14), antes de escribir nada más:**
+
+1. **Sin acción cerrada definida → "manual", honesto, sin inventar
+   nada nuevo.** Este feature no diseña acciones de remediación nuevas
+   para `entidad_ha`, `integracion`, `host_externo`, `hermes` ni
+   `telegram` — la columna documenta lo que ya es cierto
+   operativamente hoy, no amplía la lista cerrada de acciones. Ampliar
+   esa lista queda para features posteriores, uno por acción nueva,
+   igual que 019 y 021 se hicieron por separado.
+2. **Alarmas deja de ser solo texto para lo que sí tiene acción.** Hoy
+   el pipeline de remediación de contenedores/logs vive aparte
+   (`remediacion.db`, visor propio de 020) de la pestaña Alarmas (solo
+   texto fijo, FR-006/FR-015 de 006). Este feature conecta las dos:
+   una alarma de un componente clasificado como automática/IA muestra
+   en Alarmas el estado real del intento vigente (`pendiente` /
+   `ejecutado` / `rechazado` / `sin_accion` / `cortacircuito`...), no
+   solo la explicación en prosa de siempre. Para "manual" sin acción,
+   Alarmas no cambia — sigue siendo el texto fijo de 006.
+
+**Alcance propuesto (borrador, para `/speckit-plan`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Columna "remediación" (manual/automática/IA) en cada fila de la pestaña Inventario, derivada de `configuracion_accion`/`configuracion_contenedor` reales — nunca una clasificación nueva mantenida a mano | Dentro |
+| Regla de traducción explícita de la tabla de arriba, confirmada o corregida en `/speckit-clarify` | Dentro |
+| En Alarmas, para alarmas de componentes con acción real, mostrar el estado vigente del intento de `remediacion.db` junto al texto fijo de 006 | Dentro |
+| Diseñar acciones cerradas nuevas para categorías sin ninguna hoy (`entidad_ha`, `integracion`, `host_externo`, `hermes`, `telegram`) | Fuera — decisión explícita de Miquel, quedan para features posteriores uno a uno |
+| Tocar el mecanismo de decisión ya existente de `rotar_log` o `reiniciar_contenedor` | Fuera — ya funciona, este feature solo lo expone, no lo cambia |
+| Ejecutar nada nuevo desde Inventario o desde Alarmas — ambas pestañas siguen de solo lectura, igual que hoy | Fuera — actuar de verdad sigue pasando por `remediacion.cli` (019) o su visor (020), sin un botón nuevo |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o
+adaptar):
+
+> La pestaña Inventario del dashboard lista cada componente del
+> homelab (contenedores, entidades de Home Assistant, integraciones,
+> hosts externos, Hermes, Telegram) pero no dice cómo se resolvería
+> una alarma sobre él. Quiero una columna de remediación por
+> componente: manual, automática, o IA. Hoy solo dos tipos de
+> componente tienen de verdad una forma de remediarse sin que yo
+> intervenga a mano: los logs vigilados (una regla fija de tamaño
+> decide, y según el interruptor se ejecuta sola o espera mi
+> aprobación) y los contenedores no críticos (DeepSeek decide si
+> reiniciar ayuda, y según el interruptor se ejecuta solo o espera mi
+> aprobación). Todo lo demás no tiene ninguna acción real definida
+> todavía, así que para esos la columna debe decir "manual" — no
+> quiero que este feature invente acciones nuevas para lo que no las
+> tiene, solo que sea honesto sobre lo que hay. Además, cuando salte
+> una alarma de un componente que sí tiene acción real (contenedor o
+> log), quiero que la pestaña Alarmas, además de la explicación de
+> siempre, muestre el estado real de esa remediación — si hay una
+> propuesta pendiente, si ya se ejecutó, si se rechazó — en vez de
+> solo el texto fijo genérico que muestra hoy. No incluye ningún botón
+> nuevo que ejecute nada desde Inventario o Alarmas: para actuar de
+> verdad se sigue usando `remediacion.cli` o su visor, igual que hoy.
+
+> **Giro real de planteamiento (2026-08-14), a mitad de `/speckit-specify`.**
+> Lo de arriba dejaba fuera, a propósito, cualquier cambio de
+> comportamiento sobre contenedores críticos — la columna sería
+> "Manual" para ellos, sin más. Miquel lo interrumpió para generalizar:
+> no quiere hablar solo de "contenedores críticos", sino de
+> dispositivos críticos/no críticos como eje explícito de la
+> clasificación, y quiere que los críticos dejen de estar totalmente
+> excluidos de cualquier evaluación de DeepSeek (regla explícita de
+> 021) — que DeepSeek también los analice y proponga, con una
+> condición innegociable: nunca ejecuta nada sobre un crítico sin que
+> Miquel lo apruebe explícitamente ese día. Confirmado con él en dos
+> tandas de `AskUserQuestion`: (1) el eje crítico/no crítico se queda
+> limitado a contenedores por ahora — no se inventa una noción de
+> "entidad HA crítica" ni equivalente; (2) para las categorías sin
+> ninguna acción real, "no crítico = IA" es una regla de política a
+> futuro, no una obligación de construir nada ahora, coherente con la
+> decisión ya tomada de no inventar acciones nuevas; (3) sí, extender
+> DeepSeek a críticos, siempre con aprobación explícita, nunca modo
+> automático posible para ellos. El cambio choca con el texto literal
+> del Principio VII de la versión 2.0.0 de la constitución ("nadie le
+> retira ni le compite [a `docker_monitor.py`] esa responsabilidad"
+> para críticos) — resuelto con una segunda enmienda el mismo día
+> (v2.0.0 → v2.1.0, MINOR: añade la distinción "vigilar y avisar" vs.
+> "analizar y proponer sin ejecutar nunca", no acota ninguna garantía
+> ya existente). `spec.md` de 022 ya se reescribió con este
+> planteamiento; lo de arriba queda como registro de cómo empezó el
+> pedido, no como lo que se está especificando. Ver `BITACORA.md` para
+> el detalle completo de la sesión.
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que

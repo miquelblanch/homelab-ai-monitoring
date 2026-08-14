@@ -39,6 +39,20 @@ Garantías añadidas por 021 (contracts/cli.md), válidas para
 10. Ningún reinicio se ejecuta sin verificación real de `running`
     (FR-010). Sin operación de deshacer para un intento de reinicio
     (FR-016) — `deshacer` lo rechaza explícitamente.
+
+Garantías añadidas por 022 (specs/022-clasificacion-remediacion/,
+contracts/cli.md), válidas para contenedores críticos:
+11. `comprobar-contenedores` ya SÍ evalúa contenedores críticos
+    (FR-009) — pero siempre con modo forzado a "manual"; nunca los
+    ejecuta sin aprobación explícita (FR-008/FR-010). `frigate`
+    (NEVER_RESTART) sigue totalmente excluido, sin cambios (FR-007).
+12. `modo-contenedor CONTENEDOR --automatico` sigue rechazado para un
+    crítico (ahora vía la guarda de `store.set_modo_contenedor`, no
+    solo en este módulo) — `--manual` sobre un crítico se acepta sin
+    efecto real. Sobre `frigate` (NEVER_RESTART), ambos se rechazan.
+13. `contenedores --incluir-criticos` añade los críticos a la lista,
+    con `modo: null` — nunca mezclados con el modo real de los no
+    críticos.
 """
 
 from __future__ import annotations
@@ -67,9 +81,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers.add_parser("pendientes", help="Lista los intentos pendientes de aprobación (rotar_log y reiniciar_contenedor).")
     subparsers.add_parser("tipos", help="Lista los tipos de acción que existen y su modo actual — solo lectura.")
-    subparsers.add_parser(
+    contenedores_parser = subparsers.add_parser(
         "contenedores",
         help="Lista los contenedores no críticos con su modo actual — solo lectura (021).",
+    )
+    contenedores_parser.add_argument(
+        "--incluir-criticos",
+        action="store_true",
+        help="Añade también los contenedores críticos, con modo null (022, contracts/cli.md).",
     )
 
     aprobar_parser = subparsers.add_parser("aprobar", help="Aprueba un intento pendiente y lo ejecuta.")
@@ -234,7 +253,7 @@ def _run_comprobar_contenedores() -> int:
     return 0
 
 
-def _run_contenedores() -> int:
+def _run_contenedores(incluir_criticos: bool = False) -> int:
     from . import _homelab_bridge as bridge
     from . import store
 
@@ -248,11 +267,17 @@ def _run_contenedores() -> int:
     with store.connect() as conn:
         modos = store.listar_modos_contenedor(conn, nombres)
 
-    if not modos:
+    if not modos and not (incluir_criticos and criticos):
         print("sin contenedores no críticos conocidos (¿docker_monitor.py disponible?)")
         return 0
     for contenedor, modo in modos:
         print(f"{contenedor} — modo {modo}")
+    if incluir_criticos:
+        # 022, contracts/cli.md: los críticos no tienen modo configurable
+        # — se listan aparte, con "null", nunca mezclados con listar_modos_contenedor
+        # (que solo conoce configuracion_contenedor, sin fila para ellos).
+        for contenedor in sorted(criticos):
+            print(f"{contenedor} — modo null (crítico)")
     return 0
 
 
@@ -260,16 +285,24 @@ def _run_modo_contenedor(contenedor: str, automatico: bool) -> int:
     from . import _homelab_bridge as bridge
     from . import store
 
-    if contenedor in bridge.docker_critical() or contenedor in bridge.docker_never_restart():
+    if contenedor in bridge.docker_never_restart():
         print(
-            f"{contenedor} es un contenedor crítico o NEVER_RESTART — rechazado, "
-            f"sin escribir nada (FR-006 de 021)",
+            f"{contenedor} es NEVER_RESTART — rechazado, sin escribir nada "
+            f"(FR-007 de 022, sin cambios respecto a FR-006 de 021)",
             file=sys.stderr,
         )
         return 1
     nuevo_modo = "automatico" if automatico else "manual"
     with store.connect() as conn:
-        store.set_modo_contenedor(conn, contenedor, nuevo_modo)
+        try:
+            store.set_modo_contenedor(conn, contenedor, nuevo_modo)
+        except ValueError as e:
+            # store.set_modo_contenedor ya rechaza "automatico" para un
+            # crítico (FR-008, guarda de escritura, research.md §2 de
+            # 022) — "manual" sobre un crítico sí se acepta, sin efecto
+            # real sobre la evaluación (evaluar_contenedor la fuerza).
+            print(str(e), file=sys.stderr)
+            return 1
     print(f"{contenedor} → modo {nuevo_modo}")
     return 0
 
@@ -312,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.comando == "tipos":
         return _run_tipos()
     if args.comando == "contenedores":
-        return _run_contenedores()
+        return _run_contenedores(args.incluir_criticos)
     if args.comando == "aprobar":
         return _run_aprobar(args.intento_id)
     if args.comando == "rechazar":

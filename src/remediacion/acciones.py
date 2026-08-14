@@ -20,6 +20,7 @@ from diagnostico import gasto as diagnostico_gasto
 from diagnostico.deepseek import llamar_deepseek as diagnostico_llamar_deepseek
 
 from . import _homelab_bridge as bridge
+from . import clasificacion
 from . import deepseek_contenedores
 from .model import IntentoReinicio, IntentoRemediacion
 from .store import (
@@ -30,6 +31,7 @@ from .store import (
     insert_intento,
     insert_intento_reinicio,
     intento_reciente_pendiente_o_sin_evaluar,
+    intento_reinicio_vigente,
     pendiente_existente,
     sin_evaluar_consecutivos,
     update_intento_estado,
@@ -294,16 +296,62 @@ def resolver_deshacer(conn: sqlite3.Connection, intento_id: int) -> IntentoRemed
     return get_intento(conn, intento_id)
 
 
+def _intento_vigente_a_dict(intento: IntentoReinicio | None) -> dict | None:
+    if intento is None:
+        return None
+    return {
+        "estado": intento.estado,
+        "detalle": intento.detalle,
+        "creado_en": intento.creado_en,
+    }
+
+
+def _snapshot_contenedores(conn: sqlite3.Connection) -> list[dict]:
+    """Bloque `contenedores` del snapshot (specs/022-clasificacion-remediacion/,
+    research.md §3): los 39 contenedores conocidos —no solo los
+    evaluables—, con su clasificación derivada y su intento vigente si
+    lo hay. Un fallo al procesar un contenedor concreto lo omite del
+    array, no aborta el resto (contracts/cli.md garantía 20)."""
+    criticos = bridge.docker_critical()
+    never_restart = bridge.docker_never_restart()
+    contenedores = []
+    for c in bridge.listar_contenedores():
+        nombre = c.get("name")
+        if not nombre:
+            continue
+        try:
+            es_critico = nombre in criticos
+            es_never_restart = nombre in never_restart
+            modo = None if (es_critico or es_never_restart) else get_modo_contenedor(conn, nombre)
+            contenedores.append({
+                "nombre": nombre,
+                "critico": es_critico,
+                "never_restart": es_never_restart,
+                "clasificacion": clasificacion.clasificar_contenedor(
+                    nombre, criticos, never_restart, modo
+                ),
+                "modo": modo,
+                "intento_vigente": _intento_vigente_a_dict(
+                    intento_reinicio_vigente(conn, nombre)
+                ),
+            })
+        except Exception:
+            continue
+    return contenedores
+
+
 def escribir_snapshot(conn: sqlite3.Connection) -> None:
     """Escribe `remediacion_estado.json` con el estado real de los 17
-    logs vigilados y el modo vigente de `rotar_log` — feature 020,
-    para que el dashboard (sin acceso a REMEDIACION_LOGS_DIR) pueda
-    leerlo sin montar ningún volumen nuevo (research.md §1/§2 de
-    specs/020-visor-remediacion/). Incluye dos totales (research.md
-    §9): el de los ficheros activos, y el de activos + sus rotaciones
-    archivadas — para que Miquel vea de un vistazo cuánto ocupa todo
-    junto, no solo log a log. Nunca lanza: un fallo de escritura no
-    debe tumbar `comprobar` (contracts/snapshot-json.md, garantía 1)."""
+    logs vigilados, el modo vigente de `rotar_log` (feature 020), y —
+    desde specs/022-clasificacion-remediacion/ — un bloque `contenedores`
+    con la clasificación Manual/Automática/IA y el intento vigente de
+    cada uno (research.md §3), para que el dashboard (sin acceso a
+    REMEDIACION_LOGS_DIR ni a `remediacion.db`) pueda pintar la columna
+    de Inventario y el estado real en Alarmas sin montar ningún volumen
+    nuevo. Incluye dos totales de logs (research.md §9 de 020): el de
+    los ficheros activos, y el de activos + sus rotaciones archivadas.
+    Nunca lanza: un fallo de escritura no debe tumbar `comprobar`
+    (contracts/snapshot-json.md garantía 1; contracts/cli.md garantía 20)."""
     modo = get_modo(conn, TIPO_ACCION_ROTAR_LOG)
     logs = []
     total_activos = 0
@@ -319,9 +367,15 @@ def escribir_snapshot(conn: sqlite3.Connection) -> None:
             "tamano_bytes": tamano,
             "umbral_bytes": umbral_bytes,
             "supera_umbral": tamano > umbral_bytes,
+            "clasificacion": clasificacion.clasificar_log(modo),
         })
         total_activos += tamano
         total_con_rotaciones += tamano + rotaciones_bytes
+
+    try:
+        contenedores = _snapshot_contenedores(conn)
+    except Exception:
+        contenedores = []
 
     payload = {
         "generado_en": datetime.now(timezone.utc).isoformat(),
@@ -329,6 +383,7 @@ def escribir_snapshot(conn: sqlite3.Connection) -> None:
         "total_activos_bytes": total_activos,
         "total_con_rotaciones_bytes": total_con_rotaciones,
         "logs": logs,
+        "contenedores": contenedores,
     }
     try:
         destino = _snapshot_path()
@@ -343,6 +398,13 @@ def escribir_snapshot(conn: sqlite3.Connection) -> None:
 # A diferencia de rotar_log, la decisión no es una condición fija: para
 # cada contenedor no crítico caído se reúne evidencia real y se le
 # pregunta a DeepSeek si reiniciar_contenedor aplica (research.md §1-§3).
+#
+# Desde specs/022-clasificacion-remediacion/, la evaluación también
+# cubre los contenedores críticos — con el modo siempre forzado a
+# "manual" (nunca se lee ni se admite "automatico" para ellos,
+# Principio VII enmendado). La clasificación Manual/Automática/IA que
+# se muestra en Inventario vive en el módulo puro `clasificacion.py`,
+# no aquí — este fichero solo la consume al escribir el snapshot.
 
 REMEDIACION_DEEPSEEK_MODEL_DEFAULT = "deepseek-v4-flash"
 
@@ -436,15 +498,23 @@ def evaluar_contenedor(
     conn_remediacion: sqlite3.Connection,
     conn_diagnostico: sqlite3.Connection,
     contenedor: str,
+    modo_forzado: str | None = None,
 ) -> IntentoReinicio:
-    """Orquesta la decisión de DeepSeek para un contenedor no crítico
-    caído (data-model.md de 021): congelar_vivo → hay_presupuesto (o
-    REMEDIACION_DEEPSEEK_MOCK) → llamar_deepseek → parsear → crea el
-    intento_reinicio en el estado que corresponda. El llamador (
-    comprobar_reiniciar_contenedor) es responsable de excluir críticos
-    y NEVER_RESTART (FR-006) — esta función nunca los comprueba porque
-    nunca debería recibirlos."""
-    modo = get_modo_contenedor(conn_remediacion, contenedor)
+    """Orquesta la decisión de DeepSeek para un contenedor caído
+    (data-model.md de 021, ampliado por 022): congelar_vivo →
+    hay_presupuesto (o REMEDIACION_DEEPSEEK_MOCK) → llamar_deepseek →
+    parsear → crea el intento_reinicio en el estado que corresponda.
+
+    `modo_forzado` (specs/022-clasificacion-remediacion/, research.md
+    §1): si no es `None`, se usa en vez de `get_modo_contenedor(...)`
+    — la tabla `configuracion_contenedor` no se consulta en absoluto
+    para este contenedor. El llamador (`comprobar_reiniciar_contenedor`)
+    pasa `modo_forzado="manual"` para un contenedor crítico — nunca
+    lee ni admite que sea `"automatico"` para él (FR-008, Principio
+    VII). El llamador sigue siendo responsable de excluir NEVER_RESTART
+    (FR-007) — esta función nunca lo comprueba porque nunca debería
+    recibirlo."""
+    modo = modo_forzado if modo_forzado is not None else get_modo_contenedor(conn_remediacion, contenedor)
     episodio = diagnostico_evidencia.congelar_vivo(conn_diagnostico, contenedor)
 
     mock = deepseek_contenedores.respuesta_mock()
@@ -532,24 +602,30 @@ def comprobar_reiniciar_contenedor(
     conn_remediacion: sqlite3.Connection, conn_diagnostico: sqlite3.Connection
 ) -> list[IntentoReinicio]:
     """Recorre los contenedores que `docker_monitor.py` conoce, excluye
-    críticos y NEVER_RESTART (FR-006 — nunca llegan ni a la evidencia
-    ni a DeepSeek), se queda con los que no están `running and
-    healthy`, salta los que ya tienen un intento `pendiente`/
-    `sin_evaluar` reciente (FR-008 de 019, mismo criterio "no
-    duplicar"), y evalúa el resto."""
+    solo NEVER_RESTART (FR-007 — nunca llega ni a la evidencia ni a
+    DeepSeek; desde specs/022-clasificacion-remediacion/ los críticos
+    ya NO se excluyen — FR-009), se queda con los que no están
+    `running and healthy`, salta los que ya tienen un intento
+    `pendiente`/`sin_evaluar` reciente (FR-008 de 019, mismo criterio
+    "no duplicar"), y evalúa el resto. Para un contenedor crítico, el
+    modo se fuerza siempre a `"manual"` (FR-008/FR-010 de 022) — nunca
+    se consulta ni se admite `"automatico"` para él."""
     criticos = bridge.docker_critical()
     never_restart = bridge.docker_never_restart()
     creados: list[IntentoReinicio] = []
 
     for c in bridge.listar_contenedores():
         nombre = c.get("name")
-        if not nombre or nombre in criticos or nombre in never_restart:
+        if not nombre or nombre in never_restart:
             continue
         if c.get("running") and c.get("healthy"):
             continue
         if intento_reciente_pendiente_o_sin_evaluar(conn_remediacion, nombre):
             continue
-        creados.append(evaluar_contenedor(conn_remediacion, conn_diagnostico, nombre))
+        modo_forzado = "manual" if nombre in criticos else None
+        creados.append(
+            evaluar_contenedor(conn_remediacion, conn_diagnostico, nombre, modo_forzado=modo_forzado)
+        )
 
     return creados
 

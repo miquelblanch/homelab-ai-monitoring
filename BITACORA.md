@@ -6,6 +6,174 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-14 — Feature 022, plan → tasks → analyze → implement, ciclo completo en una sesión, con validación real contra Docker de producción
+
+**Ruptura deliberada de `METODO.md`, continuación de la sesión de
+`/speckit-specify` de más arriba** — "sigue" repetido de Miquel en
+cada paso llevó la sesión hasta `/speckit-implement` completo, algo
+que ninguna sesión anterior de este proyecto había hecho de una sola
+vez para un feature nuevo (021 lo hizo, pero en varias sesiones).
+
+- **`/speckit-analyze`** encontró 5 hallazgos reales antes de tocar
+  código — ninguno CRITICAL, pero uno (F2) señalaba que la fila I del
+  Constitution Check de `plan.md` atribuía la persistencia de la
+  alerta de un crítico a un mecanismo de `remediacion` que, comprobado
+  contra el código real de 021, no existe — si se hubiera implementado
+  T012 confiando en esa fila, se habría añadido sin querer un segundo
+  aviso de Telegram compitiendo con el de `docker_monitor.py`,
+  violación real de Principio VII. Los 5 se corrigieron antes de
+  `/speckit-implement`, a petición explícita de Miquel ("Propon y
+  aplícalas").
+- **Tareas implementadas sin intervención**: 26 de 26 en el código;
+  20 verificadas por autocomprobación automatizada en la primera
+  pasada (595 checks, 0 fallos). Las 6 restantes (validación manual de
+  `quickstart.md` + 2 piezas del dashboard privado + 1 verificación
+  post-despliegue) se dejaron deliberadamente sin ejecutar en el
+  primer informe de cierre — hasta que Miquel pidió explícitamente
+  "Valida tú".
+- **Validación real contra Docker de producción, no simulada.** Este
+  entorno resultó tener acceso real al Docker del Mac Mini (los 39
+  contenedores reales, confirmado con `docker ps` antes de tocar
+  nada). En vez de asumir que eso hacía la validación "ya hecha" por
+  el propio `--selftest` (mockeado, sin riesgo) o fingir una ejecución
+  que no había ocurrido, se construyó un script de validación aparte
+  (`validar_quickstart_022.py`) que: aísla `REMEDIACION_DB_PATH`/
+  `DIAGNOSTICO_DB_PATH`/`REMEDIACION_SNAPSHOT_PATH` en un directorio
+  temporal, y acota `listar_contenedores()` por mock a un único
+  contenedor de prueba desechable (marcado "crítico" solo vía
+  `REMEDIACION_TEST_FORZAR_CRITICO`) — así los 38 contenedores reales
+  restantes nunca entraron en la evaluación ni gastaron presupuesto de
+  DeepSeek. Sobre ese único contenedor sí se ejecutó todo de verdad:
+  `docker stop`, evaluación real vía CLI (DeepSeek mockeado,
+  determinista), `modo-contenedor --automatico` rechazado de verdad,
+  `aprobar` ejecutando un `docker restart` real con verificación real
+  (`docker inspect`), y el snapshot reflejando el estado real
+  resultante. 12 checks, 0 fallos. Contenedor de prueba eliminado al
+  cierre; los 39 contenedores reales del homelab, sin tocar, confirmado
+  con `docker ps` antes y después.
+- **Dato para el método**: la sesión de 021 (más abajo) ya advertía del
+  riesgo de "arreglarlo ya que estoy" al tocar artefactos de Spec Kit
+  a mano; aquí el riesgo equivalente era ejecutar algo "porque se
+  puede" contra producción real sin el aislamiento adecuado — la
+  diferencia entre "tengo acceso a Docker real" y "es seguro invocar
+  el CLI sin más" resultó no ser trivial (un contenedor sin
+  `HEALTHCHECK`, como `cloudflare-ddns`, habría entrado en la
+  evaluación de no acotar `listar_contenedores()`).
+- **"Fuera de este repo" no significa "fuera de alcance" — Miquel lo
+  corrigió.** `tasks.md` marcaba T010/T021 (columna en Inventario,
+  estado en Alarmas) como trabajo del "dashboard privado", dado por
+  no ejecutable desde aquí. Miquel preguntó directamente: "¿no se
+  supone que en Inventario debería aparecer una columna...? ¿No se
+  tenía que crear un nuevo dashboard privado?" — la respuesta a la
+  segunda pregunta es que no hay ningún dashboard nuevo que crear: es
+  el dashboard real ya en producción
+  (`/Volumes/FastData/homelab/docker/homelab-dashboard/scripts/app.py`,
+  puerto 8888), con acceso de escritura directo desde este mismo
+  entorno. "Privado" en `plan.md`/`tasks.md` quería decir "fuera del
+  repositorio público `homelab-ai-monitoring`", no "fuera de mi
+  alcance de ejecución" — una distinción que el propio `tasks.md` no
+  dejó lo bastante clara y que llevó a cerrar la sesión anterior sin
+  terminar dos tareas que sí eran ejecutables. Implementadas
+  (columna "Remediación" en Inventario, estado real en Alarmas),
+  `docker compose up -d --build` dos veces (la segunda tras encontrar
+  y corregir que la propia implementación de Alarmas incumplía su
+  propio hallazgo E2 — omitía en silencio en vez de avisar "sin datos
+  de remediación"), y verificado en vivo contra `/api/data` real.
+- **Incidente real, autocorregido**: el LaunchAgent
+  `amsterdam9.remediacion.comprobar-contenedores` disparó a mitad de
+  sesión, en la ventana entre editar el import de
+  `intento_reinicio_vigente` en `acciones.py` y crear la función en
+  `store.py` — `ImportError`, capturado en el log real. Este repo es
+  el `PYTHONPATH` real de los LaunchAgents de `remediacion` (sin paso
+  de despliegue aparte), algo que no se tuvo en cuenta al secuenciar
+  las ediciones. Cero contenedores afectados (el fallo ocurre antes de
+  leer ninguno); autocorregido en el ciclo siguiente. **Dato para el
+  método, más específico que el de arriba**: cuando el propio
+  directorio de trabajo es producción, el orden de las ediciones
+  dentro de una sesión importa, no solo el resultado final — un cron
+  de 5 minutos no espera a que termine el conjunto de cambios.
+- **Añadido ad-hoc, fuera de `tasks.md`**: a petición directa de
+  Miquel, tres tarjetas arriba de Inventario con el total y el
+  porcentaje de Manual/Automática/IA — mismo criterio que el aviso de
+  Telegram de 019 (adición pequeña y de bajo riesgo sobre una feature
+  ya cerrada, sin pasar por spec/plan/tasks aparte). Solo dashboard
+  privado (`app.py`), sin tocar el repo público. Verificado contra
+  datos reales: 792 componentes, 766 manual (97%), 26 ia (3%, los no
+  críticos), 0 automática — Miquel preguntó por qué, investigado con
+  datos reales: no es una desalineación de nombres que arreglar, es
+  conceptual — `inventory` solo tiene 6 componentes
+  `infra_monitorizacion` (los *scripts* de monitor: `docker_monitor.py`,
+  `ha_monitor.py`...), nunca ha modelado ficheros de log individuales
+  como componente. Decidido con Miquel no forzar los 17 logs dentro
+  del inventario (mezclaría "¿está vigilado?" con "¿este log pesa
+  demasiado?", preguntas de features distintas — 001 y 019) — en su
+  lugar, una segunda línea aparte bajo las tres tarjetas: "+ 17 logs
+  vigilados: X automática · Y manual", mismos datos reales que ya
+  muestra el panel Remediación, sin mezclarlos con el conteo de 792.
+  Verificado: 17/17 automática (rotar_log en modo automático en
+  producción).
+- **Ajuste de layout, mismo hilo**: Miquel pidió que la tarjeta del
+  total ("790/792 sin brecha") quedara arriba y las tres de
+  Manual/Automática/IA debajo, con el mismo ancho — no un cambio de
+  orden trivial, exigía mover las tres tarjetas *dentro* de
+  `.coverage-ring` (240px) en vez de un bloque aparte a lo ancho del
+  panel. `renderRemediacionResumen()` pasó de escribir directamente en
+  un `<div>` propio a ser `remediacionResumenHtml()`, una función que
+  devuelve el HTML y se inyecta dentro del anillo — versión compacta
+  (`rem-mini-*`) para caber en 240px.
+
+---
+
+## 2026-08-14 — Feature 022, `/speckit-specify`: Claude lo ejecuta a petición explícita, el alcance gira a mitad de sesión y abre una segunda enmienda a la constitución
+
+**Ruptura deliberada de `METODO.md`** ("Ejecuta tú"), mismo patrón que
+la sesión de feature 008 (2026-08-11) y la de 021 más abajo — Claude
+preparó el material de partida en `BRIEFING.md` en el turno anterior
+(revisión, no ejecución) y en este turno ejecutó `/speckit-specify`
+él mismo.
+
+**El pedido cambió de forma real a mitad de la ejecución**, no al
+final: el material de partida (columna Manual/Automática/IA en
+Inventario + unificación con Alarmas, sin tocar contenedores críticos)
+generó un spec con 2 marcadores `[NEEDS CLARIFICATION]` de verdad
+(FR-004: si "IA" se aplica igual en modo manual/automático; FR-006: si
+un contenedor crítico necesita una advertencia distinta). Antes de
+contestarlos, Miquel reformuló el propio pedido: generalizar
+"crítico/no crítico" como eje explícito, y que los contenedores
+críticos pasen de estar totalmente excluidos de cualquier evaluación
+de DeepSeek (regla explícita de 021) a que DeepSeek también los analice
+y proponga — nunca ejecute sin aprobación. Eso reabrió, en la práctica,
+las 2 preguntas originales con una forma distinta y añadió 2 más
+(alcance del eje crítico/no crítico para categorías sin él definido; y
+un conflicto textual real con el Principio VII de la versión 2.0.0 de
+la constitución, detectado por inspección manual antes de escribir
+nada, no por `/speckit-analyze`). Las 4 se resolvieron con Miquel vía
+`AskUserQuestion`, en dos tandas.
+
+- **Ambigüedades detectadas**: 4 en total, ninguna vía `/speckit-clarify`
+  formal — 2 nacieron de la validación de calidad de `/speckit-specify`
+  (el propio comando las generó como `[NEEDS CLARIFICATION]`), 2 nacieron
+  de que Claude detectara el conflicto de Principio VII al preparar la
+  respuesta. **Dato para el método**: no correr `/speckit-clarify` de
+  forma separada después deja sin medir si habría encontrado algo más —
+  queda pendiente para cuando se ejecute `/speckit-plan`.
+- **Veces que se reescribió el spec entero**: 1 — la primera versión
+  (sin el eje crítico/no crítico) se sustituyó por completo tras la
+  reformulación, en vez de parchearse encima.
+- **Segunda enmienda a la constitución en el mismo día**: Principio VII,
+  v2.0.0 → v2.1.0 (MINOR, no MAJOR como la de 021 — esta vez es una
+  adición que no acota ninguna garantía existente, solo distingue
+  "vigilar y avisar" de "analizar y proponer sin ejecutar nunca").
+  Redactada por Claude junto con el spec, no como un paso `/speckit-*`
+  aparte — mismo criterio que la propia skill de `speckit-specify`, que
+  ya carga `constitution.md` como contexto pero no la modifica por sí
+  misma.
+- **¿El spec describe lo que hay al cerrar esta sesión?**: sí — se
+  cerró con los 4 marcadores resueltos y sin ninguno pendiente, listo
+  para `/speckit-plan`.
+
+---
+
 ## 2026-08-14 — Feature 021, tasks → analyze → constitution → implement: `/speckit-analyze` encuentra un conflicto real de constitución, y Claude ejecuta el corte real de producción
 
 **Ruptura deliberada de `METODO.md`, en dos tiempos.** A petición

@@ -776,6 +776,195 @@ def test_evaluar_contenedor_modo_automatico_declara_ia_solo_si_ejecuta() -> None
                       declaraciones == [])
 
 
+# ── Contenedores críticos + snapshot (specs/022-clasificacion-remediacion/) ──
+
+
+def test_evaluar_contenedor_modo_forzado_ignora_configuracion() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with store.connect(_db(db_dir)) as conn:
+            # Ningún modo fijado a propósito — si modo_forzado no se
+            # respetara, get_modo_contenedor() devolvería "manual" de
+            # todos modos (mismo resultado por casualidad), así que fijamos
+            # "automatico" explícitamente para que la prueba sea real:
+            # si evaluar_contenedor ignorase modo_forzado y leyera la
+            # tabla, entraría en la rama automática y llamaría a
+            # restart_container — lo que este test prohíbe con el mock.
+            store.set_modo_contenedor(conn, "test-contenedor", "automatico")
+
+        with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
+             patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
+             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+                 "choices": [{"message": {"content": json.dumps(
+                     {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba crítico"}
+                 )}}],
+                 "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+             }), \
+             patch.object(acciones.bridge, "restart_container") as mock_restart:
+            with store.connect(_db(db_dir)) as conn:
+                intento = acciones.evaluar_contenedor(
+                    conn, conn, "test-contenedor", modo_forzado="manual"
+                )
+
+        check("modo_forzado='manual' crea pendiente aunque la tabla diga automático",
+              intento.estado == "pendiente")
+        check("modo_en_deteccion refleja el modo forzado, no el de la tabla",
+              intento.modo_en_deteccion == "manual")
+        check("nunca se ejecuta un reinicio cuando el modo está forzado a manual",
+              mock_restart.called is False)
+
+
+def test_comprobar_reiniciar_contenedor_incluye_criticos_como_pendiente() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones.bridge, "docker_critical", return_value={"test-critico"}), \
+             patch.object(acciones.bridge, "docker_never_restart", return_value=set()), \
+             patch.object(acciones.bridge, "listar_contenedores", return_value=[
+                 {"name": "test-critico", "running": False, "healthy": False},
+             ]), \
+             patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio("test-critico")), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
+             patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
+             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+                 "choices": [{"message": {"content": json.dumps(
+                     {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba crítico caído"}
+                 )}}],
+                 "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+             }), \
+             patch.object(acciones.bridge, "restart_container") as mock_restart:
+            with store.connect(_db(db_dir)) as conn:
+                creados = acciones.comprobar_reiniciar_contenedor(conn, conn)
+
+        check("un crítico caído sí se evalúa (FR-009, ya no excluido)", len(creados) == 1)
+        check("crea pendiente, nunca ejecutado directamente (FR-008/FR-010)",
+              creados[0].estado == "pendiente")
+        check("modo_en_deteccion siempre manual para un crítico", creados[0].modo_en_deteccion == "manual")
+        check("nunca se llama a restart_container para un crítico desde comprobar_reiniciar_contenedor",
+              mock_restart.called is False)
+
+
+def test_comprobar_reiniciar_contenedor_nunca_evalua_never_restart() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones.bridge, "docker_critical", return_value=set()), \
+             patch.object(acciones.bridge, "docker_never_restart", return_value={"frigate"}), \
+             patch.object(acciones.bridge, "listar_contenedores", return_value=[
+                 {"name": "frigate", "running": False, "healthy": False},
+             ]), \
+             patch.object(acciones.diagnostico_evidencia, "congelar_vivo") as mock_congelar:
+            with store.connect(_db(db_dir)) as conn:
+                creados = acciones.comprobar_reiniciar_contenedor(conn, conn)
+
+        check("frigate (NEVER_RESTART) sigue excluido por completo (FR-007)", creados == [])
+        check("ni siquiera se reúne evidencia para él", mock_congelar.called is False)
+
+
+def test_evaluar_contenedor_critico_nunca_llega_a_cortacircuito() -> None:
+    """Un crítico con modo forzado 'manual' entra siempre en la rama
+    `if modo == "manual"` de evaluar_contenedor — nunca en la rama
+    automática que consulta recent_restart_attempts/breaker_decision,
+    así que repetir la evaluación varias veces nunca produce
+    "cortacircuito" para él (a diferencia de un no crítico en
+    automático, ver test_cortacircuito_abre_al_cuarto_intento)."""
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio("test-critico")), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
+             patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.0), \
+             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+                 "choices": [{"message": {"content": json.dumps(
+                     {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba"}
+                 )}}],
+                 "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+             }), \
+             patch.object(acciones.bridge, "restart_container") as mock_restart:
+            with store.connect(_db(db_dir)) as conn:
+                estados = [
+                    acciones.evaluar_contenedor(conn, conn, "test-critico", modo_forzado="manual").estado
+                    for _ in range(5)
+                ]
+
+        check("las 5 evaluaciones repetidas crean 'pendiente', nunca 'cortacircuito'",
+              all(e == "pendiente" for e in estados))
+        check("restart_container nunca se llama para un crítico", mock_restart.called is False)
+
+
+def test_escribir_snapshot_incluye_bloque_contenedores() -> None:
+    with tempfile.TemporaryDirectory() as db_dir, tempfile.TemporaryDirectory() as snap_dir:
+        snap_path = Path(snap_dir) / "remediacion_estado.json"
+
+        with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(db_dir)), \
+             patch.object(acciones, "LOGS_VIGILADOS", []), \
+             patch.object(acciones, "_snapshot_path", return_value=snap_path), \
+             patch.object(acciones.bridge, "docker_critical", return_value={"homeassistant"}), \
+             patch.object(acciones.bridge, "docker_never_restart", return_value={"frigate"}), \
+             patch.object(acciones.bridge, "listar_contenedores", return_value=[
+                 {"name": "homeassistant"}, {"name": "frigate"}, {"name": "beszel"},
+             ]):
+            with store.connect(_db(db_dir)) as conn:
+                store.set_modo_contenedor(conn, "beszel", "automatico")
+                acciones.escribir_snapshot(conn)
+
+        payload = json.loads(snap_path.read_text())
+        por_nombre = {c["nombre"]: c for c in payload["contenedores"]}
+
+        check("3 contenedores en el bloque", len(payload["contenedores"]) == 3)
+        check("homeassistant: crítico, manual, modo null",
+              por_nombre["homeassistant"]["critico"] is True
+              and por_nombre["homeassistant"]["clasificacion"] == "manual"
+              and por_nombre["homeassistant"]["modo"] is None)
+        check("frigate: never_restart, manual, modo null",
+              por_nombre["frigate"]["never_restart"] is True
+              and por_nombre["frigate"]["clasificacion"] == "manual"
+              and por_nombre["frigate"]["modo"] is None)
+        check("beszel: no crítico, ia, modo automatico reflejado",
+              por_nombre["beszel"]["critico"] is False
+              and por_nombre["beszel"]["clasificacion"] == "ia"
+              and por_nombre["beszel"]["modo"] == "automatico")
+        check("sin ningún intento vigente, intento_vigente es null para los tres",
+              all(c["intento_vigente"] is None for c in payload["contenedores"]))
+
+
+def test_escribir_snapshot_refleja_intento_vigente() -> None:
+    with tempfile.TemporaryDirectory() as db_dir, tempfile.TemporaryDirectory() as snap_dir:
+        snap_path = Path(snap_dir) / "remediacion_estado.json"
+
+        with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(db_dir)), \
+             patch.object(acciones, "LOGS_VIGILADOS", []), \
+             patch.object(acciones, "_snapshot_path", return_value=snap_path), \
+             patch.object(acciones.bridge, "docker_critical", return_value=set()), \
+             patch.object(acciones.bridge, "docker_never_restart", return_value=set()), \
+             patch.object(acciones.bridge, "listar_contenedores", return_value=[{"name": "beszel"}]):
+            with store.connect(_db(db_dir)) as conn:
+                _crear_pendiente_reinicio(conn, "beszel")
+                acciones.escribir_snapshot(conn)
+
+        payload = json.loads(snap_path.read_text())
+        entrada = payload["contenedores"][0]
+        check("intento_vigente no nulo con un pendiente real", entrada["intento_vigente"] is not None)
+        check("estado del intento vigente refleja el pendiente", entrada["intento_vigente"]["estado"] == "pendiente")
+
+
+def test_escribir_snapshot_logs_incluyen_clasificacion() -> None:
+    with tempfile.TemporaryDirectory() as logs_dir, tempfile.TemporaryDirectory() as db_dir, \
+         tempfile.TemporaryDirectory() as snap_dir:
+        snap_path = Path(snap_dir) / "remediacion_estado.json"
+        lista = [("health-docker", "health-docker.log", 10 * 1024 * 1024)]
+
+        with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(logs_dir)), \
+             patch.object(acciones, "LOGS_VIGILADOS", lista), \
+             patch.object(acciones, "_snapshot_path", return_value=snap_path), \
+             patch.object(acciones.bridge, "listar_contenedores", return_value=[]):
+            with store.connect(_db(db_dir)) as conn:
+                acciones.escribir_snapshot(conn)
+                payload_manual = json.loads(snap_path.read_text())
+
+                store.set_modo(conn, acciones.TIPO_ACCION_ROTAR_LOG, "automatico")
+                acciones.escribir_snapshot(conn)
+                payload_automatico = json.loads(snap_path.read_text())
+
+        check("modo manual ⇒ clasificacion=manual en el log", payload_manual["logs"][0]["clasificacion"] == "manual")
+        check("modo automático ⇒ clasificacion=automatica en el log",
+              payload_automatico["logs"][0]["clasificacion"] == "automatica")
+
+
 def test_resolver_aprobacion_reinicio_declara_ia_solo_si_ejecuta() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         declaraciones: list[tuple] = []

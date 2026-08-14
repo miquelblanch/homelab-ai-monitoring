@@ -10,10 +10,11 @@ from __future__ import annotations
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
 
+from . import _homelab_bridge as bridge
 from .model import IntentoRemediacion, IntentoReinicio
 
 _DEFAULT_DB_PATH = (
@@ -23,6 +24,17 @@ _DEFAULT_DB_PATH = (
 
 def db_path() -> Path:
     return Path(os.environ.get("REMEDIACION_DB_PATH", _DEFAULT_DB_PATH))
+
+
+# specs/022-clasificacion-remediacion/, data-model.md — ventana en la
+# que un intento ya resuelto sigue considerándose "vigente" para
+# intento_reinicio_vigente(). Nombrada y configurable, mismo patrón
+# que REMEDIACION_CB_VENTANA_HORAS/REMEDIACION_SIN_EVALUAR_MAX_CONSECUTIVOS
+# de acciones.py (corregido tras /speckit-analyze, hallazgo C1: antes
+# era un literal "5 minutos" sin nombrar).
+REMEDIACION_INTENTO_VIGENTE_MINUTOS = int(
+    os.environ.get("REMEDIACION_INTENTO_VIGENTE_MINUTOS", "5")
+)
 
 
 _SCHEMA = """
@@ -302,11 +314,20 @@ def listar_modos_contenedor(
 
 
 def set_modo_contenedor(conn: sqlite3.Connection, contenedor: str, modo: str) -> None:
-    """Cambia el modo de `contenedor` — sin ninguna condición previa
-    (el llamador, en cli.py, ya rechaza críticos/frigate antes de
-    llegar aquí — FR-006)."""
+    """Cambia el modo de `contenedor`. Guarda de escritura (FR-008,
+    specs/022-clasificacion-remediacion/, research.md §2): un
+    contenedor crítico nunca admite modo "automatico", ni siquiera si
+    el llamador (cli.py) no lo hubiera rechazado ya — dos capas
+    independientes de protección para la garantía NO NEGOCIABLE, no
+    una sola. `"manual"` sobre un crítico sí se acepta sin error: no
+    tiene efecto real (la tabla nunca se consulta para evaluarlo,
+    `evaluar_contenedor` fuerza el modo en código — research.md §1),
+    pero no hay ninguna razón para que falle un comando que no cambia
+    nada peligroso."""
     if modo not in ("manual", "automatico"):
         raise ValueError(f"modo inválido: {modo!r}")
+    if modo == "automatico" and contenedor in bridge.docker_critical():
+        raise ValueError(f"{contenedor} es crítico — no admite modo automático")
     ahora = _now_iso()
     conn.execute(
         "INSERT INTO configuracion_contenedor (contenedor, modo, actualizado_en) "
@@ -429,6 +450,43 @@ def sin_evaluar_consecutivos(conn: sqlite3.Connection, contenedor: str) -> int:
             break
         racha += 1
     return racha
+
+
+def intento_reinicio_vigente(conn: sqlite3.Connection, contenedor: str) -> IntentoReinicio | None:
+    """El intento más reciente de `contenedor` que sigue siendo
+    relevante "ahora mismo" — specs/022-clasificacion-remediacion/,
+    data-model.md: en estado `pendiente`/`sin_evaluar`/`sin_accion`
+    (nunca resueltos, siguen abiertos), o el `ejecutado`/`fallido`/
+    `rechazado` más reciente si su `resuelto_en` está dentro de
+    `REMEDIACION_INTENTO_VIGENTE_MINUTOS`. `None` si no hay ninguno —
+    solo lectura, sin efectos. Alimenta el campo `intento_vigente` del
+    snapshot (User Story 3)."""
+    row = conn.execute(
+        "SELECT * FROM intentos_reinicio WHERE contenedor = ? "
+        "AND estado IN ('pendiente', 'sin_evaluar', 'sin_accion') "
+        "ORDER BY id DESC LIMIT 1",
+        (contenedor,),
+    ).fetchone()
+    if row is not None:
+        return _fila_a_intento_reinicio(row)
+
+    row = conn.execute(
+        "SELECT * FROM intentos_reinicio WHERE contenedor = ? "
+        "AND estado IN ('ejecutado', 'fallido', 'rechazado') "
+        "ORDER BY id DESC LIMIT 1",
+        (contenedor,),
+    ).fetchone()
+    if row is None or row["resuelto_en"] is None:
+        return None
+    try:
+        resuelto_en = datetime.fromisoformat(row["resuelto_en"])
+    except ValueError:
+        return None
+    ahora = datetime.now(resuelto_en.tzinfo) if resuelto_en.tzinfo else datetime.now()
+    limite = timedelta(minutes=REMEDIACION_INTENTO_VIGENTE_MINUTOS)
+    if ahora - resuelto_en > limite:
+        return None
+    return _fila_a_intento_reinicio(row)
 
 
 def localizar_intento(
