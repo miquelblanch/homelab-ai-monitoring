@@ -694,7 +694,8 @@ def test_sin_evaluar_persistente_se_resetea_con_una_evaluacion_real() -> None:
         avisos: list[tuple[str, int]] = []
         with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
              patch.object(acciones, "_notificar_sin_evaluar_persistente",
-                           side_effect=lambda c, r: avisos.append((c, r))):
+                           side_effect=lambda c, r: avisos.append((c, r))), \
+             patch.object(acciones, "_notificar_sin_accion"):
             with store.connect(_db(db_dir)) as conn:
                 with patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=False):
                     acciones.evaluar_contenedor(conn, conn, "test-contenedor")
