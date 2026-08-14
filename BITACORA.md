@@ -6,6 +6,107 @@
 > vez del código, veces que se reescribió el spec entero, si el spec
 > sigue describiendo lo que hay al cerrar el hito.
 
+## 2026-08-14 — Feature 021, tasks → analyze → constitution → implement: `/speckit-analyze` encuentra un conflicto real de constitución, y Claude ejecuta el corte real de producción
+
+**Ruptura deliberada de `METODO.md`, en dos tiempos.** A petición
+explícita de Miquel ("Córre tu el constitution", luego "Hazlo todo",
+luego "Hazlas tú" para el corte real), esta sesión la ejecutó Claude
+de principio a fin — `/speckit-tasks`, `/speckit-analyze`,
+`/speckit-constitution` y `/speckit-implement`, incluida la
+implementación real y el despliegue en producción. Mismo aviso que la
+sesión de 2026-08-11 (feature 008, más abajo): los números de esta
+sesión no son comparables a los de una sesión normal del proyecto.
+
+Lo distinto esta vez: a mitad de resolver los hallazgos de
+`/speckit-analyze`, Claude empezó a editar `constitution.md`/`spec.md`/
+`plan.md`/`tasks.md` **a mano**, sin pasar por `/speckit-constitution`
+— la propia skill que `METODO.md` reserva a Miquel. Se detectó antes de
+comprometer nada a git, se preguntó, y Miquel pidió revertir y
+rehacerlo por la skill correcta. Como nada estaba comprometido, el
+revert costó una edición más, no una recuperación de git. **Dato para
+el método**: la tentación de "arreglarlo ya que estoy" es real incluso
+teniendo el proceso escrito delante — vale la pena que la próxima
+sesión compruebe explícitamente, antes de tocar un artefacto de Spec
+Kit, si existe una skill dedicada para ese cambio concreto.
+
+- **`/speckit-tasks`**: 37 tareas sobre las 5 historias de usuario ya
+  especificadas de 021 (remediación de contenedores asistida por
+  DeepSeek) — sin sorpresas, generación directa.
+- **`/speckit-analyze` encontró un conflicto real, no de redacción**:
+  el Principio VII de la constitución (`.specify/memory/constitution.md`,
+  entonces v1.2.4) garantizaba sin condiciones que "la remediación
+  automática existente (`docker_monitor.py`) DEBE seguir funcionando
+  con independencia del estado del agente" — FR-017 de 021 (que le
+  retira a `docker_monitor.py` la decisión de reinicio de los no
+  críticos) violaba eso literalmente si `remediacion`/DeepSeek dejaba
+  de poder evaluar (sin presupuesto, sin respuesta). El propio
+  *rationale* del principio describía exactamente ese riesgo. 2
+  hallazgos CRITICAL, más 5 de severidad menor (G1, U1, U2 encontrado
+  después en producción, I1, A1, G2) — ver más abajo.
+- **`/speckit-constitution` — enmienda real, no una clarificación de
+  redacción**: v1.2.4 → v2.0.0 (MAJOR, redefinición incompatible).
+  Principio VII se acota a los contenedores críticos (donde
+  `docker_monitor.py` sigue mandando, sin cambios); para los no
+  críticos, `remediacion` pasa a ser el único actor — exactamente lo
+  que Miquel pidió desde el `Input` del spec ("docker-monitor no tiene
+  que hacer nada" en la decisión de reparar). La cesión se aceptó solo
+  con una contrapartida nueva y no negociable: FR-019/SC-007, un aviso
+  por Telegram si `remediacion` lleva evaluaciones consecutivas sin
+  poder decidir — sin eso, un apagón de DeepSeek habría dejado 26
+  contenedores sin reparar y sin que nadie se enterase. Decisión
+  tomada explícitamente con Miquel vía `AskUserQuestion`, no asumida.
+- **`/speckit-implement`**: 37/37 tareas completadas, 535/535
+  comprobaciones de `--selftest` en verde, los 6 escenarios de
+  `quickstart.md` validados en vivo contra Docker real (contenedor de
+  prueba desechable, nunca uno de los 39 reales).
+- **Bug real encontrado validando contra producción, no contra
+  `--selftest`**: `intentos_remediacion` (019) e `intentos_reinicio`
+  (021) tenían `AUTOINCREMENT` independientes, ambos empezando en 1 —
+  con `intentos_remediacion` ya poblada por uso real de 019/020, el
+  primer `intentos_reinicio` colisionó de verdad con un id ya
+  existente, y `aprobar` resolvió sobre la tabla equivocada (rechazó
+  correctamente por estar en el estado incorrecto — ningún dato real
+  se corrompió, pero el CLI apuntaba al intento equivocado). Corregido
+  con un id compartido entre las dos tablas
+  (`store._siguiente_id_compartido`), con un selftest que reproduce la
+  colisión exacta encontrada.
+- **Hueco real en `tasks.md`, no cubierto por ninguna de las 37
+  tareas**: ningún LaunchAgent ejecutaba `comprobar-contenedores`.
+  Retirarle a `docker_monitor.py` la decisión de reinicio (T031) sin
+  esto habría dejado los 26 no críticos sin ninguna reparación
+  automática — la regresión exacta que la enmienda de Principio VII
+  quiere evitar. Se creó y cargó
+  `amsterdam9.remediacion.comprobar-contenedores` (cada 5 min, misma
+  cadencia que `docker_monitor.py`) antes de aplicar el corte.
+- **Corte real de producción ejecutado**: los 26 contenedores no
+  críticos en `configuracion_contenedor` modo `automatico` (verificado
+  que ninguno crítico se coló); `docker_monitor.py` editado con un
+  diff mínimo (solo la subrama de decisión de reinicio no crítico —
+  alerta de crítico, recuperación y métricas intactas byte a byte),
+  con copia de seguridad (`docker_monitor.py.pre-021-backup`),
+  verificado con `--dry-run` y con la suite de tests privada del
+  propio script ("Todo correcto") antes de dejarlo correr de verdad.
+  Una llamada real a DeepSeek (Escenario 6, ~0,001 €, contabilizada
+  contra el mismo `gasto_diario` de `diagnostico`).
+- **Hallazgo fuera de todo artefacto de Spec Kit**: `docker ps` mostró
+  `frigate` corriendo pese a estar documentado como apagado
+  permanentemente — no es de esta feature (no se tocó, está en
+  `NEVER_RESTART`), pero es la segunda vez que se encuentra así (ya
+  pasó el 2026-07-26, documentado en el `CLAUDE.md` general). Sigue
+  sin haber ninguna vigilancia real de que no vuelva a arrancar solo.
+- **Veces que se corrigió el spec en lugar del código**: 1, y es la
+  enmienda de constitución misma — más FR-019/SC-007 añadidos a
+  `spec.md` como su contrapartida directa.
+- **Tareas implementadas sin intervención**: 36 de 37 en la primera
+  pasada — la colisión de id exigió parar T031 (validación en vivo) a
+  mitad de camino, corregir `store.py`, y solo entonces continuar.
+- **¿El spec sigue describiendo lo que hay al cerrar la sesión?**: sí
+  — `constitution.md` v2.0.0, `spec.md` (FR-019/SC-007, Clarifications
+  del 2026-08-14) y `tasks.md` (37/37, con la nota de T035-T037 como
+  dependencia formal de T031) reflejan exactamente el estado real
+  desplegado, incluido el LaunchAgent que ninguna tarea original
+  preveía.
+
 ## 2026-08-13 — `rotar_log` pasa a automático; FR-014 enmendado para avisar solo del fallo
 
 Miquel, tras entender por fin qué hace `rotar_log` en términos
