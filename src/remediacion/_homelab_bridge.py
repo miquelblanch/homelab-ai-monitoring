@@ -122,3 +122,48 @@ def recent_restart_attempts(conn_remediacion, contenedor: str, window_hours: int
     desde = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).isoformat()
     intentos = store.intentos_recientes_contenedor(conn_remediacion, contenedor, desde)
     return sum(1 for i in intentos if i.estado in ("ejecutado", "fallido"))
+
+
+# ── Pestaña Correcciones del dashboard (homelab-dashboard, 2026-08-14) ──
+#
+# Puente hacia el mecanismo ya existente del dashboard privado
+# (`homelab-dashboard/scripts/app.py`, comentario "Pestaña Correcciones"):
+# la clasificación de una alarma resuelta (manual/automática/IA) nunca se
+# infiere, se declara — escribiendo una entrada en
+# ALARM_MANUAL_CORRECTIONS_FILE antes de que la alarma desaparezca. Este
+# paquete declara "ia" cuando ejecuta un reinicio que DeepSeek decidió —
+# apruebe quien apruebe la propuesta en modo manual, la decisión fue de
+# DeepSeek, no de quien pulsó aprobar. Se declara solo tras confirmar el
+# reinicio (nunca antes): si el reinicio falla, no hay nada que declarar
+# todavía, y una declaración "ia" que nadie llega a consumir podría
+# atribuirle a la IA una corrección posterior que en realidad hizo otra
+# cosa (research.md no cubre esto — hallazgo real de esta sesión).
+
+_DEFAULT_ALARM_CORRECTIONS_PATH = (
+    "/Volumes/FastData/homelab/docker/homelab-orchestrator/data/alarm_manual_corrections.json"
+)
+
+
+def _alarm_corrections_path() -> Path:
+    return Path(os.environ.get("REMEDIACION_ALARM_CORRECTIONS_PATH", _DEFAULT_ALARM_CORRECTIONS_PATH))
+
+
+def declarar_correccion_ia(origen: str, tipo: str, componente: str, nota: str) -> bool:
+    """Añade una declaración "ia" para que el dashboard clasifique así la
+    próxima vez que la alarma (origen, tipo, componente) desaparezca —
+    nunca lanza, `False` si no se pudo escribir (mismo principio "a
+    prueba de fallos" que el resto de este módulo)."""
+    import json
+
+    ruta = _alarm_corrections_path()
+    try:
+        pendientes = json.loads(ruta.read_text()) if ruta.exists() else []
+        pendientes.append({
+            "origen": origen, "tipo": tipo, "componente": componente,
+            "clasificacion": "ia", "nota": nota,
+        })
+        ruta.parent.mkdir(parents=True, exist_ok=True)
+        ruta.write_text(json.dumps(pendientes, ensure_ascii=False))
+        return True
+    except Exception:
+        return False

@@ -516,6 +516,11 @@ def evaluar_contenedor(
     ejecutado = bridge.restart_container(contenedor, reason=razonamiento or "")
     estado_final = "ejecutado" if ejecutado else "fallido"
     detalle = "reiniciado y verificado" if ejecutado else "reinicio sin efecto — sigue caído"
+    if ejecutado:
+        # Dashboard "Pestaña Correcciones": declara "ia" solo tras
+        # confirmar el reinicio — nunca antes (ver comentario en
+        # _homelab_bridge.declarar_correccion_ia).
+        bridge.declarar_correccion_ia("contenedores", "contenedor_caido", contenedor, razonamiento or "")
     return _crear_intento_reinicio(
         conn_remediacion, contenedor, modo, episodio.id,
         estado=estado_final, detalle=detalle,
@@ -566,6 +571,14 @@ def resolver_aprobacion_reinicio(conn: sqlite3.Connection, intento_id: int) -> I
         if ejecutado
         else "reinicio sin efecto — sigue caído"
     )
+    if ejecutado:
+        # La decisión fue de DeepSeek — Miquel aprobó, pero quien
+        # diagnosticó y decidió reiniciar no fue él. Clasificación "ia",
+        # no "manual" (confirmado con Miquel el 2026-08-14).
+        bridge.declarar_correccion_ia(
+            "contenedores", "contenedor_caido", intento.contenedor,
+            intento.razonamiento_deepseek or "",
+        )
     update_intento_reinicio_estado(conn, intento_id, estado_final, detalle)
     return get_intento_reinicio(conn, intento_id)
 

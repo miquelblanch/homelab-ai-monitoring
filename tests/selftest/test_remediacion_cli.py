@@ -191,7 +191,8 @@ def test_cli_comprobar_contenedores_y_aprobar_generalizado() -> None:
                 with store.connect(_db(db_dir)) as conn:
                     pendiente_id = store.listar_pendientes_reinicio(conn)[0].id
 
-                with patch.object(_homelab_bridge, "restart_container", return_value=True):
+                with patch.object(_homelab_bridge, "restart_container", return_value=True), \
+                     patch.object(_homelab_bridge, "declarar_correccion_ia"):
                     codigo_aprobar = cli.main(["aprobar", str(pendiente_id)])
 
                 with store.connect(_db(db_dir)) as conn:

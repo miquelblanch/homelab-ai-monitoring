@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from diagnostico.model import Episodio
+from remediacion import _homelab_bridge as bridge
 from remediacion import acciones, store
 from remediacion.model import IntentoReinicio
 from tests.selftest import check
@@ -541,7 +542,8 @@ def test_pendiente_reinicio_no_toca_el_contenedor() -> None:
 
 def test_resolver_aprobacion_reinicio_ejecuta_y_verifica() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
-        with patch.object(acciones.bridge, "restart_container", return_value=True) as mock_restart:
+        with patch.object(acciones.bridge, "restart_container", return_value=True) as mock_restart, \
+             patch.object(acciones.bridge, "declarar_correccion_ia"):
             with store.connect(_db(db_dir)) as conn:
                 pendiente = _crear_pendiente_reinicio(conn)
                 resuelto = acciones.resolver_aprobacion_reinicio(conn, pendiente.id)
@@ -600,6 +602,7 @@ def test_evaluar_contenedor_modo_automatico_ejecuta_sin_pendiente() -> None:
                  "usage": {"prompt_tokens": 10, "completion_tokens": 5},
              }), \
              patch.object(acciones.bridge, "recent_restart_attempts", return_value=0), \
+             patch.object(acciones.bridge, "declarar_correccion_ia"), \
              patch.object(acciones.bridge, "restart_container", return_value=True) as mock_restart:
             with store.connect(_db(db_dir)) as conn:
                 intento = acciones.evaluar_contenedor(conn, conn, "test-contenedor")
@@ -709,3 +712,86 @@ def test_sin_evaluar_persistente_se_resetea_con_una_evaluacion_real() -> None:
 
         check("una evaluación real (no sin_evaluar) resetea la racha a 0", racha == 0)
         check("nunca se llegó a avisar (la racha se rompió antes del umbral)", avisos == [])
+
+
+# ── Pestaña Correcciones del dashboard: declaración "ia" (2026-08-14) ──
+
+
+def test_declarar_correccion_ia_escribe_y_acumula() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        ruta = Path(tmp) / "alarm_manual_corrections.json"
+        with patch.object(bridge, "_alarm_corrections_path", return_value=ruta):
+            ok1 = bridge.declarar_correccion_ia("contenedores", "contenedor_caido", "syncthing", "razón 1")
+            ok2 = bridge.declarar_correccion_ia("contenedores", "contenedor_caido", "n8n", "razón 2")
+
+        pendientes = json.loads(ruta.read_text())
+        check("declarar_correccion_ia devuelve True al escribir", ok1 and ok2)
+        check("se acumulan las dos declaraciones, no se pisan", len(pendientes) == 2)
+        check("cada una lleva clasificacion=ia", all(p["clasificacion"] == "ia" for p in pendientes))
+        check("conserva el componente y la nota", pendientes[0]["componente"] == "syncthing" and pendientes[0]["nota"] == "razón 1")
+
+
+def test_declarar_correccion_ia_nunca_lanza_si_no_puede_escribir() -> None:
+    ruta_imposible = Path("/root/sin-permiso/alarm_manual_corrections.json")
+    with patch.object(bridge, "_alarm_corrections_path", return_value=ruta_imposible):
+        lanzo = False
+        try:
+            resultado = bridge.declarar_correccion_ia("contenedores", "contenedor_caido", "x", "y")
+        except Exception:
+            lanzo = True
+    check("un fallo de escritura no propaga la excepción", lanzo is False)
+    check("y devuelve False", resultado is False)
+
+
+def test_evaluar_contenedor_modo_automatico_declara_ia_solo_si_ejecuta() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with store.connect(_db(db_dir)) as conn:
+            store.set_modo_contenedor(conn, "test-contenedor", "automatico")
+
+        declaraciones: list[tuple] = []
+        with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
+             patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
+             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+                 "choices": [{"message": {"content": json.dumps(
+                     {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba ia"}
+                 )}}],
+                 "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+             }), \
+             patch.object(acciones.bridge, "recent_restart_attempts", return_value=0), \
+             patch.object(acciones.bridge, "declarar_correccion_ia",
+                           side_effect=lambda *a: declaraciones.append(a) or True):
+            with store.connect(_db(db_dir)) as conn:
+                with patch.object(acciones.bridge, "restart_container", return_value=True):
+                    acciones.evaluar_contenedor(conn, conn, "test-contenedor")
+                check("reinicio ejecutado con éxito ⇒ declara ia exactamente una vez", len(declaraciones) == 1)
+                check("con el componente y razonamiento correctos",
+                      declaraciones[0][2] == "test-contenedor" and declaraciones[0][3] == "prueba ia")
+
+            declaraciones.clear()
+            with store.connect(_db(db_dir)) as conn:
+                with patch.object(acciones.bridge, "restart_container", return_value=False):
+                    acciones.evaluar_contenedor(conn, conn, "test-contenedor")
+                check("reinicio fallido ⇒ nunca declara ia (evita atribuir una corrección que no pasó)",
+                      declaraciones == [])
+
+
+def test_resolver_aprobacion_reinicio_declara_ia_solo_si_ejecuta() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        declaraciones: list[tuple] = []
+        with patch.object(acciones.bridge, "declarar_correccion_ia",
+                           side_effect=lambda *a: declaraciones.append(a) or True):
+            with patch.object(acciones.bridge, "restart_container", return_value=True):
+                with store.connect(_db(db_dir)) as conn:
+                    pendiente = _crear_pendiente_reinicio(conn)
+                    acciones.resolver_aprobacion_reinicio(conn, pendiente.id)
+                check("aprobar y ejecutar con éxito declara ia", len(declaraciones) == 1)
+                check("la nota es el razonamiento de DeepSeek, no un texto de Miquel",
+                      declaraciones[0][3] == "prueba")
+
+            declaraciones.clear()
+            with patch.object(acciones.bridge, "restart_container", return_value=False):
+                with store.connect(_db(db_dir)) as conn:
+                    pendiente2 = _crear_pendiente_reinicio(conn, "otro-contenedor")
+                    acciones.resolver_aprobacion_reinicio(conn, pendiente2.id)
+                check("aprobar con fallo real nunca declara ia", declaraciones == [])
