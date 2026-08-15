@@ -1,0 +1,1953 @@
+=== diagnostico.cli --selftest ===
+test_baseline_beszel
+  OK    los tres episodios reales sin evidencia concluyen no_diagnosticable (FR-011/SC-002)
+test_deepseek
+  OK    prompt generalizado menciona LaunchAgent
+  OK    episodio de agente no lleva la cláusula de contenedor crítico
+  OK    prompt de episodio de backup no lleva la cláusula de contenedor crítico
+  OK    prompt generalizado menciona backup
+  OK    prompt de episodio de disco no lleva la cláusula de contenedor crítico
+  OK    prompt de episodio de HA con check_status incluye la cláusula de estado
+  OK    sin ha_check_status resuelto (check inexistente), no se incluye la cláusula
+  OK    un episodio de contenedor (sin ha_check_status) no lleva la cláusula de HA
+  OK    prompt de episodio de HA no lleva la cláusula de contenedor crítico
+  OK    prompt generalizado menciona Home Assistant
+  OK    la evidencia de HA del snapshot llega al prompt
+  OK    prompt generalizado menciona host externo
+  OK    episodio en vivo (host_externo_actual) no lleva la cláusula FR-006a
+  OK    episodio en diferido (host_externo_stats) sí lleva la cláusula FR-006a
+  OK    episodio de host externo no lleva la cláusula de crítico
+  OK    prompt generalizado menciona el hub de Beszel
+  OK    episodio en vivo (hub_beszel_actual) no lleva la cláusula FR-006a propia
+  OK    episodio en diferido (hub_beszel_stats) sí lleva la cláusula FR-006a propia
+  OK    episodio del hub no lleva la cláusula de crítico
+  OK    prompt de contenedor crítico incluye la cláusula de no proponer acciones
+  OK    prompt de contenedor no crítico no lleva esa cláusula
+  OK    prompt generalizado menciona inventario
+  OK    episodio de inventario no lleva la cláusula de contenedor crítico
+  OK    episodio de inventario no lleva la cláusula de relay agregado
+  OK    con latido_actual presente, la cláusula se incluye
+  OK    un episodio de agente (sin latido_actual) no lleva la cláusula de latido
+  OK    prompt generalizado menciona latido
+  OK    episodio de latido no lleva la cláusula de contenedor crítico
+  OK    prompt generalizado menciona relay
+  OK    episodio en vivo (relay_estado_actual) no lleva la cláusula de agregado
+  OK    episodio en diferido (relay_agregado) sí lleva la cláusula de agregado
+  OK    episodio de backup/HA no lleva la cláusula de crítico
+  OK    episodio de host externo se acepta normalmente, sin rechazo cruzado de otro origen
+  OK    hipótesis persistida
+  OK    episodio del hub se acepta normalmente, sin rechazo cruzado de otro origen
+  OK    hipótesis persistida
+  OK    episodio de inventario se acepta normalmente, sin rechazo cruzado de otro origen
+  OK    hipótesis persistida
+  OK    respuesta que nombra un relay CON evidencia real en fallan se acepta
+  OK    la hipótesis confirmada se persiste
+  OK    respuesta que nombra un relay concreto en diferido se rechaza (F1, FR-006)
+  OK    no se persiste ninguna hipótesis de la respuesta rechazada
+  OK    el coste real se registra igual, aunque se rechace el contenido
+  OK    detecta un nombre real citado en conclusion_texto
+  OK    no da falso positivo cuando no se nombra ningún relay real
+  OK    sin nombres conocidos (fichero no disponible), nunca lanza ni da falso positivo
+  OK    respuesta de agente bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de agente
+  OK    respuesta de backup bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de backup
+  OK    respuesta bien formada se acepta
+  OK    conclusion_tipo se conserva
+  OK    SC-003: más de una hipótesis registrada
+  OK    tokens reales de la respuesta, no estimados
+  OK    reasoning_content truncado y no-JSON se rechaza igual que antes
+  OK    respuesta de disco bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de disco
+  OK    respuesta de HA bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de HA
+  OK    respuesta de host externo bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de host externo
+  OK    respuesta del hub bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio del hub
+  OK    respuesta de inventario bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de inventario
+  OK    respuesta de latido bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de latido
+  OK    no_diagnosticable sin ninguna confirmada se acepta
+  OK    desenlace fuera del vocabulario se rechaza
+  OK    causa_probable sin hipótesis confirmada viola FR-007 ⇒ se rechaza
+  OK    no_diagnosticable con hipótesis confirmada viola FR-007 ⇒ se rechaza
+  OK    contenido no-JSON se rechaza (None)
+  OK    causa_probable con dos hipótesis confirmada a la vez viola FR-007 ⇒ se rechaza
+  OK    respuesta de relay bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de relay
+  OK    content vacío con reasoning_content válido se recupera, no se descarta
+  OK    la conclusión recuperada es la que llevaba reasoning_content
+test_deliver
+  OK    400 brechas de la misma categoría se resumen, no listan (166 caracteres)
+  OK    el resumen agrupado menciona el conteo total
+test_diff
+  OK    D es componente nuevo
+  OK    C es componente de baja
+  OK    brecha de D es nueva
+  OK    brecha de B ya no aparece como nueva (fue resuelta, no repetida)
+  OK    brecha de B aparece como resuelta
+  OK    las 5 ejecuciones siguen todas — nada se purga (FR-017, Clarification 2)
+test_evaluate
+  OK    sin fecha de revisión no es caducada
+  OK    revisada hace 89 días sigue vigente
+  OK    revisada hace 91 días está caducada
+  OK    exactamente 90 días todavía no caduca (> no >=)
+  OK    telegram vigilado pero sin llegar al dashboard ⇒ tipo normal, no riesgo concentrado
+  OK    telegram sin vigilar de verdad ⇒ sigue siendo riesgo concentrado
+  OK    contenedor: estado_declarado_status tiene valor
+  OK    contenedor: llega_a_dashboard tiene valor
+  OK    contenedor: esta_vigilado es booleano
+  OK    integracion: estado_declarado_status tiene valor
+  OK    integracion: llega_a_dashboard tiene valor
+  OK    integracion: esta_vigilado es booleano
+  OK    entidad_ha: estado_declarado_status tiene valor
+  OK    entidad_ha: llega_a_dashboard tiene valor
+  OK    entidad_ha: esta_vigilado es booleano
+  OK    host_externo: estado_declarado_status tiene valor
+  OK    host_externo: llega_a_dashboard tiene valor
+  OK    host_externo: esta_vigilado es booleano
+  OK    hermes: estado_declarado_status tiene valor
+  OK    hermes: llega_a_dashboard tiene valor
+  OK    hermes: esta_vigilado es booleano
+  OK    telegram: estado_declarado_status tiene valor
+  OK    telegram: llega_a_dashboard tiene valor
+  OK    telegram: esta_vigilado es booleano
+  OK    infra_monitorizacion: estado_declarado_status tiene valor
+  OK    infra_monitorizacion: llega_a_dashboard tiene valor
+  OK    infra_monitorizacion: esta_vigilado es booleano
+  OK    declaración de hace 200 días sale caducada
+  OK    componente recién declarado (sin fecha) cuenta como vigente
+  OK    intencionado nunca es brecha, aunque las tres respuestas fallen
+  OK    las tres respuestas satisfactorias no es brecha
+  OK    fallar solo 'llega al dashboard' ya cuenta como brecha
+  OK    frigate es intencionado
+  OK    otro contenedor no lo es
+  OK    entidad HA deshabilitada es intencionada
+  OK    entidad HA habilitada no lo es
+  OK    sin latido nunca ⇒ no vigilado
+  OK    sin latido ⇒ mecanismo vacío
+  OK    latido reciente ⇒ vigilado
+  OK    latido reciente ⇒ mecanismo informado
+  OK    llega al dashboard desde el panel 'Estado de los monitores' (2026-08-08)
+  OK    latido rancio (>15 min) ⇒ no cuenta como vigilado
+test_evidencia_agente
+  OK    con proceso activo ⇒ status=running
+  OK    sin proceso, exit_code normal ⇒ status=idle
+  OK    sin proceso, exit_code anómalo ⇒ status=error
+  OK    label inexistente devuelve None, sin lanzar
+  OK    componente = label del agente
+  OK    origen = agente
+  OK    es_critico siempre False
+  OK    en_vivo=True siempre (no existe modo diferido)
+  OK    agente_actual poblado con el estado real
+  OK    label inexistente congela igual, con evidencia vacía
+test_evidencia_backup
+  OK    dos congelados del mismo momento producen la misma evidencia
+  OK    cada congelado es un episodio propio
+  OK    un momento dentro de ±12h encuentra el log real
+  OK    un momento fuera de la ventana no lanza, congela con evidencia vacía
+  OK    origen = backup
+  OK    es_critico siempre False para backup
+  OK    en_vivo=True
+  OK    toma el log más reciente (12 de agosto), no el más antiguo
+  OK    campos heredados de contenedor/disco/HA quedan a null
+  OK    componente sigue siendo un momento ISO válido
+  OK    toda la evidencia de backup queda en null, sin lanzar
+  OK    anomalias se acota a 30, no 50
+  OK    el dump fallido aparece en dumps
+  OK    el dump fallido NO se duplica en anomalias
+  OK    el error real de rsync sí aparece en anomalias
+  OK    rsync_estado = error para un backup parcial
+  OK    dumps recoge las 4 líneas de estado OK
+  OK    rsync_stats recoge el bloque de estadísticas, no la lista de ficheros
+  OK    resumen_final capturado
+  OK    rsync_estado = ok para un backup sano
+  OK    sin anomalías en un backup sano
+test_evidencia_contenedor
+  OK    episodio persistido con id
+  OK    contenedor correcto
+  OK    es_critico=False (beszel no está en la lista crítica)
+  OK    en_vivo=False para un episodio histórico
+  OK    snapshot incluye la fila real de restart_history
+  OK    snapshot incluye la ventana de container_metrics
+  OK    snapshot en vivo queda vacío en un episodio histórico
+  OK    restart_history_id inexistente lanza ValueError
+  OK    sin detalle disponible, cae al agregado horario en vez de quedar vacío
+  OK    container_metrics queda vacío cuando se usa el respaldo horario
+  OK    episodio en vivo persistido con id
+  OK    en_vivo=True
+  OK    snapshot histórico queda vacío en un episodio en vivo
+  OK    reutiliza container_metrics ya existentes, no inventa una fuente nueva
+  OK    solo la muestra dentro de la ventana de tolerancia sobrevive, no la de meses después
+  OK    es_critico=True si el contenedor está en la lista crítica al congelar
+test_evidencia_disco
+  OK    componente = label del disco
+  OK    origen = disco
+  OK    en_vivo=False para un episodio histórico de disco
+  OK    la ventana histórica recoge la muestra real dentro de ±30 min
+  OK    dos congelados del mismo LABEL@MOMENTO producen la misma ventana
+  OK    cada congelado es un episodio propio
+  OK    episodio de disco persistido con id
+  OK    componente = label del disco
+  OK    origen = disco
+  OK    es_critico siempre False para un disco
+  OK    en_vivo=True
+  OK    snapshot incluye la evidencia de disco
+  OK    campos heredados de contenedor quedan a null, no ausentes
+test_evidencia_ha
+  OK    congelar_ha_historico bloquea 'bateria_critica_cerradura' (FR-010)
+  OK    congelar_ha_historico bloquea 'bateria_cerradura' (FR-010)
+  OK    congelar_ha_historico bloquea 'cerradura_up' (FR-010)
+  OK    la ventana histórica está centrada en el momento pedido
+  OK    en_vivo=False para un episodio histórico de HA
+  OK    dos congelados del mismo CHECK_ID@MOMENTO producen la misma ventana y evidencia
+  OK    cada congelado es un episodio propio
+  OK    evidencia de estado actual bajo la ventana etiquetada con el momento pedido
+  OK    componente = ha_api
+  OK    evidencia de ha_api son los logs del contenedor homeassistant
+  OK    sin historial ni ficheros de corrupción para este tipo de check
+  OK    congelar_ha_vivo bloquea 'bateria_critica_cerradura' (FR-010)
+  OK    congelar_ha_vivo bloquea 'bateria_cerradura' (FR-010)
+  OK    congelar_ha_vivo bloquea 'cerradura_up' (FR-010)
+  OK    componente = check_id aunque no exista
+  OK    toda la evidencia de HA queda en null, sin lanzar
+  OK    componente = check_id
+  OK    origen = ha
+  OK    es_critico siempre False para HA
+  OK    en_vivo=True
+  OK    snapshot incluye el check resuelto y su historial
+  OK    snapshot incluye el veredicto ya calculado de ha_monitor.check_status()
+  OK    campos de recorder/logs quedan a null para un check de entidad
+  OK    campos heredados de contenedor/disco quedan a null, no ausentes
+  OK    el historial se acota a 50 entradas, no 200
+  OK    se quedan las entradas más recientes, no las más antiguas
+  OK    attributes/entity_id no sobreviven a la simplificación
+  OK    ficheros de corrupción presentes en el snapshot
+  OK    logs del contenedor presentes
+  OK    sin historial de entidad para este tipo de check
+  OK    sin ficheros de corrupción, la lista queda vacía, no null
+test_evidencia_host_externo
+  OK    CET (invierno, UTC+1): 12:00 local = 11:00 UTC
+  OK    CEST (verano, UTC+2): 12:00 local = 10:00 UTC
+  OK    nombre fuera de HOSTS_EXTERNOS no llega a consultar el hub
+  OK    consulta con éxito sin filas ⇒ host_externo_stats con total_muestras=0
+  OK    consulta fallida (None) ⇒ host_externo_stats=None, sin lanzar TypeError
+  OK    nombre inexistente ⇒ host_externo_stats=None
+  OK    componente = NOMBRE solo, nunca incluye el momento (research.md §2)
+  OK    dos congelados del mismo momento producen la misma evidencia
+  OK    cada congelado es un episodio propio
+  OK    componente = nombre del host
+  OK    origen = host_externo
+  OK    es_critico siempre False
+  OK    en_vivo=True
+  OK    host_externo_actual poblado, host_externo_stats queda null
+  OK    host arriba
+  OK    host caído
+  OK    nombre inexistente devuelve None, sin lanzar
+  OK    latido caducado ⇒ sin_evidencia, aunque el dato sea fresco
+  OK    dato caducado ⇒ sin_evidencia, aunque el latido sea fresco
+  OK    latido ausente ⇒ sin_evidencia, sin lanzar
+  OK    recuento, primera y última correctas, por_tipo agregado
+  OK    lista vacía produce el resumen vacío, no None
+test_evidencia_hub_beszel
+  OK    dos congelados del mismo momento producen la misma evidencia
+  OK    cada congelado es un episodio propio
+  OK    consulta con éxito ⇒ hub_beszel_stats con todos_sin_muestras=False (Mac Mini sí tiene)
+  OK    consulta fallida (None) ⇒ hub_beszel_stats=None, sin lanzar TypeError
+  OK    componente = momento pedido, sin identificador
+  OK    origen = hub_beszel
+  OK    es_critico siempre False
+  OK    en_vivo=True
+  OK    hub_beszel_actual poblado, hub_beszel_stats queda null
+  OK    componente es un momento ISO, sin identificador
+  OK    todos caducados a la vez ⇒ sano=False
+  OK    3 sistemas presentes
+  OK    un sistema caducado entre varios frescos ⇒ sano=True (un solo sistema viejo no cuenta)
+  OK    sin ningún sistema registrado ⇒ sano=False, sin lanzar
+  OK    Mac Mini Server con 2 muestras, los otros dos con 0
+  OK    ausencia PARCIAL (Mac Mini sí tiene) ⇒ todos_sin_muestras=False
+  OK    ausencia TOTAL ⇒ todos_sin_muestras=True
+  OK    sin ningún sistema registrado (lista vacía) ⇒ todos_sin_muestras=False, no True
+test_evidencia_inventario
+  OK    brechas_nuevas acotado a 30 entradas, con el total real
+  OK    una lista corta no se trunca de más
+  OK    lista vacía queda vacía, total 0
+  OK    brecha condicion_incumplida se rechaza antes de congelar (FR-010)
+  OK    dos congelados de la misma NOMBRE@EJECUCION_ID producen la misma evidencia
+  OK    cada congelado es un episodio propio
+  OK    componente = NOMBRE solo, nunca incluye la ejecución (research.md §3)
+  OK    ejecución pedida (run3) da comparación anclada a run1, no a run3-1 (run2)
+  OK    EJECUCION_ID inexistente congela igual, con evidencia vacía
+  OK    componente = nombre_actual
+  OK    origen = inventario
+  OK    es_critico siempre False para inventario
+  OK    en_vivo=True
+  OK    congela la ejecución más reciente (run3)
+  OK    hallazgo y brecha reales presentes
+  OK    comparación ancla a primera_ejecucion_id - 1 (run1), no a ejecucion_id - 1 (run2)
+  OK    componente sano: hallazgo presente, sin brecha ni comparación
+  OK    nombre inexistente: todo en null, sin lanzar
+  OK    hallazgo de un componente con brecha se encuentra
+  OK    brecha real trae su tipo
+  OK    componente sano no tiene brecha
+  OK    componente inexistente devuelve None, sin lanzar
+  OK    condicion_incumplida lanza ValueError (FR-010)
+  OK    un tipo en alcance, o ninguna brecha, no lanza
+test_evidencia_latido
+  OK    componente = job pedido
+  OK    origen = latido
+  OK    es_critico siempre False
+  OK    en_vivo=True siempre (no existe modo diferido)
+  OK    latido_actual poblado con el estado real
+  OK    job inexistente congela igual, con evidencia vacía
+  OK    latido reciente y sano ⇒ ok=True
+  OK    latido rancio ⇒ ok=False
+  OK    status=error pero edad fresca ⇒ ok=True igualmente (research.md §3 de 017: ok nunca se combina con status)
+  OK    fichero ausente ⇒ ok=False, age_s=None, detail='sin latido'
+  OK    job inexistente entre los 8 devuelve None, sin lanzar
+test_evidencia_relay
+  OK    agregado se acota a 100, no 180
+  OK    solo las 3 líneas dentro de ±180 min sobreviven (05:00, 08:00, 11:00)
+  OK    cada entrada trae momento/ok/total/fallan
+  OK    líneas sin detalle de nombre traen fallan=[] (histórico anterior al 2026-08-13)
+  OK    la entrada del fallo real refleja 9 de 10
+  OK    las 4 líneas caen dentro de la ventana
+  OK    línea sana ⇒ fallan=[]
+  OK    línea con dos relays caídos ⇒ fallan los nombra a los dos
+  OK    línea con un solo relay caído ⇒ fallan=['HA Shelly']
+  OK    dos congelados del mismo momento producen la misma evidencia agregada
+  OK    cada congelado es un episodio propio
+  OK    sin datos en la ventana, componente = momento pedido, no la hora de congelar
+  OK    origen = relay, relay_nombre queda null en diferido
+  OK    componente = nombre del relay
+  OK    origen = relay
+  OK    es_critico siempre False para relay
+  OK    en_vivo=True
+  OK    relay_estado_actual tiene el detalle real, relay_agregado queda null
+  OK    campos heredados de orígenes anteriores quedan a null
+  OK    componente = nombre pedido aunque no exista
+  OK    relay_estado_actual queda null, sin lanzar
+  OK    listar_nombres_relay recoge los nombres reales
+  OK    une los nombres de todas las entradas, sin duplicados
+  OK    agregado vacío o None ⇒ conjunto vacío, sin lanzar
+  OK    agregado=[] ⇒ conjunto vacío
+  OK    relay existente devuelve su entrada real
+  OK    relay inexistente devuelve None, sin lanzar
+test_gasto
+  OK    coste de 1M+1M tokens es la suma de los precios por millón
+  OK    cero tokens cuesta cero
+  OK    el gasto del día con acumulado se lee tal cual
+  OK    un día nuevo empieza en 0.0, no arrastra el acumulado de ayer
+  OK    gasto ya igual al límite ⇒ no hay presupuesto para una llamada más
+  OK    límite diario en 0.0 bloquea cualquier llamada nueva
+  OK    sin gasto acumulado hoy, hay presupuesto de sobra
+  OK    gasto ya por encima del límite ⇒ no hay presupuesto
+  OK    registrar_coste devuelve el coste real de esa llamada
+  OK    el acumulado del día refleja ese coste
+test_identity
+  OK    mismo identificador estable ⇒ mismo componente, aunque cambie el nombre
+  OK    sin identificador estable, nombre distinto ⇒ no se empareja (baja+alta)
+  OK    sin identificador estable, mismo nombre ⇒ mismo componente
+test_no_mutation
+  OK    docker ps está en la lista blanca y no lanza
+  OK    docker restart algun-contenedor fuera de la lista blanca ⇒ RuntimeError
+  OK    docker rm -f algun-contenedor fuera de la lista blanca ⇒ RuntimeError
+  OK    docker stop algun-contenedor fuera de la lista blanca ⇒ RuntimeError
+  OK    launchctl kickstart -k algo fuera de la lista blanca ⇒ RuntimeError
+  OK    rm -rf / fuera de la lista blanca ⇒ RuntimeError
+  OK    ningún subcomando mutante de docker está en la lista blanca
+test_remediacion_acciones
+  OK    un crítico caído sí se evalúa (FR-009, ya no excluido)
+  OK    crea pendiente, nunca ejecutado directamente (FR-008/FR-010)
+  OK    modo_en_deteccion siempre manual para un crítico
+  OK    nunca se llama a restart_container para un crítico desde comprobar_reiniciar_contenedor
+  OK    frigate (NEVER_RESTART) sigue excluido por completo (FR-007)
+  OK    ni siquiera se reúne evidencia para él
+  OK    fichero ausente de la lista vigilada se ignora, sin lanzar
+  OK    modo automático ejecuta en la misma llamada
+  OK    el intento nace ya ejecutado, nunca pasa por pendiente (FR-007)
+  OK    sin ningún pendiente tras la ejecución automática
+  OK    el fichero se rotó de verdad
+  OK    una rotación automática que sale bien no avisa por Telegram
+  OK    modo automático + fallo real de rotación ⇒ estado fallido
+  OK    el fallo automático dispara exactamente un aviso
+  OK    el aviso lleva el componente que falló
+  OK    un log por encima del umbral crea un intento
+  OK    modo por defecto manual ⇒ queda pendiente
+  OK    el fichero no se toca solo con comprobar
+  OK    la primera comprobación crea 1 intento
+  OK    la segunda no duplica mientras siga pendiente (FR-008)
+  OK    por debajo del umbral, ningún intento nuevo
+  OK    los 3 primeros intentos fallan de verdad
+  OK    el 4º intento no llega a restart_container — cortacircuito
+  OK    restart_container se llamó exactamente 3 veces, nunca una 4ª
+  OK    el cortacircuito avisa por Telegram
+  OK    declarar_correccion_ia devuelve True al escribir
+  OK    se acumulan las dos declaraciones, no se pisan
+  OK    cada una lleva clasificacion=ia
+  OK    conserva el componente y la nota
+  OK    un fallo de escritura no propaga la excepción
+  OK    y devuelve False
+  OK    sin nada escrito después, no hace falta conservar nada
+  OK    el fichero original recupera su contenido íntegro
+  OK    el fichero rotado ya no existe con su nombre de rotado
+  OK    se conserva lo escrito después, en un fichero aparte
+  OK    el contenido posterior sobrevive íntegro
+  OK    el original vuelve a tener el contenido de antes de rotar
+  OK    el fichero rotado conserva el contenido íntegro
+  OK    el fichero original queda vacío, no borrado
+  OK    nunca se trunca el fichero rotado
+  OK    tras una rotación nueva con 4 ya existentes, sigue habiendo como mucho 4
+  OK    crea los directorios intermedios y escribe el fichero
+  OK    generado_en presente
+  OK    modo_rotar_log presente, manual por defecto
+  OK    2 entradas en logs, una por cada LOGS_VIGILADOS
+  OK    health-docker refleja el tamaño real y supera_umbral=True
+  OK    health-ha ausente ⇒ tamano_bytes=0, supera_umbral=False
+  OK    total_activos_bytes suma solo los ficheros activos (11 MB + 0)
+  OK    total_con_rotaciones_bytes suma también la rotación archivada (11 + 5 MB)
+  OK    3 contenedores en el bloque
+  OK    homeassistant: crítico, manual, modo null
+  OK    frigate: never_restart, manual, modo null
+  OK    beszel: no crítico, ia, modo automatico reflejado
+  OK    sin ningún intento vigente, intento_vigente es null para los tres
+  OK    modo manual ⇒ clasificacion=manual en el log
+  OK    modo automático ⇒ clasificacion=automatica en el log
+  OK    un fallo real de escritura no propaga la excepción (contrato garantía 1)
+  OK    intento_vigente no nulo con un pendiente real
+  OK    estado del intento vigente refleja el pendiente
+  OK    las 5 evaluaciones repetidas crean 'pendiente', nunca 'cortacircuito'
+  OK    restart_container nunca se llama para un crítico
+  OK    reinicio ejecutado con éxito ⇒ declara ia exactamente una vez
+  OK    con el componente y razonamiento correctos
+  OK    reinicio fallido ⇒ nunca declara ia (evita atribuir una corrección que no pasó)
+  OK    automático ejecuta directo, nunca pasa por pendiente (FR-008)
+  OK    sin ningún pendiente tras la ejecución automática
+  OK    restart_container se llamó exactamente una vez
+  OK    sin_accion también en modo automático
+  OK    automático nunca reinicia si DeepSeek dice que no aplica
+  OK    nunca reinicia en ningún modo (FR-009)
+  OK    modo_forzado='manual' crea pendiente aunque la tabla diga automático
+  OK    modo_en_deteccion refleja el modo forzado, no el de la tabla
+  OK    nunca se ejecuta un reinicio cuando el modo está forzado a manual
+  OK    17 logs vigilados tras la ampliación
+  OK    sin nombres duplicados
+  OK    sin ficheros duplicados
+intento 999999 no existe
+intento 1 es un reinicio de contenedor — sin operación de deshacer (FR-016 de 021)
+homeassistant es crítico — no admite modo automático
+frigate es NEVER_RESTART — rechazado, sin escribir nada (FR-007 de 022, sin cambios respecto a FR-006 de 021)
+  OK    los dos originales siguen presentes
+  OK    un candidato real de la ampliación está presente
+  OK    ningún nombre de log coincide con un componente crítico (FR-012)
+  OK    todos los umbrales son positivos
+  OK    crear un pendiente nunca llama a restart_container
+  OK    con menos de 4 rotaciones, no se borra ninguna
+  OK    quedan exactamente 4 rotaciones
+  OK    sobreviven las 4 más recientes (03 a 06), se borran las 2 más antiguas (01, 02)
+  OK    aprobar pasa a ejecutado directamente (sin estado 'aprobado')
+  OK    el fichero rotado quedó registrado
+  OK    el original quedó vacío
+  OK    aprobación manual con fallo real también llega a fallido
+  OK    un fallo en modo manual nunca dispara el aviso automático
+  OK    fichero desaparecido entre medias ⇒ fallido, sin lanzar
+  OK    aprobar y ejecutar con éxito declara ia
+  OK    la nota es el razonamiento de DeepSeek, no un texto de Miquel
+  OK    aprobar con fallo real nunca declara ia
+  OK    aprobar pasa a ejecutado cuando restart_container verifica running
+  OK    se llamó a restart_container exactamente una vez
+  OK    restart_container devuelve False ⇒ fallido, nunca ejecutado
+  OK    deshacer pasa a deshecho
+  OK    el contenido original vuelve íntegro
+  OK    deshacer un intento cuyo fichero rotado ya se purgó falla con un mensaje claro, no un OSError crudo
+  OK    rechazar pasa a rechazado
+  OK    el fichero sigue intacto
+  OK    rechazar pasa a rechazado
+  OK    rechazar nunca llama a restart_container
+  OK    aprobar un intento de reinicio ya rechazado se rechaza
+  OK    aprobar un ya rechazado se rechaza
+  OK    rechazar dos veces se rechaza
+  OK    deshacer algo que nunca se ejecutó se rechaza
+  OK    2 sin_evaluar seguidos, todavía sin alcanzar el umbral (3) ⇒ sin aviso
+  OK    al 3er sin_evaluar consecutivo, se dispara el aviso (FR-019)
+  OK    una evaluación real (no sin_evaluar) resetea la racha a 0
+  OK    nunca se llegó a avisar (la racha se rompió antes del umbral)
+test_remediacion_clasificacion
+  OK    crítico en modo automático (si lo hubiera) ⇒ manual
+  OK    crítico en modo manual ⇒ manual
+  OK    crítico sin modo (None) ⇒ manual
+  OK    NEVER_RESTART ⇒ manual, igual que un crítico (FR-007)
+  OK    no crítico en modo manual ⇒ ia (FR-004: el modo no cambia la etiqueta)
+  OK    no crítico en modo automático ⇒ ia
+  OK    modo automático ⇒ automatica (FR-005)
+  OK    modo manual ⇒ manual
+test_remediacion_cli
+  OK    aprobar un id inexistente devuelve código de error, sin lanzar
+intento 1 — health-docker — pendiente — /var/folders/pb/_zlt94cj47bd01v225qnt69r0000gn/T/tmpuz6bacmt/health-docker.log — 11534336 bytes, umbral 10485760 bytes
+intento 1 — ejecutado — rotado a /var/folders/pb/_zlt94cj47bd01v225qnt69r0000gn/T/tmpuz6bacmt/health-docker.log.rotado-20260815T164543
+intento 1 — deshecho — deshecho
+  OK    cli aprobar termina en 0
+  OK    el fichero se rotó de verdad vía CLI
+  OK    cli deshacer termina en 0
+  OK    el contenido vuelve tras deshacer vía CLI
+intento 1 — test-critico — pendiente — pendiente de aprobación
+  OK    comprobar-contenedores por CLI también evalúa críticos (FR-009)
+  OK    crea exactamente un pendiente para el crítico
+  OK    nunca reinicia solo por evaluarlo desde el CLI
+intento 1 — test-contenedor — pendiente — pendiente de aprobación
+intento 1 — test-contenedor — ejecutado — reiniciado y verificado (aprobado por Miquel)
+  OK    comprobar-contenedores termina en 0
+  OK    crea un intento pendiente para el contenedor caído
+  OK    aprobar (comando genérico) resuelve sobre intentos_reinicio
+  OK    el intento queda ejecutado tras aprobar por CLI
+intento 1 — health-docker — pendiente — /var/folders/pb/_zlt94cj47bd01v225qnt69r0000gn/T/tmp3mofn46l/health-docker.log — 11534336 bytes, umbral 10485760 bytes
+intento 1 — rotar_log — health-docker — /var/folders/pb/_zlt94cj47bd01v225qnt69r0000gn/T/tmp3mofn46l/health-docker.log — 11534336 bytes, umbral 10485760 bytes
+  OK    comprobar por CLI nunca toca el snapshot real de producción
+  OK    cli comprobar termina en 0
+  OK    cli pendientes termina en 0
+jellyfin_audio — modo manual
+  OK    contenedores --incluir-criticos termina en 0
+  OK    con el flag, homeassistant aparece con modo null
+  OK    con el flag, jellyfin_audio (no crítico) sigue apareciendo con su modo real
+  OK    sin el flag, sigue funcionando igual que 021
+jellyfin_audio — modo manual
+  OK    contenedores termina en 0
+  OK    deshacer sobre un intento_reinicio se rechaza (FR-016)
+  OK    modo-contenedor --automatico sobre un crítico devuelve error (hallazgo E1)
+  OK    el mensaje es legible, no una traza cruda de Python
+jellyfin_audio → modo automatico
+  OK    modo-contenedor sobre uno no crítico termina en 0
+  OK    el modo cambia de verdad
+homeassistant → modo manual
+  OK    modo-contenedor --manual sobre un crítico termina en 0
+  OK    se persiste como manual, sin efecto real sobre la evaluación
+  OK    modo-contenedor sobre un crítico devuelve error
+  OK    no escribe ninguna fila (FR-006)
+  OK    modo-contenedor sobre frigate (NEVER_RESTART) devuelve error
+historial de rotar_log: sin intentos todavía
+rotar_log → modo automatico
+historial de rotar_log: sin intentos todavía
+rotar_log → modo manual
+rotar_log — modo actual: manual
+sin intentos todavía
+  OK    cli modo --automatico termina en 0
+  OK    modo cambia a automatico de verdad
+  OK    cli modo --manual termina en 0
+  OK    modo vuelve a manual sin ninguna condición previa (FR-003)
+  OK    cli historial termina en 0
+rotar_log — modo manual
+reiniciar_contenedor — modo manual
+historial de rotar_log: sin intentos todavía
+rotar_log → modo automatico
+rotar_log — modo automatico
+reiniciar_contenedor — modo manual
+  OK    cli tipos termina en 0 antes de cualquier modo fijado
+  OK    cli tipos no crea fila en configuracion_accion
+  OK    cli tipos termina en 0 con un modo ya fijado
+  OK    cli tipos refleja rotar_log en automático tras el cambio, y reiniciar_contenedor (021) en manual por defecto
+test_remediacion_deepseek_contenedores
+  OK    el prompt menciona la acción candidata
+  OK    el prompt incluye la evidencia real serializada
+  OK    el prompt no reutiliza el prompt de causa_probable
+  OK    fallo de la llamada ⇒ sin_evaluar, nunca sin_accion
+  OK    sin acción recomendada registrada
+  OK    ninguna acción aplica ⇒ estado sin_accion, nunca reinicia
+  OK    dispara el aviso de US4
+  OK    modo manual ⇒ pendiente, nunca ejecuta solo
+  OK    conserva la recomendación
+  OK    conserva el razonamiento
+  OK    coste registrado
+  OK    episodio_id enlazado
+  OK    sin presupuesto ⇒ sin_evaluar
+  OK    nunca se llega a llamar a DeepSeek sin presupuesto (SC-004)
+  OK    el mock produce la decisión esperada
+  OK    con mock activo, nunca se comprueba presupuesto real
+  OK    con mock activo, nunca se llama a DeepSeek de verdad
+  OK    el intento vía mock no registra coste
+  OK    acepta reiniciar_contenedor
+  OK    conserva el razonamiento
+  OK    conserva los tokens de usage
+  OK    acepta accion_aplica null
+  OK    respuesta sin 'choices' ⇒ None, sin lanzar
+  OK    contenido no-JSON ⇒ None, sin lanzar
+  OK    una acción inventada se rechaza por completo
+  OK    recupera la decisión de reasoning_content
+  OK    mock con acción fuera de la lista cerrada ⇒ None (FR-003)
+  OK    mock con JSON inválido ⇒ None, sin lanzar
+  OK    el mock se lee y valida correctamente
+  OK    sin REMEDIACION_DEEPSEEK_MOCK ⇒ None
+test_remediacion_store
+  OK    id inexistente ⇒ None, sin lanzar
+  OK    contenedor nunca visto ⇒ modo manual por defecto (research.md §7 de 021)
+  OK    tipo de acción nunca visto ⇒ modo manual por defecto (FR-002)
+  OK    2 ejecutados
+  OK    1 rechazado
+  OK    1 fallido
+  OK    tipo de acción sin ningún intento ⇒ historial vacío
+  OK    el nuevo intento de reinicio no colisiona con los 2 ya existentes
+  OK    localizar_intento lo encuentra en la tabla correcta
+  OK    un rotar_log nuevo tampoco colisiona con reinicios ya existentes
+  OK    init_db() dos veces no lanza
+  OK    insert_intento devuelve un id
+  OK    get_intento recupera el mismo componente
+  OK    estado inicial = pendiente
+  OK    un ejecutado fuera de la ventana ya no es vigente
+  OK    un ejecutado justo ahora sigue vigente
+  OK    un intento pendiente siempre es vigente
+  OK    con un pendiente real, ese es el vigente, no el rechazado previo
+  OK    sin ningún intento, vigente es None
+  OK    listar_modos() sigue el orden de tipos_conocidos, no el alfabético de la tabla
+  OK    refleja el modo real de cada uno
+  OK    no crea fila para el que nunca se tocó
+  OK    listar_modos() refleja un modo ya cambiado
+  OK    tipo nunca visto ⇒ manual en el listado
+  OK    listar_modos() no crea fila (a diferencia de get_modo)
+  OK    solo los 2 pendientes reales, no el rechazado
+  OK    el rechazado no aparece
+  OK    un id de rotar_log se localiza en 'remediacion'
+  OK    un id inexistente en ninguna tabla ⇒ None
+  OK    un id de reinicio se localiza en 'reinicio'
+  OK    sin ningún intento, no hay pendiente
+  OK    con un pendiente real, pendiente_existente=True (FR-008)
+  OK    otro componente distinto, no hay pendiente
+  OK    set_modo() persiste entre conexiones
+  OK    set_modo() vuelve a manual sin problema
+  OK    manual sobre un crítico se acepta sin error
+  OK    el contenedor cambiado queda en automático
+  OK    un contenedor distinto no se ve afectado (Acceptance Scenario 2 de US5)
+  OK    un contenedor no crítico sigue admitiendo automático (021, sin cambios)
+  OK    automático sobre un crítico lanza ValueError (FR-008)
+  OK    no persiste ninguna fila
+  OK    sin ningún intento, la racha es 0
+  OK    2 sin_evaluar seguidos ⇒ racha 2
+  OK    un intento resuelto rompe la racha
+  OK    estado actualizado
+  OK    fichero_rotado registrado
+  OK    resuelto_en poblado
+test_reproducibilidad
+  OK    SC-001: mismo conclusion_tipo en los dos intentos
+  OK    los dos intentos son diagnósticos distintos, ninguno pisa al otro (Principio VIII)
+  OK    SC-001: mismo número de hipótesis en los dos intentos
+  OK    SC-001: mismo desenlace por hipótesis y en el mismo orden
+test_store
+  OK    init_db() dos veces no lanza
+  OK    un diagnóstico persistido para el episodio
+  OK    dos hipótesis persistidas, en orden
+  OK    los desenlaces se conservan tal cual
+  OK    insert_episodio devuelve un id
+  OK    get_episodio recupera el mismo contenedor
+  OK    snapshot_evidencia se conserva como dict de ida y vuelta (JSON)
+  OK    get_episodio de un id inexistente devuelve None
+  OK    el episodio ya escrito por 007 se lee tras migrar, mismo componente
+  OK    origen por defecto = contenedor tras migrar
+  OK    conectar dos veces tras la migración no falla ni duplica
+  OK    el coste se acumula (0.5 + 0.3)
+  OK    el límite queda fijado
+  OK    dos intentos de diagnóstico coexisten para el mismo episodio
+  OK    ambos con id distinto
+
+Todo OK
+=== inventory.cli --selftest ===
+test_baseline_beszel
+  OK    los tres episodios reales sin evidencia concluyen no_diagnosticable (FR-011/SC-002)
+test_deepseek
+  OK    prompt generalizado menciona LaunchAgent
+  OK    episodio de agente no lleva la cláusula de contenedor crítico
+  OK    prompt de episodio de backup no lleva la cláusula de contenedor crítico
+  OK    prompt generalizado menciona backup
+  OK    prompt de episodio de disco no lleva la cláusula de contenedor crítico
+  OK    prompt de episodio de HA con check_status incluye la cláusula de estado
+  OK    sin ha_check_status resuelto (check inexistente), no se incluye la cláusula
+  OK    un episodio de contenedor (sin ha_check_status) no lleva la cláusula de HA
+  OK    prompt de episodio de HA no lleva la cláusula de contenedor crítico
+  OK    prompt generalizado menciona Home Assistant
+  OK    la evidencia de HA del snapshot llega al prompt
+  OK    prompt generalizado menciona host externo
+  OK    episodio en vivo (host_externo_actual) no lleva la cláusula FR-006a
+  OK    episodio en diferido (host_externo_stats) sí lleva la cláusula FR-006a
+  OK    episodio de host externo no lleva la cláusula de crítico
+  OK    prompt generalizado menciona el hub de Beszel
+  OK    episodio en vivo (hub_beszel_actual) no lleva la cláusula FR-006a propia
+  OK    episodio en diferido (hub_beszel_stats) sí lleva la cláusula FR-006a propia
+  OK    episodio del hub no lleva la cláusula de crítico
+  OK    prompt de contenedor crítico incluye la cláusula de no proponer acciones
+  OK    prompt de contenedor no crítico no lleva esa cláusula
+  OK    prompt generalizado menciona inventario
+  OK    episodio de inventario no lleva la cláusula de contenedor crítico
+  OK    episodio de inventario no lleva la cláusula de relay agregado
+  OK    con latido_actual presente, la cláusula se incluye
+  OK    un episodio de agente (sin latido_actual) no lleva la cláusula de latido
+  OK    prompt generalizado menciona latido
+  OK    episodio de latido no lleva la cláusula de contenedor crítico
+  OK    prompt generalizado menciona relay
+  OK    episodio en vivo (relay_estado_actual) no lleva la cláusula de agregado
+  OK    episodio en diferido (relay_agregado) sí lleva la cláusula de agregado
+  OK    episodio de backup/HA no lleva la cláusula de crítico
+  OK    episodio de host externo se acepta normalmente, sin rechazo cruzado de otro origen
+  OK    hipótesis persistida
+  OK    episodio del hub se acepta normalmente, sin rechazo cruzado de otro origen
+  OK    hipótesis persistida
+  OK    episodio de inventario se acepta normalmente, sin rechazo cruzado de otro origen
+  OK    hipótesis persistida
+  OK    respuesta que nombra un relay CON evidencia real en fallan se acepta
+  OK    la hipótesis confirmada se persiste
+  OK    respuesta que nombra un relay concreto en diferido se rechaza (F1, FR-006)
+  OK    no se persiste ninguna hipótesis de la respuesta rechazada
+  OK    el coste real se registra igual, aunque se rechace el contenido
+  OK    detecta un nombre real citado en conclusion_texto
+  OK    no da falso positivo cuando no se nombra ningún relay real
+  OK    sin nombres conocidos (fichero no disponible), nunca lanza ni da falso positivo
+  OK    respuesta de agente bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de agente
+  OK    respuesta de backup bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de backup
+  OK    respuesta bien formada se acepta
+  OK    conclusion_tipo se conserva
+  OK    SC-003: más de una hipótesis registrada
+  OK    tokens reales de la respuesta, no estimados
+  OK    reasoning_content truncado y no-JSON se rechaza igual que antes
+  OK    respuesta de disco bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de disco
+  OK    respuesta de HA bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de HA
+  OK    respuesta de host externo bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de host externo
+  OK    respuesta del hub bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio del hub
+  OK    respuesta de inventario bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de inventario
+  OK    respuesta de latido bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de latido
+  OK    no_diagnosticable sin ninguna confirmada se acepta
+  OK    desenlace fuera del vocabulario se rechaza
+  OK    causa_probable sin hipótesis confirmada viola FR-007 ⇒ se rechaza
+  OK    no_diagnosticable con hipótesis confirmada viola FR-007 ⇒ se rechaza
+  OK    contenido no-JSON se rechaza (None)
+  OK    causa_probable con dos hipótesis confirmada a la vez viola FR-007 ⇒ se rechaza
+  OK    respuesta de relay bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de relay
+  OK    content vacío con reasoning_content válido se recupera, no se descarta
+  OK    la conclusión recuperada es la que llevaba reasoning_content
+test_deliver
+  OK    400 brechas de la misma categoría se resumen, no listan (166 caracteres)
+  OK    el resumen agrupado menciona el conteo total
+test_diff
+  OK    D es componente nuevo
+  OK    C es componente de baja
+  OK    brecha de D es nueva
+  OK    brecha de B ya no aparece como nueva (fue resuelta, no repetida)
+  OK    brecha de B aparece como resuelta
+  OK    las 5 ejecuciones siguen todas — nada se purga (FR-017, Clarification 2)
+test_evaluate
+  OK    sin fecha de revisión no es caducada
+  OK    revisada hace 89 días sigue vigente
+  OK    revisada hace 91 días está caducada
+  OK    exactamente 90 días todavía no caduca (> no >=)
+  OK    telegram vigilado pero sin llegar al dashboard ⇒ tipo normal, no riesgo concentrado
+  OK    telegram sin vigilar de verdad ⇒ sigue siendo riesgo concentrado
+  OK    contenedor: estado_declarado_status tiene valor
+  OK    contenedor: llega_a_dashboard tiene valor
+  OK    contenedor: esta_vigilado es booleano
+  OK    integracion: estado_declarado_status tiene valor
+  OK    integracion: llega_a_dashboard tiene valor
+  OK    integracion: esta_vigilado es booleano
+  OK    entidad_ha: estado_declarado_status tiene valor
+  OK    entidad_ha: llega_a_dashboard tiene valor
+  OK    entidad_ha: esta_vigilado es booleano
+  OK    host_externo: estado_declarado_status tiene valor
+  OK    host_externo: llega_a_dashboard tiene valor
+  OK    host_externo: esta_vigilado es booleano
+  OK    hermes: estado_declarado_status tiene valor
+  OK    hermes: llega_a_dashboard tiene valor
+  OK    hermes: esta_vigilado es booleano
+  OK    telegram: estado_declarado_status tiene valor
+  OK    telegram: llega_a_dashboard tiene valor
+  OK    telegram: esta_vigilado es booleano
+  OK    infra_monitorizacion: estado_declarado_status tiene valor
+  OK    infra_monitorizacion: llega_a_dashboard tiene valor
+  OK    infra_monitorizacion: esta_vigilado es booleano
+  OK    declaración de hace 200 días sale caducada
+  OK    componente recién declarado (sin fecha) cuenta como vigente
+  OK    intencionado nunca es brecha, aunque las tres respuestas fallen
+  OK    las tres respuestas satisfactorias no es brecha
+  OK    fallar solo 'llega al dashboard' ya cuenta como brecha
+  OK    frigate es intencionado
+  OK    otro contenedor no lo es
+  OK    entidad HA deshabilitada es intencionada
+  OK    entidad HA habilitada no lo es
+  OK    sin latido nunca ⇒ no vigilado
+  OK    sin latido ⇒ mecanismo vacío
+  OK    latido reciente ⇒ vigilado
+  OK    latido reciente ⇒ mecanismo informado
+  OK    llega al dashboard desde el panel 'Estado de los monitores' (2026-08-08)
+  OK    latido rancio (>15 min) ⇒ no cuenta como vigilado
+test_evidencia_agente
+  OK    con proceso activo ⇒ status=running
+  OK    sin proceso, exit_code normal ⇒ status=idle
+  OK    sin proceso, exit_code anómalo ⇒ status=error
+  OK    label inexistente devuelve None, sin lanzar
+  OK    componente = label del agente
+  OK    origen = agente
+  OK    es_critico siempre False
+  OK    en_vivo=True siempre (no existe modo diferido)
+  OK    agente_actual poblado con el estado real
+  OK    label inexistente congela igual, con evidencia vacía
+test_evidencia_backup
+  OK    dos congelados del mismo momento producen la misma evidencia
+  OK    cada congelado es un episodio propio
+  OK    un momento dentro de ±12h encuentra el log real
+  OK    un momento fuera de la ventana no lanza, congela con evidencia vacía
+  OK    origen = backup
+  OK    es_critico siempre False para backup
+  OK    en_vivo=True
+  OK    toma el log más reciente (12 de agosto), no el más antiguo
+  OK    campos heredados de contenedor/disco/HA quedan a null
+  OK    componente sigue siendo un momento ISO válido
+  OK    toda la evidencia de backup queda en null, sin lanzar
+  OK    anomalias se acota a 30, no 50
+  OK    el dump fallido aparece en dumps
+  OK    el dump fallido NO se duplica en anomalias
+  OK    el error real de rsync sí aparece en anomalias
+  OK    rsync_estado = error para un backup parcial
+  OK    dumps recoge las 4 líneas de estado OK
+  OK    rsync_stats recoge el bloque de estadísticas, no la lista de ficheros
+  OK    resumen_final capturado
+  OK    rsync_estado = ok para un backup sano
+  OK    sin anomalías en un backup sano
+test_evidencia_contenedor
+  OK    episodio persistido con id
+  OK    contenedor correcto
+  OK    es_critico=False (beszel no está en la lista crítica)
+  OK    en_vivo=False para un episodio histórico
+  OK    snapshot incluye la fila real de restart_history
+  OK    snapshot incluye la ventana de container_metrics
+  OK    snapshot en vivo queda vacío en un episodio histórico
+  OK    restart_history_id inexistente lanza ValueError
+  OK    sin detalle disponible, cae al agregado horario en vez de quedar vacío
+  OK    container_metrics queda vacío cuando se usa el respaldo horario
+  OK    episodio en vivo persistido con id
+  OK    en_vivo=True
+  OK    snapshot histórico queda vacío en un episodio en vivo
+  OK    reutiliza container_metrics ya existentes, no inventa una fuente nueva
+  OK    solo la muestra dentro de la ventana de tolerancia sobrevive, no la de meses después
+  OK    es_critico=True si el contenedor está en la lista crítica al congelar
+test_evidencia_disco
+  OK    componente = label del disco
+  OK    origen = disco
+  OK    en_vivo=False para un episodio histórico de disco
+  OK    la ventana histórica recoge la muestra real dentro de ±30 min
+  OK    dos congelados del mismo LABEL@MOMENTO producen la misma ventana
+  OK    cada congelado es un episodio propio
+  OK    episodio de disco persistido con id
+  OK    componente = label del disco
+  OK    origen = disco
+  OK    es_critico siempre False para un disco
+  OK    en_vivo=True
+  OK    snapshot incluye la evidencia de disco
+  OK    campos heredados de contenedor quedan a null, no ausentes
+test_evidencia_ha
+  OK    congelar_ha_historico bloquea 'bateria_critica_cerradura' (FR-010)
+  OK    congelar_ha_historico bloquea 'bateria_cerradura' (FR-010)
+  OK    congelar_ha_historico bloquea 'cerradura_up' (FR-010)
+  OK    la ventana histórica está centrada en el momento pedido
+  OK    en_vivo=False para un episodio histórico de HA
+  OK    dos congelados del mismo CHECK_ID@MOMENTO producen la misma ventana y evidencia
+  OK    cada congelado es un episodio propio
+  OK    evidencia de estado actual bajo la ventana etiquetada con el momento pedido
+  OK    componente = ha_api
+  OK    evidencia de ha_api son los logs del contenedor homeassistant
+  OK    sin historial ni ficheros de corrupción para este tipo de check
+  OK    congelar_ha_vivo bloquea 'bateria_critica_cerradura' (FR-010)
+  OK    congelar_ha_vivo bloquea 'bateria_cerradura' (FR-010)
+  OK    congelar_ha_vivo bloquea 'cerradura_up' (FR-010)
+  OK    componente = check_id aunque no exista
+  OK    toda la evidencia de HA queda en null, sin lanzar
+  OK    componente = check_id
+  OK    origen = ha
+  OK    es_critico siempre False para HA
+  OK    en_vivo=True
+  OK    snapshot incluye el check resuelto y su historial
+  OK    snapshot incluye el veredicto ya calculado de ha_monitor.check_status()
+  OK    campos de recorder/logs quedan a null para un check de entidad
+  OK    campos heredados de contenedor/disco quedan a null, no ausentes
+  OK    el historial se acota a 50 entradas, no 200
+  OK    se quedan las entradas más recientes, no las más antiguas
+  OK    attributes/entity_id no sobreviven a la simplificación
+  OK    ficheros de corrupción presentes en el snapshot
+  OK    logs del contenedor presentes
+  OK    sin historial de entidad para este tipo de check
+  OK    sin ficheros de corrupción, la lista queda vacía, no null
+test_evidencia_host_externo
+  OK    CET (invierno, UTC+1): 12:00 local = 11:00 UTC
+  OK    CEST (verano, UTC+2): 12:00 local = 10:00 UTC
+  OK    nombre fuera de HOSTS_EXTERNOS no llega a consultar el hub
+  OK    consulta con éxito sin filas ⇒ host_externo_stats con total_muestras=0
+  OK    consulta fallida (None) ⇒ host_externo_stats=None, sin lanzar TypeError
+  OK    nombre inexistente ⇒ host_externo_stats=None
+  OK    componente = NOMBRE solo, nunca incluye el momento (research.md §2)
+  OK    dos congelados del mismo momento producen la misma evidencia
+  OK    cada congelado es un episodio propio
+  OK    componente = nombre del host
+  OK    origen = host_externo
+  OK    es_critico siempre False
+  OK    en_vivo=True
+  OK    host_externo_actual poblado, host_externo_stats queda null
+  OK    host arriba
+  OK    host caído
+  OK    nombre inexistente devuelve None, sin lanzar
+  OK    latido caducado ⇒ sin_evidencia, aunque el dato sea fresco
+  OK    dato caducado ⇒ sin_evidencia, aunque el latido sea fresco
+  OK    latido ausente ⇒ sin_evidencia, sin lanzar
+  OK    recuento, primera y última correctas, por_tipo agregado
+  OK    lista vacía produce el resumen vacío, no None
+test_evidencia_hub_beszel
+  OK    dos congelados del mismo momento producen la misma evidencia
+  OK    cada congelado es un episodio propio
+  OK    consulta con éxito ⇒ hub_beszel_stats con todos_sin_muestras=False (Mac Mini sí tiene)
+  OK    consulta fallida (None) ⇒ hub_beszel_stats=None, sin lanzar TypeError
+  OK    componente = momento pedido, sin identificador
+  OK    origen = hub_beszel
+  OK    es_critico siempre False
+  OK    en_vivo=True
+  OK    hub_beszel_actual poblado, hub_beszel_stats queda null
+  OK    componente es un momento ISO, sin identificador
+  OK    todos caducados a la vez ⇒ sano=False
+  OK    3 sistemas presentes
+  OK    un sistema caducado entre varios frescos ⇒ sano=True (un solo sistema viejo no cuenta)
+  OK    sin ningún sistema registrado ⇒ sano=False, sin lanzar
+  OK    Mac Mini Server con 2 muestras, los otros dos con 0
+  OK    ausencia PARCIAL (Mac Mini sí tiene) ⇒ todos_sin_muestras=False
+  OK    ausencia TOTAL ⇒ todos_sin_muestras=True
+  OK    sin ningún sistema registrado (lista vacía) ⇒ todos_sin_muestras=False, no True
+test_evidencia_inventario
+  OK    brechas_nuevas acotado a 30 entradas, con el total real
+  OK    una lista corta no se trunca de más
+  OK    lista vacía queda vacía, total 0
+  OK    brecha condicion_incumplida se rechaza antes de congelar (FR-010)
+  OK    dos congelados de la misma NOMBRE@EJECUCION_ID producen la misma evidencia
+  OK    cada congelado es un episodio propio
+  OK    componente = NOMBRE solo, nunca incluye la ejecución (research.md §3)
+  OK    ejecución pedida (run3) da comparación anclada a run1, no a run3-1 (run2)
+  OK    EJECUCION_ID inexistente congela igual, con evidencia vacía
+  OK    componente = nombre_actual
+  OK    origen = inventario
+  OK    es_critico siempre False para inventario
+  OK    en_vivo=True
+  OK    congela la ejecución más reciente (run3)
+  OK    hallazgo y brecha reales presentes
+  OK    comparación ancla a primera_ejecucion_id - 1 (run1), no a ejecucion_id - 1 (run2)
+  OK    componente sano: hallazgo presente, sin brecha ni comparación
+  OK    nombre inexistente: todo en null, sin lanzar
+  OK    hallazgo de un componente con brecha se encuentra
+  OK    brecha real trae su tipo
+  OK    componente sano no tiene brecha
+  OK    componente inexistente devuelve None, sin lanzar
+  OK    condicion_incumplida lanza ValueError (FR-010)
+  OK    un tipo en alcance, o ninguna brecha, no lanza
+test_evidencia_latido
+  OK    componente = job pedido
+  OK    origen = latido
+  OK    es_critico siempre False
+  OK    en_vivo=True siempre (no existe modo diferido)
+  OK    latido_actual poblado con el estado real
+  OK    job inexistente congela igual, con evidencia vacía
+  OK    latido reciente y sano ⇒ ok=True
+  OK    latido rancio ⇒ ok=False
+  OK    status=error pero edad fresca ⇒ ok=True igualmente (research.md §3 de 017: ok nunca se combina con status)
+  OK    fichero ausente ⇒ ok=False, age_s=None, detail='sin latido'
+  OK    job inexistente entre los 8 devuelve None, sin lanzar
+test_evidencia_relay
+  OK    agregado se acota a 100, no 180
+  OK    solo las 3 líneas dentro de ±180 min sobreviven (05:00, 08:00, 11:00)
+  OK    cada entrada trae momento/ok/total/fallan
+  OK    líneas sin detalle de nombre traen fallan=[] (histórico anterior al 2026-08-13)
+  OK    la entrada del fallo real refleja 9 de 10
+  OK    las 4 líneas caen dentro de la ventana
+  OK    línea sana ⇒ fallan=[]
+  OK    línea con dos relays caídos ⇒ fallan los nombra a los dos
+  OK    línea con un solo relay caído ⇒ fallan=['HA Shelly']
+  OK    dos congelados del mismo momento producen la misma evidencia agregada
+  OK    cada congelado es un episodio propio
+  OK    sin datos en la ventana, componente = momento pedido, no la hora de congelar
+  OK    origen = relay, relay_nombre queda null en diferido
+  OK    componente = nombre del relay
+  OK    origen = relay
+  OK    es_critico siempre False para relay
+  OK    en_vivo=True
+  OK    relay_estado_actual tiene el detalle real, relay_agregado queda null
+  OK    campos heredados de orígenes anteriores quedan a null
+  OK    componente = nombre pedido aunque no exista
+  OK    relay_estado_actual queda null, sin lanzar
+  OK    listar_nombres_relay recoge los nombres reales
+  OK    une los nombres de todas las entradas, sin duplicados
+  OK    agregado vacío o None ⇒ conjunto vacío, sin lanzar
+  OK    agregado=[] ⇒ conjunto vacío
+  OK    relay existente devuelve su entrada real
+  OK    relay inexistente devuelve None, sin lanzar
+test_gasto
+  OK    coste de 1M+1M tokens es la suma de los precios por millón
+  OK    cero tokens cuesta cero
+  OK    el gasto del día con acumulado se lee tal cual
+  OK    un día nuevo empieza en 0.0, no arrastra el acumulado de ayer
+  OK    gasto ya igual al límite ⇒ no hay presupuesto para una llamada más
+  OK    límite diario en 0.0 bloquea cualquier llamada nueva
+  OK    sin gasto acumulado hoy, hay presupuesto de sobra
+  OK    gasto ya por encima del límite ⇒ no hay presupuesto
+  OK    registrar_coste devuelve el coste real de esa llamada
+  OK    el acumulado del día refleja ese coste
+test_identity
+  OK    mismo identificador estable ⇒ mismo componente, aunque cambie el nombre
+  OK    sin identificador estable, nombre distinto ⇒ no se empareja (baja+alta)
+  OK    sin identificador estable, mismo nombre ⇒ mismo componente
+test_no_mutation
+  OK    docker ps está en la lista blanca y no lanza
+  OK    docker restart algun-contenedor fuera de la lista blanca ⇒ RuntimeError
+  OK    docker rm -f algun-contenedor fuera de la lista blanca ⇒ RuntimeError
+  OK    docker stop algun-contenedor fuera de la lista blanca ⇒ RuntimeError
+  OK    launchctl kickstart -k algo fuera de la lista blanca ⇒ RuntimeError
+  OK    rm -rf / fuera de la lista blanca ⇒ RuntimeError
+  OK    ningún subcomando mutante de docker está en la lista blanca
+test_remediacion_acciones
+  OK    un crítico caído sí se evalúa (FR-009, ya no excluido)
+  OK    crea pendiente, nunca ejecutado directamente (FR-008/FR-010)
+  OK    modo_en_deteccion siempre manual para un crítico
+  OK    nunca se llama a restart_container para un crítico desde comprobar_reiniciar_contenedor
+  OK    frigate (NEVER_RESTART) sigue excluido por completo (FR-007)
+  OK    ni siquiera se reúne evidencia para él
+  OK    fichero ausente de la lista vigilada se ignora, sin lanzar
+  OK    modo automático ejecuta en la misma llamada
+  OK    el intento nace ya ejecutado, nunca pasa por pendiente (FR-007)
+  OK    sin ningún pendiente tras la ejecución automática
+  OK    el fichero se rotó de verdad
+  OK    una rotación automática que sale bien no avisa por Telegram
+  OK    modo automático + fallo real de rotación ⇒ estado fallido
+  OK    el fallo automático dispara exactamente un aviso
+  OK    el aviso lleva el componente que falló
+  OK    un log por encima del umbral crea un intento
+  OK    modo por defecto manual ⇒ queda pendiente
+  OK    el fichero no se toca solo con comprobar
+  OK    la primera comprobación crea 1 intento
+  OK    la segunda no duplica mientras siga pendiente (FR-008)
+  OK    por debajo del umbral, ningún intento nuevo
+  OK    los 3 primeros intentos fallan de verdad
+  OK    el 4º intento no llega a restart_container — cortacircuito
+  OK    restart_container se llamó exactamente 3 veces, nunca una 4ª
+  OK    el cortacircuito avisa por Telegram
+  OK    declarar_correccion_ia devuelve True al escribir
+  OK    se acumulan las dos declaraciones, no se pisan
+  OK    cada una lleva clasificacion=ia
+  OK    conserva el componente y la nota
+  OK    un fallo de escritura no propaga la excepción
+  OK    y devuelve False
+  OK    sin nada escrito después, no hace falta conservar nada
+  OK    el fichero original recupera su contenido íntegro
+  OK    el fichero rotado ya no existe con su nombre de rotado
+  OK    se conserva lo escrito después, en un fichero aparte
+  OK    el contenido posterior sobrevive íntegro
+  OK    el original vuelve a tener el contenido de antes de rotar
+  OK    el fichero rotado conserva el contenido íntegro
+  OK    el fichero original queda vacío, no borrado
+  OK    nunca se trunca el fichero rotado
+  OK    tras una rotación nueva con 4 ya existentes, sigue habiendo como mucho 4
+  OK    crea los directorios intermedios y escribe el fichero
+  OK    generado_en presente
+  OK    modo_rotar_log presente, manual por defecto
+  OK    2 entradas en logs, una por cada LOGS_VIGILADOS
+  OK    health-docker refleja el tamaño real y supera_umbral=True
+  OK    health-ha ausente ⇒ tamano_bytes=0, supera_umbral=False
+  OK    total_activos_bytes suma solo los ficheros activos (11 MB + 0)
+  OK    total_con_rotaciones_bytes suma también la rotación archivada (11 + 5 MB)
+  OK    3 contenedores en el bloque
+  OK    homeassistant: crítico, manual, modo null
+  OK    frigate: never_restart, manual, modo null
+  OK    beszel: no crítico, ia, modo automatico reflejado
+  OK    sin ningún intento vigente, intento_vigente es null para los tres
+  OK    modo manual ⇒ clasificacion=manual en el log
+  OK    modo automático ⇒ clasificacion=automatica en el log
+  OK    un fallo real de escritura no propaga la excepción (contrato garantía 1)
+  OK    intento_vigente no nulo con un pendiente real
+  OK    estado del intento vigente refleja el pendiente
+  OK    las 5 evaluaciones repetidas crean 'pendiente', nunca 'cortacircuito'
+  OK    restart_container nunca se llama para un crítico
+  OK    reinicio ejecutado con éxito ⇒ declara ia exactamente una vez
+  OK    con el componente y razonamiento correctos
+  OK    reinicio fallido ⇒ nunca declara ia (evita atribuir una corrección que no pasó)
+  OK    automático ejecuta directo, nunca pasa por pendiente (FR-008)
+  OK    sin ningún pendiente tras la ejecución automática
+  OK    restart_container se llamó exactamente una vez
+  OK    sin_accion también en modo automático
+  OK    automático nunca reinicia si DeepSeek dice que no aplica
+  OK    nunca reinicia en ningún modo (FR-009)
+  OK    modo_forzado='manual' crea pendiente aunque la tabla diga automático
+  OK    modo_en_deteccion refleja el modo forzado, no el de la tabla
+  OK    nunca se ejecuta un reinicio cuando el modo está forzado a manual
+  OK    17 logs vigilados tras la ampliación
+  OK    sin nombres duplicados
+  OK    sin ficheros duplicados
+intento 999999 no existe
+intento 1 es un reinicio de contenedor — sin operación de deshacer (FR-016 de 021)
+homeassistant es crítico — no admite modo automático
+frigate es NEVER_RESTART — rechazado, sin escribir nada (FR-007 de 022, sin cambios respecto a FR-006 de 021)
+  OK    los dos originales siguen presentes
+  OK    un candidato real de la ampliación está presente
+  OK    ningún nombre de log coincide con un componente crítico (FR-012)
+  OK    todos los umbrales son positivos
+  OK    crear un pendiente nunca llama a restart_container
+  OK    con menos de 4 rotaciones, no se borra ninguna
+  OK    quedan exactamente 4 rotaciones
+  OK    sobreviven las 4 más recientes (03 a 06), se borran las 2 más antiguas (01, 02)
+  OK    aprobar pasa a ejecutado directamente (sin estado 'aprobado')
+  OK    el fichero rotado quedó registrado
+  OK    el original quedó vacío
+  OK    aprobación manual con fallo real también llega a fallido
+  OK    un fallo en modo manual nunca dispara el aviso automático
+  OK    fichero desaparecido entre medias ⇒ fallido, sin lanzar
+  OK    aprobar y ejecutar con éxito declara ia
+  OK    la nota es el razonamiento de DeepSeek, no un texto de Miquel
+  OK    aprobar con fallo real nunca declara ia
+  OK    aprobar pasa a ejecutado cuando restart_container verifica running
+  OK    se llamó a restart_container exactamente una vez
+  OK    restart_container devuelve False ⇒ fallido, nunca ejecutado
+  OK    deshacer pasa a deshecho
+  OK    el contenido original vuelve íntegro
+  OK    deshacer un intento cuyo fichero rotado ya se purgó falla con un mensaje claro, no un OSError crudo
+  OK    rechazar pasa a rechazado
+  OK    el fichero sigue intacto
+  OK    rechazar pasa a rechazado
+  OK    rechazar nunca llama a restart_container
+  OK    aprobar un intento de reinicio ya rechazado se rechaza
+  OK    aprobar un ya rechazado se rechaza
+  OK    rechazar dos veces se rechaza
+  OK    deshacer algo que nunca se ejecutó se rechaza
+  OK    2 sin_evaluar seguidos, todavía sin alcanzar el umbral (3) ⇒ sin aviso
+  OK    al 3er sin_evaluar consecutivo, se dispara el aviso (FR-019)
+  OK    una evaluación real (no sin_evaluar) resetea la racha a 0
+  OK    nunca se llegó a avisar (la racha se rompió antes del umbral)
+test_remediacion_clasificacion
+  OK    crítico en modo automático (si lo hubiera) ⇒ manual
+  OK    crítico en modo manual ⇒ manual
+  OK    crítico sin modo (None) ⇒ manual
+  OK    NEVER_RESTART ⇒ manual, igual que un crítico (FR-007)
+  OK    no crítico en modo manual ⇒ ia (FR-004: el modo no cambia la etiqueta)
+  OK    no crítico en modo automático ⇒ ia
+  OK    modo automático ⇒ automatica (FR-005)
+  OK    modo manual ⇒ manual
+test_remediacion_cli
+  OK    aprobar un id inexistente devuelve código de error, sin lanzar
+intento 1 — health-docker — pendiente — /var/folders/pb/_zlt94cj47bd01v225qnt69r0000gn/T/tmpggh1_7we/health-docker.log — 11534336 bytes, umbral 10485760 bytes
+intento 1 — ejecutado — rotado a /var/folders/pb/_zlt94cj47bd01v225qnt69r0000gn/T/tmpggh1_7we/health-docker.log.rotado-20260815T164544
+intento 1 — deshecho — deshecho
+  OK    cli aprobar termina en 0
+  OK    el fichero se rotó de verdad vía CLI
+  OK    cli deshacer termina en 0
+  OK    el contenido vuelve tras deshacer vía CLI
+intento 1 — test-critico — pendiente — pendiente de aprobación
+  OK    comprobar-contenedores por CLI también evalúa críticos (FR-009)
+  OK    crea exactamente un pendiente para el crítico
+  OK    nunca reinicia solo por evaluarlo desde el CLI
+intento 1 — test-contenedor — pendiente — pendiente de aprobación
+intento 1 — test-contenedor — ejecutado — reiniciado y verificado (aprobado por Miquel)
+  OK    comprobar-contenedores termina en 0
+  OK    crea un intento pendiente para el contenedor caído
+  OK    aprobar (comando genérico) resuelve sobre intentos_reinicio
+  OK    el intento queda ejecutado tras aprobar por CLI
+intento 1 — health-docker — pendiente — /var/folders/pb/_zlt94cj47bd01v225qnt69r0000gn/T/tmpwm9evtoy/health-docker.log — 11534336 bytes, umbral 10485760 bytes
+intento 1 — rotar_log — health-docker — /var/folders/pb/_zlt94cj47bd01v225qnt69r0000gn/T/tmpwm9evtoy/health-docker.log — 11534336 bytes, umbral 10485760 bytes
+  OK    comprobar por CLI nunca toca el snapshot real de producción
+  OK    cli comprobar termina en 0
+  OK    cli pendientes termina en 0
+jellyfin_audio — modo manual
+  OK    contenedores --incluir-criticos termina en 0
+  OK    con el flag, homeassistant aparece con modo null
+  OK    con el flag, jellyfin_audio (no crítico) sigue apareciendo con su modo real
+  OK    sin el flag, sigue funcionando igual que 021
+jellyfin_audio — modo manual
+  OK    contenedores termina en 0
+  OK    deshacer sobre un intento_reinicio se rechaza (FR-016)
+  OK    modo-contenedor --automatico sobre un crítico devuelve error (hallazgo E1)
+  OK    el mensaje es legible, no una traza cruda de Python
+jellyfin_audio → modo automatico
+  OK    modo-contenedor sobre uno no crítico termina en 0
+  OK    el modo cambia de verdad
+homeassistant → modo manual
+  OK    modo-contenedor --manual sobre un crítico termina en 0
+  OK    se persiste como manual, sin efecto real sobre la evaluación
+  OK    modo-contenedor sobre un crítico devuelve error
+  OK    no escribe ninguna fila (FR-006)
+  OK    modo-contenedor sobre frigate (NEVER_RESTART) devuelve error
+historial de rotar_log: sin intentos todavía
+rotar_log → modo automatico
+historial de rotar_log: sin intentos todavía
+rotar_log → modo manual
+rotar_log — modo actual: manual
+sin intentos todavía
+  OK    cli modo --automatico termina en 0
+  OK    modo cambia a automatico de verdad
+  OK    cli modo --manual termina en 0
+  OK    modo vuelve a manual sin ninguna condición previa (FR-003)
+  OK    cli historial termina en 0
+rotar_log — modo manual
+reiniciar_contenedor — modo manual
+historial de rotar_log: sin intentos todavía
+rotar_log → modo automatico
+rotar_log — modo automatico
+reiniciar_contenedor — modo manual
+  OK    cli tipos termina en 0 antes de cualquier modo fijado
+  OK    cli tipos no crea fila en configuracion_accion
+  OK    cli tipos termina en 0 con un modo ya fijado
+  OK    cli tipos refleja rotar_log en automático tras el cambio, y reiniciar_contenedor (021) en manual por defecto
+test_remediacion_deepseek_contenedores
+  OK    el prompt menciona la acción candidata
+  OK    el prompt incluye la evidencia real serializada
+  OK    el prompt no reutiliza el prompt de causa_probable
+  OK    fallo de la llamada ⇒ sin_evaluar, nunca sin_accion
+  OK    sin acción recomendada registrada
+  OK    ninguna acción aplica ⇒ estado sin_accion, nunca reinicia
+  OK    dispara el aviso de US4
+  OK    modo manual ⇒ pendiente, nunca ejecuta solo
+  OK    conserva la recomendación
+  OK    conserva el razonamiento
+  OK    coste registrado
+  OK    episodio_id enlazado
+  OK    sin presupuesto ⇒ sin_evaluar
+  OK    nunca se llega a llamar a DeepSeek sin presupuesto (SC-004)
+  OK    el mock produce la decisión esperada
+  OK    con mock activo, nunca se comprueba presupuesto real
+  OK    con mock activo, nunca se llama a DeepSeek de verdad
+  OK    el intento vía mock no registra coste
+  OK    acepta reiniciar_contenedor
+  OK    conserva el razonamiento
+  OK    conserva los tokens de usage
+  OK    acepta accion_aplica null
+  OK    respuesta sin 'choices' ⇒ None, sin lanzar
+  OK    contenido no-JSON ⇒ None, sin lanzar
+  OK    una acción inventada se rechaza por completo
+  OK    recupera la decisión de reasoning_content
+  OK    mock con acción fuera de la lista cerrada ⇒ None (FR-003)
+  OK    mock con JSON inválido ⇒ None, sin lanzar
+  OK    el mock se lee y valida correctamente
+  OK    sin REMEDIACION_DEEPSEEK_MOCK ⇒ None
+test_remediacion_store
+  OK    id inexistente ⇒ None, sin lanzar
+  OK    contenedor nunca visto ⇒ modo manual por defecto (research.md §7 de 021)
+  OK    tipo de acción nunca visto ⇒ modo manual por defecto (FR-002)
+  OK    2 ejecutados
+  OK    1 rechazado
+  OK    1 fallido
+  OK    tipo de acción sin ningún intento ⇒ historial vacío
+  OK    el nuevo intento de reinicio no colisiona con los 2 ya existentes
+  OK    localizar_intento lo encuentra en la tabla correcta
+  OK    un rotar_log nuevo tampoco colisiona con reinicios ya existentes
+  OK    init_db() dos veces no lanza
+  OK    insert_intento devuelve un id
+  OK    get_intento recupera el mismo componente
+  OK    estado inicial = pendiente
+  OK    un ejecutado fuera de la ventana ya no es vigente
+  OK    un ejecutado justo ahora sigue vigente
+  OK    un intento pendiente siempre es vigente
+  OK    con un pendiente real, ese es el vigente, no el rechazado previo
+  OK    sin ningún intento, vigente es None
+  OK    listar_modos() sigue el orden de tipos_conocidos, no el alfabético de la tabla
+  OK    refleja el modo real de cada uno
+  OK    no crea fila para el que nunca se tocó
+  OK    listar_modos() refleja un modo ya cambiado
+  OK    tipo nunca visto ⇒ manual en el listado
+  OK    listar_modos() no crea fila (a diferencia de get_modo)
+  OK    solo los 2 pendientes reales, no el rechazado
+  OK    el rechazado no aparece
+  OK    un id de rotar_log se localiza en 'remediacion'
+  OK    un id inexistente en ninguna tabla ⇒ None
+  OK    un id de reinicio se localiza en 'reinicio'
+  OK    sin ningún intento, no hay pendiente
+  OK    con un pendiente real, pendiente_existente=True (FR-008)
+  OK    otro componente distinto, no hay pendiente
+  OK    set_modo() persiste entre conexiones
+  OK    set_modo() vuelve a manual sin problema
+  OK    manual sobre un crítico se acepta sin error
+  OK    el contenedor cambiado queda en automático
+  OK    un contenedor distinto no se ve afectado (Acceptance Scenario 2 de US5)
+  OK    un contenedor no crítico sigue admitiendo automático (021, sin cambios)
+  OK    automático sobre un crítico lanza ValueError (FR-008)
+  OK    no persiste ninguna fila
+  OK    sin ningún intento, la racha es 0
+  OK    2 sin_evaluar seguidos ⇒ racha 2
+  OK    un intento resuelto rompe la racha
+  OK    estado actualizado
+  OK    fichero_rotado registrado
+  OK    resuelto_en poblado
+test_reproducibilidad
+  OK    SC-001: mismo conclusion_tipo en los dos intentos
+  OK    los dos intentos son diagnósticos distintos, ninguno pisa al otro (Principio VIII)
+  OK    SC-001: mismo número de hipótesis en los dos intentos
+  OK    SC-001: mismo desenlace por hipótesis y en el mismo orden
+test_store
+  OK    init_db() dos veces no lanza
+  OK    un diagnóstico persistido para el episodio
+  OK    dos hipótesis persistidas, en orden
+  OK    los desenlaces se conservan tal cual
+  OK    insert_episodio devuelve un id
+  OK    get_episodio recupera el mismo contenedor
+  OK    snapshot_evidencia se conserva como dict de ida y vuelta (JSON)
+  OK    get_episodio de un id inexistente devuelve None
+  OK    el episodio ya escrito por 007 se lee tras migrar, mismo componente
+  OK    origen por defecto = contenedor tras migrar
+  OK    conectar dos veces tras la migración no falla ni duplica
+  OK    el coste se acumula (0.5 + 0.3)
+  OK    el límite queda fijado
+  OK    dos intentos de diagnóstico coexisten para el mismo episodio
+  OK    ambos con id distinto
+
+Todo OK
+=== remediacion.cli --selftest ===
+test_baseline_beszel
+  OK    los tres episodios reales sin evidencia concluyen no_diagnosticable (FR-011/SC-002)
+test_deepseek
+  OK    prompt generalizado menciona LaunchAgent
+  OK    episodio de agente no lleva la cláusula de contenedor crítico
+  OK    prompt de episodio de backup no lleva la cláusula de contenedor crítico
+  OK    prompt generalizado menciona backup
+  OK    prompt de episodio de disco no lleva la cláusula de contenedor crítico
+  OK    prompt de episodio de HA con check_status incluye la cláusula de estado
+  OK    sin ha_check_status resuelto (check inexistente), no se incluye la cláusula
+  OK    un episodio de contenedor (sin ha_check_status) no lleva la cláusula de HA
+  OK    prompt de episodio de HA no lleva la cláusula de contenedor crítico
+  OK    prompt generalizado menciona Home Assistant
+  OK    la evidencia de HA del snapshot llega al prompt
+  OK    prompt generalizado menciona host externo
+  OK    episodio en vivo (host_externo_actual) no lleva la cláusula FR-006a
+  OK    episodio en diferido (host_externo_stats) sí lleva la cláusula FR-006a
+  OK    episodio de host externo no lleva la cláusula de crítico
+  OK    prompt generalizado menciona el hub de Beszel
+  OK    episodio en vivo (hub_beszel_actual) no lleva la cláusula FR-006a propia
+  OK    episodio en diferido (hub_beszel_stats) sí lleva la cláusula FR-006a propia
+  OK    episodio del hub no lleva la cláusula de crítico
+  OK    prompt de contenedor crítico incluye la cláusula de no proponer acciones
+  OK    prompt de contenedor no crítico no lleva esa cláusula
+  OK    prompt generalizado menciona inventario
+  OK    episodio de inventario no lleva la cláusula de contenedor crítico
+  OK    episodio de inventario no lleva la cláusula de relay agregado
+  OK    con latido_actual presente, la cláusula se incluye
+  OK    un episodio de agente (sin latido_actual) no lleva la cláusula de latido
+  OK    prompt generalizado menciona latido
+  OK    episodio de latido no lleva la cláusula de contenedor crítico
+  OK    prompt generalizado menciona relay
+  OK    episodio en vivo (relay_estado_actual) no lleva la cláusula de agregado
+  OK    episodio en diferido (relay_agregado) sí lleva la cláusula de agregado
+  OK    episodio de backup/HA no lleva la cláusula de crítico
+  OK    episodio de host externo se acepta normalmente, sin rechazo cruzado de otro origen
+  OK    hipótesis persistida
+  OK    episodio del hub se acepta normalmente, sin rechazo cruzado de otro origen
+  OK    hipótesis persistida
+  OK    episodio de inventario se acepta normalmente, sin rechazo cruzado de otro origen
+  OK    hipótesis persistida
+  OK    respuesta que nombra un relay CON evidencia real en fallan se acepta
+  OK    la hipótesis confirmada se persiste
+  OK    respuesta que nombra un relay concreto en diferido se rechaza (F1, FR-006)
+  OK    no se persiste ninguna hipótesis de la respuesta rechazada
+  OK    el coste real se registra igual, aunque se rechace el contenido
+  OK    detecta un nombre real citado en conclusion_texto
+  OK    no da falso positivo cuando no se nombra ningún relay real
+  OK    sin nombres conocidos (fichero no disponible), nunca lanza ni da falso positivo
+  OK    respuesta de agente bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de agente
+  OK    respuesta de backup bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de backup
+  OK    respuesta bien formada se acepta
+  OK    conclusion_tipo se conserva
+  OK    SC-003: más de una hipótesis registrada
+  OK    tokens reales de la respuesta, no estimados
+  OK    reasoning_content truncado y no-JSON se rechaza igual que antes
+  OK    respuesta de disco bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de disco
+  OK    respuesta de HA bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de HA
+  OK    respuesta de host externo bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de host externo
+  OK    respuesta del hub bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio del hub
+  OK    respuesta de inventario bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de inventario
+  OK    respuesta de latido bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de latido
+  OK    no_diagnosticable sin ninguna confirmada se acepta
+  OK    desenlace fuera del vocabulario se rechaza
+  OK    causa_probable sin hipótesis confirmada viola FR-007 ⇒ se rechaza
+  OK    no_diagnosticable con hipótesis confirmada viola FR-007 ⇒ se rechaza
+  OK    contenido no-JSON se rechaza (None)
+  OK    causa_probable con dos hipótesis confirmada a la vez viola FR-007 ⇒ se rechaza
+  OK    respuesta de relay bien formada se acepta
+  OK    SC-002: más de una hipótesis registrada para un episodio de relay
+  OK    content vacío con reasoning_content válido se recupera, no se descarta
+  OK    la conclusión recuperada es la que llevaba reasoning_content
+test_deliver
+  OK    400 brechas de la misma categoría se resumen, no listan (166 caracteres)
+  OK    el resumen agrupado menciona el conteo total
+test_diff
+  OK    D es componente nuevo
+  OK    C es componente de baja
+  OK    brecha de D es nueva
+  OK    brecha de B ya no aparece como nueva (fue resuelta, no repetida)
+  OK    brecha de B aparece como resuelta
+  OK    las 5 ejecuciones siguen todas — nada se purga (FR-017, Clarification 2)
+test_evaluate
+  OK    sin fecha de revisión no es caducada
+  OK    revisada hace 89 días sigue vigente
+  OK    revisada hace 91 días está caducada
+  OK    exactamente 90 días todavía no caduca (> no >=)
+  OK    telegram vigilado pero sin llegar al dashboard ⇒ tipo normal, no riesgo concentrado
+  OK    telegram sin vigilar de verdad ⇒ sigue siendo riesgo concentrado
+  OK    contenedor: estado_declarado_status tiene valor
+  OK    contenedor: llega_a_dashboard tiene valor
+  OK    contenedor: esta_vigilado es booleano
+  OK    integracion: estado_declarado_status tiene valor
+  OK    integracion: llega_a_dashboard tiene valor
+  OK    integracion: esta_vigilado es booleano
+  OK    entidad_ha: estado_declarado_status tiene valor
+  OK    entidad_ha: llega_a_dashboard tiene valor
+  OK    entidad_ha: esta_vigilado es booleano
+  OK    host_externo: estado_declarado_status tiene valor
+  OK    host_externo: llega_a_dashboard tiene valor
+  OK    host_externo: esta_vigilado es booleano
+  OK    hermes: estado_declarado_status tiene valor
+  OK    hermes: llega_a_dashboard tiene valor
+  OK    hermes: esta_vigilado es booleano
+  OK    telegram: estado_declarado_status tiene valor
+  OK    telegram: llega_a_dashboard tiene valor
+  OK    telegram: esta_vigilado es booleano
+  OK    infra_monitorizacion: estado_declarado_status tiene valor
+  OK    infra_monitorizacion: llega_a_dashboard tiene valor
+  OK    infra_monitorizacion: esta_vigilado es booleano
+  OK    declaración de hace 200 días sale caducada
+  OK    componente recién declarado (sin fecha) cuenta como vigente
+  OK    intencionado nunca es brecha, aunque las tres respuestas fallen
+  OK    las tres respuestas satisfactorias no es brecha
+  OK    fallar solo 'llega al dashboard' ya cuenta como brecha
+  OK    frigate es intencionado
+  OK    otro contenedor no lo es
+  OK    entidad HA deshabilitada es intencionada
+  OK    entidad HA habilitada no lo es
+  OK    sin latido nunca ⇒ no vigilado
+  OK    sin latido ⇒ mecanismo vacío
+  OK    latido reciente ⇒ vigilado
+  OK    latido reciente ⇒ mecanismo informado
+  OK    llega al dashboard desde el panel 'Estado de los monitores' (2026-08-08)
+  OK    latido rancio (>15 min) ⇒ no cuenta como vigilado
+test_evidencia_agente
+  OK    con proceso activo ⇒ status=running
+  OK    sin proceso, exit_code normal ⇒ status=idle
+  OK    sin proceso, exit_code anómalo ⇒ status=error
+  OK    label inexistente devuelve None, sin lanzar
+  OK    componente = label del agente
+  OK    origen = agente
+  OK    es_critico siempre False
+  OK    en_vivo=True siempre (no existe modo diferido)
+  OK    agente_actual poblado con el estado real
+  OK    label inexistente congela igual, con evidencia vacía
+test_evidencia_backup
+  OK    dos congelados del mismo momento producen la misma evidencia
+  OK    cada congelado es un episodio propio
+  OK    un momento dentro de ±12h encuentra el log real
+  OK    un momento fuera de la ventana no lanza, congela con evidencia vacía
+  OK    origen = backup
+  OK    es_critico siempre False para backup
+  OK    en_vivo=True
+  OK    toma el log más reciente (12 de agosto), no el más antiguo
+  OK    campos heredados de contenedor/disco/HA quedan a null
+  OK    componente sigue siendo un momento ISO válido
+  OK    toda la evidencia de backup queda en null, sin lanzar
+  OK    anomalias se acota a 30, no 50
+  OK    el dump fallido aparece en dumps
+  OK    el dump fallido NO se duplica en anomalias
+  OK    el error real de rsync sí aparece en anomalias
+  OK    rsync_estado = error para un backup parcial
+  OK    dumps recoge las 4 líneas de estado OK
+  OK    rsync_stats recoge el bloque de estadísticas, no la lista de ficheros
+  OK    resumen_final capturado
+  OK    rsync_estado = ok para un backup sano
+  OK    sin anomalías en un backup sano
+test_evidencia_contenedor
+  OK    episodio persistido con id
+  OK    contenedor correcto
+  OK    es_critico=False (beszel no está en la lista crítica)
+  OK    en_vivo=False para un episodio histórico
+  OK    snapshot incluye la fila real de restart_history
+  OK    snapshot incluye la ventana de container_metrics
+  OK    snapshot en vivo queda vacío en un episodio histórico
+  OK    restart_history_id inexistente lanza ValueError
+  OK    sin detalle disponible, cae al agregado horario en vez de quedar vacío
+  OK    container_metrics queda vacío cuando se usa el respaldo horario
+  OK    episodio en vivo persistido con id
+  OK    en_vivo=True
+  OK    snapshot histórico queda vacío en un episodio en vivo
+  OK    reutiliza container_metrics ya existentes, no inventa una fuente nueva
+  OK    solo la muestra dentro de la ventana de tolerancia sobrevive, no la de meses después
+  OK    es_critico=True si el contenedor está en la lista crítica al congelar
+test_evidencia_disco
+  OK    componente = label del disco
+  OK    origen = disco
+  OK    en_vivo=False para un episodio histórico de disco
+  OK    la ventana histórica recoge la muestra real dentro de ±30 min
+  OK    dos congelados del mismo LABEL@MOMENTO producen la misma ventana
+  OK    cada congelado es un episodio propio
+  OK    episodio de disco persistido con id
+  OK    componente = label del disco
+  OK    origen = disco
+  OK    es_critico siempre False para un disco
+  OK    en_vivo=True
+  OK    snapshot incluye la evidencia de disco
+  OK    campos heredados de contenedor quedan a null, no ausentes
+test_evidencia_ha
+  OK    congelar_ha_historico bloquea 'cerradura_up' (FR-010)
+  OK    congelar_ha_historico bloquea 'bateria_critica_cerradura' (FR-010)
+  OK    congelar_ha_historico bloquea 'bateria_cerradura' (FR-010)
+  OK    la ventana histórica está centrada en el momento pedido
+  OK    en_vivo=False para un episodio histórico de HA
+  OK    dos congelados del mismo CHECK_ID@MOMENTO producen la misma ventana y evidencia
+  OK    cada congelado es un episodio propio
+  OK    evidencia de estado actual bajo la ventana etiquetada con el momento pedido
+  OK    componente = ha_api
+  OK    evidencia de ha_api son los logs del contenedor homeassistant
+  OK    sin historial ni ficheros de corrupción para este tipo de check
+  OK    congelar_ha_vivo bloquea 'cerradura_up' (FR-010)
+  OK    congelar_ha_vivo bloquea 'bateria_critica_cerradura' (FR-010)
+  OK    congelar_ha_vivo bloquea 'bateria_cerradura' (FR-010)
+  OK    componente = check_id aunque no exista
+  OK    toda la evidencia de HA queda en null, sin lanzar
+  OK    componente = check_id
+  OK    origen = ha
+  OK    es_critico siempre False para HA
+  OK    en_vivo=True
+  OK    snapshot incluye el check resuelto y su historial
+  OK    snapshot incluye el veredicto ya calculado de ha_monitor.check_status()
+  OK    campos de recorder/logs quedan a null para un check de entidad
+  OK    campos heredados de contenedor/disco quedan a null, no ausentes
+  OK    el historial se acota a 50 entradas, no 200
+  OK    se quedan las entradas más recientes, no las más antiguas
+  OK    attributes/entity_id no sobreviven a la simplificación
+  OK    ficheros de corrupción presentes en el snapshot
+  OK    logs del contenedor presentes
+  OK    sin historial de entidad para este tipo de check
+  OK    sin ficheros de corrupción, la lista queda vacía, no null
+test_evidencia_host_externo
+  OK    CET (invierno, UTC+1): 12:00 local = 11:00 UTC
+  OK    CEST (verano, UTC+2): 12:00 local = 10:00 UTC
+  OK    nombre fuera de HOSTS_EXTERNOS no llega a consultar el hub
+  OK    consulta con éxito sin filas ⇒ host_externo_stats con total_muestras=0
+  OK    consulta fallida (None) ⇒ host_externo_stats=None, sin lanzar TypeError
+  OK    nombre inexistente ⇒ host_externo_stats=None
+  OK    componente = NOMBRE solo, nunca incluye el momento (research.md §2)
+  OK    dos congelados del mismo momento producen la misma evidencia
+  OK    cada congelado es un episodio propio
+  OK    componente = nombre del host
+  OK    origen = host_externo
+  OK    es_critico siempre False
+  OK    en_vivo=True
+  OK    host_externo_actual poblado, host_externo_stats queda null
+  OK    host arriba
+  OK    host caído
+  OK    nombre inexistente devuelve None, sin lanzar
+  OK    latido caducado ⇒ sin_evidencia, aunque el dato sea fresco
+  OK    dato caducado ⇒ sin_evidencia, aunque el latido sea fresco
+  OK    latido ausente ⇒ sin_evidencia, sin lanzar
+  OK    recuento, primera y última correctas, por_tipo agregado
+  OK    lista vacía produce el resumen vacío, no None
+test_evidencia_hub_beszel
+  OK    dos congelados del mismo momento producen la misma evidencia
+  OK    cada congelado es un episodio propio
+  OK    consulta con éxito ⇒ hub_beszel_stats con todos_sin_muestras=False (Mac Mini sí tiene)
+  OK    consulta fallida (None) ⇒ hub_beszel_stats=None, sin lanzar TypeError
+  OK    componente = momento pedido, sin identificador
+  OK    origen = hub_beszel
+  OK    es_critico siempre False
+  OK    en_vivo=True
+  OK    hub_beszel_actual poblado, hub_beszel_stats queda null
+  OK    componente es un momento ISO, sin identificador
+  OK    todos caducados a la vez ⇒ sano=False
+  OK    3 sistemas presentes
+  OK    un sistema caducado entre varios frescos ⇒ sano=True (un solo sistema viejo no cuenta)
+  OK    sin ningún sistema registrado ⇒ sano=False, sin lanzar
+  OK    Mac Mini Server con 2 muestras, los otros dos con 0
+  OK    ausencia PARCIAL (Mac Mini sí tiene) ⇒ todos_sin_muestras=False
+  OK    ausencia TOTAL ⇒ todos_sin_muestras=True
+  OK    sin ningún sistema registrado (lista vacía) ⇒ todos_sin_muestras=False, no True
+test_evidencia_inventario
+  OK    brechas_nuevas acotado a 30 entradas, con el total real
+  OK    una lista corta no se trunca de más
+  OK    lista vacía queda vacía, total 0
+  OK    brecha condicion_incumplida se rechaza antes de congelar (FR-010)
+  OK    dos congelados de la misma NOMBRE@EJECUCION_ID producen la misma evidencia
+  OK    cada congelado es un episodio propio
+  OK    componente = NOMBRE solo, nunca incluye la ejecución (research.md §3)
+  OK    ejecución pedida (run3) da comparación anclada a run1, no a run3-1 (run2)
+  OK    EJECUCION_ID inexistente congela igual, con evidencia vacía
+  OK    componente = nombre_actual
+  OK    origen = inventario
+  OK    es_critico siempre False para inventario
+  OK    en_vivo=True
+  OK    congela la ejecución más reciente (run3)
+  OK    hallazgo y brecha reales presentes
+  OK    comparación ancla a primera_ejecucion_id - 1 (run1), no a ejecucion_id - 1 (run2)
+  OK    componente sano: hallazgo presente, sin brecha ni comparación
+  OK    nombre inexistente: todo en null, sin lanzar
+  OK    hallazgo de un componente con brecha se encuentra
+  OK    brecha real trae su tipo
+  OK    componente sano no tiene brecha
+  OK    componente inexistente devuelve None, sin lanzar
+  OK    condicion_incumplida lanza ValueError (FR-010)
+  OK    un tipo en alcance, o ninguna brecha, no lanza
+test_evidencia_latido
+  OK    componente = job pedido
+  OK    origen = latido
+  OK    es_critico siempre False
+  OK    en_vivo=True siempre (no existe modo diferido)
+  OK    latido_actual poblado con el estado real
+  OK    job inexistente congela igual, con evidencia vacía
+  OK    latido reciente y sano ⇒ ok=True
+  OK    latido rancio ⇒ ok=False
+  OK    status=error pero edad fresca ⇒ ok=True igualmente (research.md §3 de 017: ok nunca se combina con status)
+  OK    fichero ausente ⇒ ok=False, age_s=None, detail='sin latido'
+  OK    job inexistente entre los 8 devuelve None, sin lanzar
+test_evidencia_relay
+  OK    agregado se acota a 100, no 180
+  OK    solo las 3 líneas dentro de ±180 min sobreviven (05:00, 08:00, 11:00)
+  OK    cada entrada trae momento/ok/total/fallan
+  OK    líneas sin detalle de nombre traen fallan=[] (histórico anterior al 2026-08-13)
+  OK    la entrada del fallo real refleja 9 de 10
+  OK    las 4 líneas caen dentro de la ventana
+  OK    línea sana ⇒ fallan=[]
+  OK    línea con dos relays caídos ⇒ fallan los nombra a los dos
+  OK    línea con un solo relay caído ⇒ fallan=['HA Shelly']
+  OK    dos congelados del mismo momento producen la misma evidencia agregada
+  OK    cada congelado es un episodio propio
+  OK    sin datos en la ventana, componente = momento pedido, no la hora de congelar
+  OK    origen = relay, relay_nombre queda null en diferido
+  OK    componente = nombre del relay
+  OK    origen = relay
+  OK    es_critico siempre False para relay
+  OK    en_vivo=True
+  OK    relay_estado_actual tiene el detalle real, relay_agregado queda null
+  OK    campos heredados de orígenes anteriores quedan a null
+  OK    componente = nombre pedido aunque no exista
+  OK    relay_estado_actual queda null, sin lanzar
+  OK    listar_nombres_relay recoge los nombres reales
+  OK    une los nombres de todas las entradas, sin duplicados
+  OK    agregado vacío o None ⇒ conjunto vacío, sin lanzar
+  OK    agregado=[] ⇒ conjunto vacío
+  OK    relay existente devuelve su entrada real
+  OK    relay inexistente devuelve None, sin lanzar
+test_gasto
+  OK    coste de 1M+1M tokens es la suma de los precios por millón
+  OK    cero tokens cuesta cero
+  OK    el gasto del día con acumulado se lee tal cual
+  OK    un día nuevo empieza en 0.0, no arrastra el acumulado de ayer
+  OK    gasto ya igual al límite ⇒ no hay presupuesto para una llamada más
+  OK    límite diario en 0.0 bloquea cualquier llamada nueva
+  OK    sin gasto acumulado hoy, hay presupuesto de sobra
+  OK    gasto ya por encima del límite ⇒ no hay presupuesto
+  OK    registrar_coste devuelve el coste real de esa llamada
+  OK    el acumulado del día refleja ese coste
+test_identity
+  OK    mismo identificador estable ⇒ mismo componente, aunque cambie el nombre
+  OK    sin identificador estable, nombre distinto ⇒ no se empareja (baja+alta)
+  OK    sin identificador estable, mismo nombre ⇒ mismo componente
+test_no_mutation
+  OK    docker ps está en la lista blanca y no lanza
+  OK    docker restart algun-contenedor fuera de la lista blanca ⇒ RuntimeError
+  OK    docker rm -f algun-contenedor fuera de la lista blanca ⇒ RuntimeError
+  OK    docker stop algun-contenedor fuera de la lista blanca ⇒ RuntimeError
+  OK    launchctl kickstart -k algo fuera de la lista blanca ⇒ RuntimeError
+  OK    rm -rf / fuera de la lista blanca ⇒ RuntimeError
+  OK    ningún subcomando mutante de docker está en la lista blanca
+test_remediacion_acciones
+  OK    un crítico caído sí se evalúa (FR-009, ya no excluido)
+  OK    crea pendiente, nunca ejecutado directamente (FR-008/FR-010)
+  OK    modo_en_deteccion siempre manual para un crítico
+  OK    nunca se llama a restart_container para un crítico desde comprobar_reiniciar_contenedor
+  OK    frigate (NEVER_RESTART) sigue excluido por completo (FR-007)
+  OK    ni siquiera se reúne evidencia para él
+  OK    fichero ausente de la lista vigilada se ignora, sin lanzar
+  OK    modo automático ejecuta en la misma llamada
+  OK    el intento nace ya ejecutado, nunca pasa por pendiente (FR-007)
+  OK    sin ningún pendiente tras la ejecución automática
+  OK    el fichero se rotó de verdad
+  OK    una rotación automática que sale bien no avisa por Telegram
+  OK    modo automático + fallo real de rotación ⇒ estado fallido
+  OK    el fallo automático dispara exactamente un aviso
+  OK    el aviso lleva el componente que falló
+  OK    un log por encima del umbral crea un intento
+  OK    modo por defecto manual ⇒ queda pendiente
+  OK    el fichero no se toca solo con comprobar
+  OK    la primera comprobación crea 1 intento
+  OK    la segunda no duplica mientras siga pendiente (FR-008)
+  OK    por debajo del umbral, ningún intento nuevo
+  OK    los 3 primeros intentos fallan de verdad
+  OK    el 4º intento no llega a restart_container — cortacircuito
+  OK    restart_container se llamó exactamente 3 veces, nunca una 4ª
+  OK    el cortacircuito avisa por Telegram
+  OK    declarar_correccion_ia devuelve True al escribir
+  OK    se acumulan las dos declaraciones, no se pisan
+  OK    cada una lleva clasificacion=ia
+  OK    conserva el componente y la nota
+  OK    un fallo de escritura no propaga la excepción
+  OK    y devuelve False
+  OK    sin nada escrito después, no hace falta conservar nada
+  OK    el fichero original recupera su contenido íntegro
+  OK    el fichero rotado ya no existe con su nombre de rotado
+  OK    se conserva lo escrito después, en un fichero aparte
+  OK    el contenido posterior sobrevive íntegro
+  OK    el original vuelve a tener el contenido de antes de rotar
+  OK    el fichero rotado conserva el contenido íntegro
+  OK    el fichero original queda vacío, no borrado
+  OK    nunca se trunca el fichero rotado
+  OK    tras una rotación nueva con 4 ya existentes, sigue habiendo como mucho 4
+  OK    crea los directorios intermedios y escribe el fichero
+  OK    generado_en presente
+  OK    modo_rotar_log presente, manual por defecto
+  OK    2 entradas en logs, una por cada LOGS_VIGILADOS
+  OK    health-docker refleja el tamaño real y supera_umbral=True
+  OK    health-ha ausente ⇒ tamano_bytes=0, supera_umbral=False
+  OK    total_activos_bytes suma solo los ficheros activos (11 MB + 0)
+  OK    total_con_rotaciones_bytes suma también la rotación archivada (11 + 5 MB)
+  OK    3 contenedores en el bloque
+  OK    homeassistant: crítico, manual, modo null
+  OK    frigate: never_restart, manual, modo null
+  OK    beszel: no crítico, ia, modo automatico reflejado
+  OK    sin ningún intento vigente, intento_vigente es null para los tres
+  OK    modo manual ⇒ clasificacion=manual en el log
+  OK    modo automático ⇒ clasificacion=automatica en el log
+  OK    un fallo real de escritura no propaga la excepción (contrato garantía 1)
+  OK    intento_vigente no nulo con un pendiente real
+  OK    estado del intento vigente refleja el pendiente
+  OK    las 5 evaluaciones repetidas crean 'pendiente', nunca 'cortacircuito'
+  OK    restart_container nunca se llama para un crítico
+  OK    reinicio ejecutado con éxito ⇒ declara ia exactamente una vez
+  OK    con el componente y razonamiento correctos
+  OK    reinicio fallido ⇒ nunca declara ia (evita atribuir una corrección que no pasó)
+  OK    automático ejecuta directo, nunca pasa por pendiente (FR-008)
+  OK    sin ningún pendiente tras la ejecución automática
+  OK    restart_container se llamó exactamente una vez
+  OK    sin_accion también en modo automático
+  OK    automático nunca reinicia si DeepSeek dice que no aplica
+  OK    nunca reinicia en ningún modo (FR-009)
+  OK    modo_forzado='manual' crea pendiente aunque la tabla diga automático
+  OK    modo_en_deteccion refleja el modo forzado, no el de la tabla
+  OK    nunca se ejecuta un reinicio cuando el modo está forzado a manual
+  OK    17 logs vigilados tras la ampliación
+  OK    sin nombres duplicados
+  OK    sin ficheros duplicados
+intento 999999 no existe
+intento 1 es un reinicio de contenedor — sin operación de deshacer (FR-016 de 021)
+homeassistant es crítico — no admite modo automático
+frigate es NEVER_RESTART — rechazado, sin escribir nada (FR-007 de 022, sin cambios respecto a FR-006 de 021)
+  OK    los dos originales siguen presentes
+  OK    un candidato real de la ampliación está presente
+  OK    ningún nombre de log coincide con un componente crítico (FR-012)
+  OK    todos los umbrales son positivos
+  OK    crear un pendiente nunca llama a restart_container
+  OK    con menos de 4 rotaciones, no se borra ninguna
+  OK    quedan exactamente 4 rotaciones
+  OK    sobreviven las 4 más recientes (03 a 06), se borran las 2 más antiguas (01, 02)
+  OK    aprobar pasa a ejecutado directamente (sin estado 'aprobado')
+  OK    el fichero rotado quedó registrado
+  OK    el original quedó vacío
+  OK    aprobación manual con fallo real también llega a fallido
+  OK    un fallo en modo manual nunca dispara el aviso automático
+  OK    fichero desaparecido entre medias ⇒ fallido, sin lanzar
+  OK    aprobar y ejecutar con éxito declara ia
+  OK    la nota es el razonamiento de DeepSeek, no un texto de Miquel
+  OK    aprobar con fallo real nunca declara ia
+  OK    aprobar pasa a ejecutado cuando restart_container verifica running
+  OK    se llamó a restart_container exactamente una vez
+  OK    restart_container devuelve False ⇒ fallido, nunca ejecutado
+  OK    deshacer pasa a deshecho
+  OK    el contenido original vuelve íntegro
+  OK    deshacer un intento cuyo fichero rotado ya se purgó falla con un mensaje claro, no un OSError crudo
+  OK    rechazar pasa a rechazado
+  OK    el fichero sigue intacto
+  OK    rechazar pasa a rechazado
+  OK    rechazar nunca llama a restart_container
+  OK    aprobar un intento de reinicio ya rechazado se rechaza
+  OK    aprobar un ya rechazado se rechaza
+  OK    rechazar dos veces se rechaza
+  OK    deshacer algo que nunca se ejecutó se rechaza
+  OK    2 sin_evaluar seguidos, todavía sin alcanzar el umbral (3) ⇒ sin aviso
+  OK    al 3er sin_evaluar consecutivo, se dispara el aviso (FR-019)
+  OK    una evaluación real (no sin_evaluar) resetea la racha a 0
+  OK    nunca se llegó a avisar (la racha se rompió antes del umbral)
+test_remediacion_clasificacion
+  OK    crítico en modo automático (si lo hubiera) ⇒ manual
+  OK    crítico en modo manual ⇒ manual
+  OK    crítico sin modo (None) ⇒ manual
+  OK    NEVER_RESTART ⇒ manual, igual que un crítico (FR-007)
+  OK    no crítico en modo manual ⇒ ia (FR-004: el modo no cambia la etiqueta)
+  OK    no crítico en modo automático ⇒ ia
+  OK    modo automático ⇒ automatica (FR-005)
+  OK    modo manual ⇒ manual
+test_remediacion_cli
+  OK    aprobar un id inexistente devuelve código de error, sin lanzar
+intento 1 — health-docker — pendiente — /var/folders/pb/_zlt94cj47bd01v225qnt69r0000gn/T/tmptajcblqd/health-docker.log — 11534336 bytes, umbral 10485760 bytes
+intento 1 — ejecutado — rotado a /var/folders/pb/_zlt94cj47bd01v225qnt69r0000gn/T/tmptajcblqd/health-docker.log.rotado-20260815T164544
+intento 1 — deshecho — deshecho
+  OK    cli aprobar termina en 0
+  OK    el fichero se rotó de verdad vía CLI
+  OK    cli deshacer termina en 0
+  OK    el contenido vuelve tras deshacer vía CLI
+intento 1 — test-critico — pendiente — pendiente de aprobación
+  OK    comprobar-contenedores por CLI también evalúa críticos (FR-009)
+  OK    crea exactamente un pendiente para el crítico
+  OK    nunca reinicia solo por evaluarlo desde el CLI
+intento 1 — test-contenedor — pendiente — pendiente de aprobación
+intento 1 — test-contenedor — ejecutado — reiniciado y verificado (aprobado por Miquel)
+  OK    comprobar-contenedores termina en 0
+  OK    crea un intento pendiente para el contenedor caído
+  OK    aprobar (comando genérico) resuelve sobre intentos_reinicio
+  OK    el intento queda ejecutado tras aprobar por CLI
+intento 1 — health-docker — pendiente — /var/folders/pb/_zlt94cj47bd01v225qnt69r0000gn/T/tmpg5o1e5ov/health-docker.log — 11534336 bytes, umbral 10485760 bytes
+intento 1 — rotar_log — health-docker — /var/folders/pb/_zlt94cj47bd01v225qnt69r0000gn/T/tmpg5o1e5ov/health-docker.log — 11534336 bytes, umbral 10485760 bytes
+  OK    comprobar por CLI nunca toca el snapshot real de producción
+  OK    cli comprobar termina en 0
+  OK    cli pendientes termina en 0
+jellyfin_audio — modo manual
+  OK    contenedores --incluir-criticos termina en 0
+  OK    con el flag, homeassistant aparece con modo null
+  OK    con el flag, jellyfin_audio (no crítico) sigue apareciendo con su modo real
+  OK    sin el flag, sigue funcionando igual que 021
+jellyfin_audio — modo manual
+  OK    contenedores termina en 0
+  OK    deshacer sobre un intento_reinicio se rechaza (FR-016)
+  OK    modo-contenedor --automatico sobre un crítico devuelve error (hallazgo E1)
+  OK    el mensaje es legible, no una traza cruda de Python
+jellyfin_audio → modo automatico
+  OK    modo-contenedor sobre uno no crítico termina en 0
+  OK    el modo cambia de verdad
+homeassistant → modo manual
+  OK    modo-contenedor --manual sobre un crítico termina en 0
+  OK    se persiste como manual, sin efecto real sobre la evaluación
+  OK    modo-contenedor sobre un crítico devuelve error
+  OK    no escribe ninguna fila (FR-006)
+  OK    modo-contenedor sobre frigate (NEVER_RESTART) devuelve error
+historial de rotar_log: sin intentos todavía
+rotar_log → modo automatico
+historial de rotar_log: sin intentos todavía
+rotar_log → modo manual
+rotar_log — modo actual: manual
+sin intentos todavía
+  OK    cli modo --automatico termina en 0
+  OK    modo cambia a automatico de verdad
+  OK    cli modo --manual termina en 0
+  OK    modo vuelve a manual sin ninguna condición previa (FR-003)
+  OK    cli historial termina en 0
+rotar_log — modo manual
+reiniciar_contenedor — modo manual
+historial de rotar_log: sin intentos todavía
+rotar_log → modo automatico
+rotar_log — modo automatico
+reiniciar_contenedor — modo manual
+  OK    cli tipos termina en 0 antes de cualquier modo fijado
+  OK    cli tipos no crea fila en configuracion_accion
+  OK    cli tipos termina en 0 con un modo ya fijado
+  OK    cli tipos refleja rotar_log en automático tras el cambio, y reiniciar_contenedor (021) en manual por defecto
+test_remediacion_deepseek_contenedores
+  OK    el prompt menciona la acción candidata
+  OK    el prompt incluye la evidencia real serializada
+  OK    el prompt no reutiliza el prompt de causa_probable
+  OK    fallo de la llamada ⇒ sin_evaluar, nunca sin_accion
+  OK    sin acción recomendada registrada
+  OK    ninguna acción aplica ⇒ estado sin_accion, nunca reinicia
+  OK    dispara el aviso de US4
+  OK    modo manual ⇒ pendiente, nunca ejecuta solo
+  OK    conserva la recomendación
+  OK    conserva el razonamiento
+  OK    coste registrado
+  OK    episodio_id enlazado
+  OK    sin presupuesto ⇒ sin_evaluar
+  OK    nunca se llega a llamar a DeepSeek sin presupuesto (SC-004)
+  OK    el mock produce la decisión esperada
+  OK    con mock activo, nunca se comprueba presupuesto real
+  OK    con mock activo, nunca se llama a DeepSeek de verdad
+  OK    el intento vía mock no registra coste
+  OK    acepta reiniciar_contenedor
+  OK    conserva el razonamiento
+  OK    conserva los tokens de usage
+  OK    acepta accion_aplica null
+  OK    respuesta sin 'choices' ⇒ None, sin lanzar
+  OK    contenido no-JSON ⇒ None, sin lanzar
+  OK    una acción inventada se rechaza por completo
+  OK    recupera la decisión de reasoning_content
+  OK    mock con acción fuera de la lista cerrada ⇒ None (FR-003)
+  OK    mock con JSON inválido ⇒ None, sin lanzar
+  OK    el mock se lee y valida correctamente
+  OK    sin REMEDIACION_DEEPSEEK_MOCK ⇒ None
+test_remediacion_store
+  OK    id inexistente ⇒ None, sin lanzar
+  OK    contenedor nunca visto ⇒ modo manual por defecto (research.md §7 de 021)
+  OK    tipo de acción nunca visto ⇒ modo manual por defecto (FR-002)
+  OK    2 ejecutados
+  OK    1 rechazado
+  OK    1 fallido
+  OK    tipo de acción sin ningún intento ⇒ historial vacío
+  OK    el nuevo intento de reinicio no colisiona con los 2 ya existentes
+  OK    localizar_intento lo encuentra en la tabla correcta
+  OK    un rotar_log nuevo tampoco colisiona con reinicios ya existentes
+  OK    init_db() dos veces no lanza
+  OK    insert_intento devuelve un id
+  OK    get_intento recupera el mismo componente
+  OK    estado inicial = pendiente
+  OK    un ejecutado fuera de la ventana ya no es vigente
+  OK    un ejecutado justo ahora sigue vigente
+  OK    un intento pendiente siempre es vigente
+  OK    con un pendiente real, ese es el vigente, no el rechazado previo
+  OK    sin ningún intento, vigente es None
+  OK    listar_modos() sigue el orden de tipos_conocidos, no el alfabético de la tabla
+  OK    refleja el modo real de cada uno
+  OK    no crea fila para el que nunca se tocó
+  OK    listar_modos() refleja un modo ya cambiado
+  OK    tipo nunca visto ⇒ manual en el listado
+  OK    listar_modos() no crea fila (a diferencia de get_modo)
+  OK    solo los 2 pendientes reales, no el rechazado
+  OK    el rechazado no aparece
+  OK    un id de rotar_log se localiza en 'remediacion'
+  OK    un id inexistente en ninguna tabla ⇒ None
+  OK    un id de reinicio se localiza en 'reinicio'
+  OK    sin ningún intento, no hay pendiente
+  OK    con un pendiente real, pendiente_existente=True (FR-008)
+  OK    otro componente distinto, no hay pendiente
+  OK    set_modo() persiste entre conexiones
+  OK    set_modo() vuelve a manual sin problema
+  OK    manual sobre un crítico se acepta sin error
+  OK    el contenedor cambiado queda en automático
+  OK    un contenedor distinto no se ve afectado (Acceptance Scenario 2 de US5)
+  OK    un contenedor no crítico sigue admitiendo automático (021, sin cambios)
+  OK    automático sobre un crítico lanza ValueError (FR-008)
+  OK    no persiste ninguna fila
+  OK    sin ningún intento, la racha es 0
+  OK    2 sin_evaluar seguidos ⇒ racha 2
+  OK    un intento resuelto rompe la racha
+  OK    estado actualizado
+  OK    fichero_rotado registrado
+  OK    resuelto_en poblado
+test_reproducibilidad
+  OK    SC-001: mismo conclusion_tipo en los dos intentos
+  OK    los dos intentos son diagnósticos distintos, ninguno pisa al otro (Principio VIII)
+  OK    SC-001: mismo número de hipótesis en los dos intentos
+  OK    SC-001: mismo desenlace por hipótesis y en el mismo orden
+test_store
+  OK    init_db() dos veces no lanza
+  OK    un diagnóstico persistido para el episodio
+  OK    dos hipótesis persistidas, en orden
+  OK    los desenlaces se conservan tal cual
+  OK    insert_episodio devuelve un id
+  OK    get_episodio recupera el mismo contenedor
+  OK    snapshot_evidencia se conserva como dict de ida y vuelta (JSON)
+  OK    get_episodio de un id inexistente devuelve None
+  OK    el episodio ya escrito por 007 se lee tras migrar, mismo componente
+  OK    origen por defecto = contenedor tras migrar
+  OK    conectar dos veces tras la migración no falla ni duplica
+  OK    el coste se acumula (0.5 + 0.3)
+  OK    el límite queda fijado
+  OK    dos intentos de diagnóstico coexisten para el mismo episodio
+  OK    ambos con id distinto
+
+Todo OK

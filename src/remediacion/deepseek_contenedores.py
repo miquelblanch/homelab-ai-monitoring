@@ -5,9 +5,12 @@ el caso? (specs/021-remediacion-contenedores/research.md §3)
 
 Distinta, deliberadamente, de `diagnostico.deepseek.construir_prompt`
 (que pregunta "¿cuál es la causa probable?", una pregunta abierta que
-en 36/36 casos reales termina en `no_diagnosticable`) — reutiliza solo
-la llamada HTTP pura (`diagnostico.deepseek.llamar_deepseek`), nunca
-su lógica de negocio de hipótesis.
+en 36/36 casos reales termina en `no_diagnosticable`) — reutiliza la
+llamada HTTP pura (`diagnostico.deepseek.llamar_deepseek`) y, desde
+specs/025-consolidar-parseo-deepseek/, también la extracción de
+contenido/tokens (`diagnostico.deepseek._extraer_contenido_y_tokens`,
+con el respaldo `content`/`reasoning_content`) — nunca la lógica de
+negocio de hipótesis, que sigue siendo exclusiva de cada uno.
 
 `REMEDIACION_DEEPSEEK_MOCK` (variable de entorno, JSON con
 `accion_aplica`/`razonamiento`) sustituye la llamada real por una
@@ -20,6 +23,8 @@ from __future__ import annotations
 
 import json
 import os
+
+from diagnostico.deepseek import _extraer_contenido_y_tokens
 
 
 def construir_prompt_remediacion(episodio, acciones_candidatas: tuple[str, ...]) -> str:
@@ -85,15 +90,12 @@ def parsear_respuesta_remediacion(respuesta: dict) -> dict | None:
     es JSON válido, no tiene los campos esperados, o `accion_aplica` no
     está en la lista cerrada (nunca confía en un valor libre devuelto
     por el modelo). Mismo respaldo `content`/`reasoning_content` que
-    `diagnostico.deepseek.parsear_respuesta` para el caso de un modelo
-    de razonamiento que deja `content` vacío (research.md §3)."""
+    `diagnostico.deepseek.parsear_respuesta`, vía la extracción
+    compartida `_extraer_contenido_y_tokens` (specs/025-consolidar-parseo-deepseek/,
+    antes duplicada aquí; research.md §3 de 021 para el resto del
+    contrato)."""
     try:
-        mensaje = respuesta["choices"][0]["message"]
-        contenido = mensaje.get("content") or mensaje.get("reasoning_content") or ""
-        usage = respuesta.get("usage", {})
-        tokens_entrada = int(usage.get("prompt_tokens", 0))
-        tokens_salida = int(usage.get("completion_tokens", 0))
-        parsed = json.loads(contenido)
+        parsed, tokens_entrada, tokens_salida = _extraer_contenido_y_tokens(respuesta)
     except (KeyError, ValueError, TypeError, IndexError):
         return None
     return _validar_decision(parsed, tokens_entrada, tokens_salida)

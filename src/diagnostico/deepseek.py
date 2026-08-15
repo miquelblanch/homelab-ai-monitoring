@@ -259,14 +259,16 @@ def llamar_deepseek(prompt: str, modelo: str) -> dict | None:
         return None
 
 
-def parsear_respuesta(respuesta: dict) -> dict | None:
-    """Valida el invariante FR-007 antes de devolver nada. `None` si el
-    contenido no es JSON válido o no cumple el invariante — se trata
-    igual que "DeepSeek no responde" en los Edge Cases del spec, nunca
-    como una tercera categoría sin definir.
+def _extraer_contenido_y_tokens(respuesta: dict) -> tuple[dict, int, int]:
+    """Extrae el contenido ya parseado como JSON y los tokens de
+    entrada/salida de una respuesta cruda de la API de DeepSeek.
+    Compartida entre el diagnóstico de episodios
+    (`parsear_respuesta`) y la remediación de contenedores
+    (`remediacion.deepseek_contenedores.parsear_respuesta_remediacion`)
+    — specs/025-consolidar-parseo-deepseek/.
 
-    `content` vacío con `reasoning_content` poblado (hallazgo real al
-    validar specs/010-diagnostico-ha/ en vivo, 2026-08-12): el modelo de
+    Respaldo `content`/`reasoning_content` (hallazgo real al validar
+    specs/010-diagnostico-ha/ en vivo, 2026-08-12): el modelo de
     razonamiento a veces escribe la respuesta completa en
     `reasoning_content` y nunca la vuelve a escribir en `content`, pese
     a `finish_reason: "stop"` — el mismo síntoma que el CLAUDE.md general
@@ -274,19 +276,32 @@ def parsear_respuesta(respuesta: dict) -> dict | None:
     Bautista (`qwen/qwen3.5-9b`), aquí en el propio DeepSeek de la nube.
     Sin este respaldo, esas respuestas —completas y válidas, solo en el
     campo equivocado— se descartaban como "inconsistentes" y quemaban
-    gasto real sin producir ningún diagnóstico. Si `reasoning_content`
+    gasto real sin producir ningún diagnóstico.
+
+    Lanza `KeyError`/`ValueError`/`TypeError`/`IndexError` si la
+    respuesta no tiene la forma esperada o el contenido no es JSON
+    válido — cada llamador decide qué hacer (hoy, los dos lo tratan
+    como "sin diagnóstico", nunca reintentan)."""
+    mensaje = respuesta["choices"][0]["message"]
+    contenido = mensaje.get("content") or mensaje.get("reasoning_content") or ""
+    usage = respuesta.get("usage", {})
+    tokens_entrada = int(usage.get("prompt_tokens", 0))
+    tokens_salida = int(usage.get("completion_tokens", 0))
+    return json.loads(contenido), tokens_entrada, tokens_salida
+
+
+def parsear_respuesta(respuesta: dict) -> dict | None:
+    """Valida el invariante FR-007 antes de devolver nada. `None` si el
+    contenido no es JSON válido o no cumple el invariante — se trata
+    igual que "DeepSeek no responde" en los Edge Cases del spec, nunca
+    como una tercera categoría sin definir. Si `reasoning_content`
     tampoco es JSON válido (p. ej. narrativa de razonamiento sin la
     respuesta final, o la generación se cortó por `max_tokens` antes de
-    llegar a ella), `json.loads` falla igual que antes y se devuelve
-    `None` — este respaldo nunca empeora el caso ya manejado."""
+    llegar a ella), `_extraer_contenido_y_tokens` lanza igual que antes
+    y se devuelve `None` — este respaldo nunca empeora el caso ya
+    manejado."""
     try:
-        mensaje = respuesta["choices"][0]["message"]
-        contenido = mensaje.get("content") or mensaje.get("reasoning_content") or ""
-        usage = respuesta.get("usage", {})
-        tokens_entrada = int(usage.get("prompt_tokens", 0))
-        tokens_salida = int(usage.get("completion_tokens", 0))
-
-        parsed = json.loads(contenido)
+        parsed, tokens_entrada, tokens_salida = _extraer_contenido_y_tokens(respuesta)
         conclusion_tipo = parsed["conclusion_tipo"]
         conclusion_texto = parsed["conclusion_texto"]
         hipotesis = parsed.get("hipotesis", [])

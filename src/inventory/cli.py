@@ -47,7 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--selftest",
         action="store_true",
-        help="Autocomprobación de lógica pura, sin tocar Docker/HA/Telegram reales.",
+        help=(
+            "Autocomprobación — ejecuta la suite completa compartida de los "
+            "tres paquetes (diagnóstico, inventario, remediación), no solo "
+            "la de este paquete. Sin tocar Docker/HA/Telegram reales."
+        ),
     )
     return parser
 
@@ -67,7 +71,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_selftest() -> int:
-    """T037 — orquesta test_evaluate/test_identity/test_diff/test_no_mutation."""
+    """Ejecuta `tests.selftest.run_all()`, que descubre y corre todos
+    los `test_*.py` del directorio — compartido por los tres paquetes,
+    no acotado a este (specs/025-consolidar-parseo-deepseek/). Mismo
+    mecanismo en `diagnostico.cli`/`remediacion.cli --selftest`."""
     from tests.selftest import run_all
 
     return run_all()

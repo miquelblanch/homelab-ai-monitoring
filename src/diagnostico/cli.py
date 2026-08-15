@@ -51,7 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--selftest",
         action="store_true",
-        help="Autocomprobación de lógica pura, sin tocar DeepSeek/Docker/homelab.db reales.",
+        help=(
+            "Autocomprobación — ejecuta la suite completa compartida de los "
+            "tres paquetes (diagnóstico, inventario, remediación), no solo "
+            "la de este paquete. Sin tocar DeepSeek/Docker/homelab.db reales."
+        ),
     )
 
     subparsers = parser.add_subparsers(dest="comando")
@@ -209,9 +213,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_selftest() -> int:
-    """T029 — orquesta test_evidencia/test_deepseek/test_gasto/test_store/
-    test_reproducibilidad/test_baseline_beszel, mismo patrón que
-    `inventory.cli --selftest`."""
+    """Ejecuta `tests.selftest.run_all()`, que descubre y corre todos
+    los `test_*.py` del directorio — compartido por los tres paquetes,
+    no acotado a este (specs/025-consolidar-parseo-deepseek/). Mismo
+    mecanismo en `inventory.cli`/`remediacion.cli --selftest`."""
     from tests.selftest import run_all
 
     return run_all()

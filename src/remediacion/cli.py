@@ -69,7 +69,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--selftest",
         action="store_true",
-        help="Autocomprobación de lógica pura, contra logs de prueba en un directorio temporal.",
+        help=(
+            "Autocomprobación — ejecuta la suite completa compartida de los "
+            "tres paquetes (diagnóstico, inventario, remediación), no solo "
+            "la de este paquete. Contra logs de prueba en un directorio temporal."
+        ),
     )
 
     subparsers = parser.add_subparsers(dest="comando")
@@ -121,6 +125,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _run_selftest() -> int:
+    """Ejecuta `tests.selftest.run_all()`, que descubre y corre todos
+    los `test_*.py` del directorio — compartido por los tres paquetes,
+    no acotado a este (specs/025-consolidar-parseo-deepseek/). Mismo
+    mecanismo en `diagnostico.cli`/`inventory.cli --selftest`."""
     from tests.selftest import run_all
 
     return run_all()
