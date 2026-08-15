@@ -1,84 +1,48 @@
 """_homelab_bridge — puente hacia los scripts ya existentes del homelab.
 
-Copia mínima deliberada de `inventory/_homelab_bridge.py` (research.md
-§7): `diagnostico` e `inventory` son dos paquetes hermanos
-independientes bajo `src/`, sin que ninguno dependa del otro. Solo lleva
-lo que este feature necesita.
+`get_secret`, `docker_critical`, `docker_never_restart` y el bootstrap
+de `HOMELAB_SCRIPTS_DIR` viven en `_homelab_bridge_common.py`
+(compartido con `inventory` y `remediacion` — research.md §1 de
+specs/024-consolidar-bridge-homelab/); `record_heartbeat` vive en
+`_homelab_bridge_heartbeat.py` (compartido solo con `inventory`, nunca
+`remediacion`).
 
-Desde feature 010 (specs/010-diagnostico-ha/) sí incluye las funciones
-de `ha_monitor` — mismo patrón que `inventory/_homelab_bridge.py` ya
-usa para ese módulo (research.md §3 de 010), añadido aquí porque hasta
-ahora ningún feature de `diagnostico` tocaba HA.
+Las funciones de `ha_monitor` (desde feature 010,
+specs/010-diagnostico-ha/) siguen aquí, exclusivas de este paquete —
+`inventory/_homelab_bridge.py` tiene su propio import de `ha_monitor`,
+idéntico pero deliberadamente no consolidado (research.md §1: sin
+ninguna función compartida que envolver, solo duplicaría el handle por
+cuatro líneas).
 
-Mismo contrato que el original: si los scripts no están disponibles
-(repo público clonado fuera del homelab), las funciones devuelven un
+**Dependencia real hacia `inventory`** (no a través de este bridge):
+desde feature 013 (specs/013-diagnostico-inventario/),
+`diagnostico/evidencia/inventario.py` importa `inventory.diff`,
+`inventory.store` e `inventory.model.TIPOS_BRECHA` directamente. Este
+paquete y `inventory` **no son independientes** pese a lo que este
+docstring afirmaba hasta specs/024-consolidar-bridge-homelab/
+(research.md §4) — la relación es de solo lectura, nunca al revés
+(`inventory` no importa de `diagnostico`), y sigue el mismo patrón ya
+autorizado para `remediacion` → `diagnostico`
+(specs/021-remediacion-contenedores/research.md §2).
+
+Mismo contrato que siempre: si los scripts no están disponibles (repo
+público clonado fuera del homelab), las funciones devuelven un
 resultado inocuo en vez de lanzar excepción.
 """
 
 from __future__ import annotations
 
-import os
-import sys
-from pathlib import Path
-
-_DEFAULT_SCRIPTS_DIR = "/Volumes/FastData/homelab/scripts"
-_SCRIPTS_DIR = Path(os.environ.get("HOMELAB_SCRIPTS_DIR", _DEFAULT_SCRIPTS_DIR))
-
-if str(_SCRIPTS_DIR) not in sys.path and _SCRIPTS_DIR.is_dir():
-    sys.path.insert(0, str(_SCRIPTS_DIR))
-
-try:
-    import homelab_secrets as _homelab_secrets  # type: ignore[import-not-found]
-except ImportError:
-    _homelab_secrets = None
-
-try:
-    import heartbeat as _heartbeat  # type: ignore[import-not-found]
-except ImportError:
-    _heartbeat = None
-
-try:
-    import docker_monitor as _docker_monitor  # type: ignore[import-not-found]
-except ImportError:
-    _docker_monitor = None
+from _homelab_bridge_common import (
+    docker_critical,
+    docker_never_restart,
+    get_secret,
+)
+from _homelab_bridge_heartbeat import record_heartbeat
 
 try:
     import ha_monitor as _ha_monitor  # type: ignore[import-not-found]
 except ImportError:
     _ha_monitor = None
-
-
-def get_secret(key: str, default: str = "") -> str:
-    if _homelab_secrets is None:
-        return default
-    return _homelab_secrets.get(key, default)
-
-
-def record_heartbeat(job: str, status: str = "ok", detail: str = "") -> bool | None:
-    if _heartbeat is None:
-        return None
-    try:
-        return _heartbeat.write(job, status=status, detail=detail)
-    except Exception:
-        return None
-
-
-def docker_critical() -> set[str]:
-    if _docker_monitor is None:
-        return set()
-    try:
-        return set(getattr(_docker_monitor, "CRITICAL", set()))
-    except Exception:
-        return set()
-
-
-def docker_never_restart() -> set[str]:
-    if _docker_monitor is None:
-        return set()
-    try:
-        return set(getattr(_docker_monitor, "NEVER_RESTART", set()))
-    except Exception:
-        return set()
 
 
 # ── Home Assistant (feature 010: specs/010-diagnostico-ha/) ────────────────

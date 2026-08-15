@@ -1,10 +1,23 @@
-"""_homelab_bridge — puente hacia `homelab_secrets.py` y `docker_monitor.py`,
-que viven fuera de este repositorio en la infraestructura privada del
-homelab (`/Volumes/FastData/homelab/scripts/`). Mismo patrón que
-`inventory._homelab_bridge` (research.md §6 de specs/001-...) — copiado
-en vez de importado desde `inventory` porque `remediacion` sigue sin
-importar nada de `inventory` (research.md §2 de specs/019-.../, sin
-cambios en 021).
+"""_homelab_bridge — puente hacia `homelab_secrets.py` y
+`docker_monitor.py`, que viven fuera de este repositorio en la
+infraestructura privada del homelab
+(`/Volumes/FastData/homelab/scripts/`).
+
+`telegram_credentials` y `docker_never_restart` se reexportan tal cual
+de `_homelab_bridge_common.py` (compartido con `diagnostico` e
+`inventory` — research.md §1 de
+specs/024-consolidar-bridge-homelab/). `docker_critical` NO se
+reexporta tal cual: es una función local que envuelve la base
+compartida y añade el hook de prueba exclusivo de este paquete
+(`REMEDIACION_TEST_FORZAR_CRITICO`) — ese hook nunca debe quedar
+alcanzable desde `diagnostico` ni `inventory` (research.md §3).
+
+Este paquete deliberadamente **no** importa `heartbeat.py` ni
+`ha_monitor.py` — no los necesita, y no debe empezar a hacerlo como
+efecto colateral de este refactor (research.md §1: en Python, tomar un
+nombre de un módulo ejecuta el módulo entero, así que el módulo
+compartido que usa `remediacion` para lo que sí necesita no puede ser
+el mismo que también intenta `import heartbeat`).
 
 Desde specs/021-remediacion-contenedores/ (research.md §4), este bridge
 también expone las funciones ya probadas de `docker_monitor.py` para el
@@ -19,19 +32,13 @@ resultado inocuo (cadenas vacías, conjuntos vacíos, listas vacías,
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
-_DEFAULT_SCRIPTS_DIR = "/Volumes/FastData/homelab/scripts"
-_SCRIPTS_DIR = Path(os.environ.get("HOMELAB_SCRIPTS_DIR", _DEFAULT_SCRIPTS_DIR))
-
-if str(_SCRIPTS_DIR) not in sys.path and _SCRIPTS_DIR.is_dir():
-    sys.path.insert(0, str(_SCRIPTS_DIR))
-
-try:
-    import homelab_secrets as _homelab_secrets  # type: ignore[import-not-found]
-except ImportError:
-    _homelab_secrets = None
+from _homelab_bridge_common import (
+    docker_critical as _docker_critical_base,
+    docker_never_restart,
+    telegram_credentials,
+)
 
 try:
     import docker_monitor as _docker_monitor  # type: ignore[import-not-found]
@@ -39,46 +46,25 @@ except ImportError:
     _docker_monitor = None
 
 
-def telegram_credentials() -> tuple[str, str]:
-    """(token, chat_id) — cadenas vacías si no se pudo resolver."""
-    if _homelab_secrets is None:
-        return "", ""
-    try:
-        return _homelab_secrets.telegram()
-    except Exception:
-        return "", ""
-
-
 # ── Contenedores (specs/021-remediacion-contenedores/) ──────────────────
 
 
 def docker_critical() -> set[str]:
-    """El conjunto real de `docker_monitor.CRITICAL`, más los nombres
-    de `REMEDIACION_TEST_FORZAR_CRITICO` (lista separada por comas) si
-    esa variable está en el entorno — hook de pruebas exclusivo
+    """El conjunto real de `docker_monitor.CRITICAL` (base compartida,
+    `_homelab_bridge_common.docker_critical()`), más los nombres de
+    `REMEDIACION_TEST_FORZAR_CRITICO` (lista separada por comas) si esa
+    variable está en el entorno — hook de pruebas exclusivo
     (specs/022-clasificacion-remediacion/, research.md §1b): permite
     validar el camino de contenedores críticos con uno de prueba
     desechable, sin tocar la lista real ni arriesgar uno de los 12
-    reales. Nunca activo en producción."""
-    criticos: set[str] = set()
-    if _docker_monitor is not None:
-        try:
-            criticos = set(getattr(_docker_monitor, "CRITICAL", set()))
-        except Exception:
-            criticos = set()
+    reales. Nunca activo en producción. Función LOCAL a propósito, no
+    una reexportación — es la única forma de que este hook exista solo
+    aquí (specs/024-consolidar-bridge-homelab/research.md §3)."""
+    criticos = _docker_critical_base()
     forzados = os.environ.get("REMEDIACION_TEST_FORZAR_CRITICO", "")
     if forzados:
         criticos |= {nombre.strip() for nombre in forzados.split(",") if nombre.strip()}
     return criticos
-
-
-def docker_never_restart() -> set[str]:
-    if _docker_monitor is None:
-        return set()
-    try:
-        return set(getattr(_docker_monitor, "NEVER_RESTART", set()))
-    except Exception:
-        return set()
 
 
 def listar_contenedores() -> list[dict]:

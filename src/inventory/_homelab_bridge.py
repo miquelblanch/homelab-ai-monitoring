@@ -1,54 +1,47 @@
 """_homelab_bridge — puente hacia los scripts ya existentes del homelab.
 
-Este feature reutiliza `homelab_secrets.py` (credenciales) y `heartbeat.py`
-(latidos) en vez de duplicarlos — research.md §6-§7. Esos ficheros viven
-fuera de este repositorio, en la infraestructura privada del homelab
-(`/Volumes/FastData/homelab/scripts/`), así que no se pueden `import`
-directamente como un paquete instalado: hace falta añadir esa ruta a
-`sys.path`, mismo patrón que ya usa `docker_monitor.py`.
+`get_secret`, `telegram_credentials`, `docker_critical`,
+`docker_never_restart` y el bootstrap de `HOMELAB_SCRIPTS_DIR` viven en
+`_homelab_bridge_common.py` (compartido con `diagnostico` y
+`remediacion` — research.md §1 de
+specs/024-consolidar-bridge-homelab/); `record_heartbeat` vive en
+`_homelab_bridge_heartbeat.py` (compartido solo con `diagnostico`,
+nunca `remediacion` — ese paquete no importa `heartbeat.py` hoy y no
+debe empezar a hacerlo como efecto colateral de este refactor).
 
-La ruta es configurable vía `HOMELAB_SCRIPTS_DIR` para no atarse a un único
-layout de máquina — por defecto, la ruta documentada en el `CLAUDE.md`
-general del homelab.
+`read_heartbeat()` y `available()` son exclusivas de este paquete pero
+usan el handle `_heartbeat` importado de `_homelab_bridge_heartbeat`,
+no uno propio — evita triplicar el mismo `try/import heartbeat`.
 
-Contrato: si los scripts no están disponibles (repo público clonado fuera
-del homelab, por ejemplo), `get_secret`/`send_telegram`/`record_heartbeat`
-devuelven un resultado inocuo en vez de lanzar excepción — mismo principio
-"a prueba de fallos" que el resto del homelab.
+Las funciones de `ha_monitor` (feature 004) siguen aquí, exclusivas de
+este paquete — `diagnostico/_homelab_bridge.py` tiene su propio import
+de `ha_monitor`, idéntico pero deliberadamente no consolidado
+(research.md §1 de 024: sin ninguna función compartida que envolver).
+
+Contrato: si los scripts no están disponibles (repo público clonado
+fuera del homelab, por ejemplo), las funciones devuelven un resultado
+inocuo en vez de lanzar excepción — mismo principio "a prueba de
+fallos" que el resto del homelab.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import sys
 from pathlib import Path
 
-_DEFAULT_SCRIPTS_DIR = "/Volumes/FastData/homelab/scripts"
-_SCRIPTS_DIR = Path(os.environ.get("HOMELAB_SCRIPTS_DIR", _DEFAULT_SCRIPTS_DIR))
-
-if str(_SCRIPTS_DIR) not in sys.path and _SCRIPTS_DIR.is_dir():
-    sys.path.insert(0, str(_SCRIPTS_DIR))
-
-try:
-    import homelab_secrets as _homelab_secrets  # type: ignore[import-not-found]
-except ImportError:
-    _homelab_secrets = None
-
-try:
-    import heartbeat as _heartbeat  # type: ignore[import-not-found]
-except ImportError:
-    _heartbeat = None
+from _homelab_bridge_common import (
+    _homelab_secrets,
+    docker_critical,
+    docker_never_restart,
+    get_secret,
+    telegram_credentials,
+)
+from _homelab_bridge_heartbeat import _heartbeat, record_heartbeat
 
 try:
     import ha_monitor as _ha_monitor  # type: ignore[import-not-found]
 except ImportError:
     _ha_monitor = None
-
-try:
-    import docker_monitor as _docker_monitor  # type: ignore[import-not-found]
-except ImportError:
-    _docker_monitor = None
 
 
 def ha_monitor_checked_entities() -> set[str]:
@@ -104,52 +97,9 @@ def ha_monitor_check_result(entity_id: str) -> dict | None:
         return None
 
 
-def docker_never_restart() -> set[str]:
-    if _docker_monitor is None:
-        return set()
-    try:
-        return set(getattr(_docker_monitor, "NEVER_RESTART", set()))
-    except Exception:
-        return set()
-
-
-def docker_critical() -> set[str]:
-    if _docker_monitor is None:
-        return set()
-    try:
-        return set(getattr(_docker_monitor, "CRITICAL", set()))
-    except Exception:
-        return set()
-
-
 def available() -> bool:
     """True si los dos módulos del homelab se pudieron importar."""
     return _homelab_secrets is not None and _heartbeat is not None
-
-
-def get_secret(key: str, default: str = "") -> str:
-    if _homelab_secrets is None:
-        return default
-    return _homelab_secrets.get(key, default)
-
-
-def telegram_credentials() -> tuple[str, str]:
-    """(token, chat_id) — cadenas vacías si no se pudo resolver."""
-    if _homelab_secrets is None:
-        return "", ""
-    try:
-        return _homelab_secrets.telegram()
-    except Exception:
-        return "", ""
-
-
-def record_heartbeat(job: str, status: str = "ok", detail: str = "") -> bool | None:
-    if _heartbeat is None:
-        return None
-    try:
-        return _heartbeat.write(job, status=status, detail=detail)
-    except Exception:
-        return None
 
 
 def read_heartbeat(job: str) -> dict | None:
