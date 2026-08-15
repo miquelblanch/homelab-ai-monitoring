@@ -2,9 +2,9 @@
 data-model.md.
 
 Base de datos propia (`diagnostico.db`), no las tablas de `homelab.db`
-(que este módulo nunca escribe — ver `evidencia.py`), en el mismo
-directorio que `inventario.db` — cubierta por el backup nocturno del
-homelab sin nada adicional que configurar (research.md §4).
+(que este módulo nunca escribe — ver el paquete `evidencia/`), en el
+mismo directorio que `inventario.db` — cubierta por el backup nocturno
+del homelab sin nada adicional que configurar (research.md §4).
 """
 
 from __future__ import annotations

@@ -1,8 +1,8 @@
 """model — Entidades del diagnóstico de episodios. Ver data-model.md.
 
 Solo estructuras de datos (dataclasses) y las constantes de los valores
-válidos por campo. Sin lógica de negocio — eso vive en evidencia.py,
-deepseek.py y gasto.py.
+válidos por campo. Sin lógica de negocio — eso vive en el paquete
+`evidencia/`, deepseek.py y gasto.py.
 """
 
 from __future__ import annotations
