@@ -176,6 +176,7 @@ def test_cli_comprobar_contenedores_y_aprobar_generalizado() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         with patch.object(store, "db_path", return_value=_db(db_dir)), \
              patch.object(diagnostico_store, "db_path", return_value=Path(db_dir) / "diagnostico.db"), \
+             patch.object(acciones, "_snapshot_path", return_value=Path(db_dir) / "remediacion_estado.json"), \
              patch.object(_homelab_bridge, "docker_critical", return_value=set()), \
              patch.object(_homelab_bridge, "docker_never_restart", return_value=set()), \
              patch.object(_homelab_bridge, "listar_contenedores", return_value=[
@@ -323,6 +324,7 @@ def test_cli_comprobar_contenedores_incluye_critico_como_pendiente() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         with patch.object(store, "db_path", return_value=_db(db_dir)), \
              patch.object(diagnostico_store, "db_path", return_value=Path(db_dir) / "diagnostico.db"), \
+             patch.object(acciones, "_snapshot_path", return_value=Path(db_dir) / "remediacion_estado.json"), \
              patch.object(_homelab_bridge, "docker_critical", return_value={"test-critico"}), \
              patch.object(_homelab_bridge, "docker_never_restart", return_value=set()), \
              patch.object(_homelab_bridge, "listar_contenedores", return_value=[
@@ -371,6 +373,7 @@ def test_cli_comprobar_agentes_y_aprobar_generalizado() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         with patch.object(store, "db_path", return_value=_db(db_dir)), \
              patch.object(diagnostico_store, "db_path", return_value=Path(db_dir) / "diagnostico.db"), \
+             patch.object(acciones, "_snapshot_path", return_value=Path(db_dir) / "remediacion_estado.json"), \
              patch.object(_homelab_bridge, "listar_agentes_conocidos", return_value=[
                  {"label": "amsterdam9.test-agente", "pid": "-", "exit_code": "1",
                   "running": False, "requiere_sudo": False},
