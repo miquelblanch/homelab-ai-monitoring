@@ -69,7 +69,9 @@ medir cómo de bien funciona el método para construirlo.
 
 El proyecto tiene dos frentes. El primero está cerrado. Del segundo,
 el diagnóstico está cerrado en los 10 orígenes, y la remediación
-automática ya tiene su primer tipo de acción real en producción.
+automática tiene ya tres tipos de acción real en producción — dos de
+ellos decididos por DeepSeek con evidencia real, no por una condición
+fija.
 
 ### Frente 1 — Cobertura sistemática (cerrado)
 
@@ -90,7 +92,7 @@ real:
 Resultado medible: la primera ejecución real encontró 385 brechas sobre
 830 componentes. Hoy, cero.
 
-### Frente 2 — Diagnóstico (cerrado, los 10 orígenes) y remediación (primera pieza real)
+### Frente 2 — Diagnóstico (cerrado, los 10 orígenes) y remediación (tres acciones reales)
 
 **Diagnóstico**: ante un episodio de cualquiera de los 10 orígenes de
 alarma del homelab, un motor (`src/diagnostico/`) reúne su evidencia
@@ -117,27 +119,38 @@ superficie en el dashboard:
 
 **Remediación automática**: ejecuta, dentro de una lista cerrada de
 acciones reversibles con rollback escrito, la corrección de una causa
-conocida y verificada (Principios V y VI de la constitución) —
-condiciones deterministas en v1, sin depender del motor DeepSeek (de
-36 diagnósticos reales producidos hasta ahora, ninguno ha concluido
-`causa_probable`, así que atarla a ese motor la habría dejado sin
-ningún caso real que validar). `docker_monitor.py` sigue siendo,
-además, el único mecanismo que remedia contenedores — esta capa no lo
-sustituye.
+conocida (Principios V y VI de la constitución). Empezó en v1 con una
+condición determinista (`rotar_log`), pero desde el feature 021 la
+decisión de si actuar la toma DeepSeek, evidencia real en mano —
+nunca inventa una acción nueva, solo elige dentro de la lista cerrada
+ya aprobada. Interruptor manual/automático por tipo de acción (y,
+para contenedores, también por unidad individual) que Miquel controla
+siempre desde el CLI, con cortacircuito compartido de 3 intentos en
+6 horas. `docker_monitor.py` sigue siendo, además, el único mecanismo
+independiente que remedia contenedores **críticos** — Principio VII,
+acotado a ellos en 021 — esta capa no lo sustituye para esos.
 
 | Feature | Qué cierra |
 |---|---|
 | [`019-remediacion-automatica`](specs/019-remediacion-automatica/) | Primer tipo de acción real, `rotar_log` — rota (nunca borra) un log que supera un umbral, sobre una lista cerrada de 17 logs reales, con interruptor manual/automático por tipo de acción que Miquel controla siempre desde el CLI. Retención de 4 rotaciones archivadas por log |
 | [`020-visor-remediacion`](specs/020-visor-remediacion/) | Primera superficie visual del Frente 2 de remediación — sección de solo lectura en el dashboard con el estado de los 17 logs y sus totales, sin ningún control de acción |
+| [`021-remediacion-contenedores`](specs/021-remediacion-contenedores/) | Segundo tipo de acción, `reiniciar_contenedor` — para los 26 contenedores no críticos, DeepSeek decide con evidencia real si reiniciar resuelve el caso, en vez de la condición fija que tenía `docker_monitor.py`, que deja de decidir por su cuenta para estos (Principio VII acotado a críticos, constitución v2.0.0) |
+| [`022-clasificacion-remediacion`](specs/022-clasificacion-remediacion/) | Columna de remediación (manual/automática/IA) por componente en el Inventario, y estado real de la remediación en curso en Alarmas; DeepSeek pasa a evaluar también los contenedores críticos — siempre propuesta pendiente de aprobación, nunca ejecución automática |
+| [`023-evidencia-por-origen`](specs/023-evidencia-por-origen/) | Refactor: parte el fichero único de evidencia de diagnóstico (1.864 líneas, los 10 orígenes mezclados) en un paquete por origen |
+| [`024-consolidar-bridge-homelab`](specs/024-consolidar-bridge-homelab/) | Refactor: consolida los tres puentes casi idénticos hacia los scripts privados del homelab (diagnóstico/inventario/remediación) en dos módulos compartidos |
+| [`025-consolidar-parseo-deepseek`](specs/025-consolidar-parseo-deepseek/) | Refactor: un único parseo de la respuesta de DeepSeek (incluido el respaldo para cuando el modelo deja la respuesta en el campo de razonamiento) compartido entre el diagnóstico de episodios y la remediación de contenedores |
+| [`026-reiniciar-agentes-relays`](specs/026-reiniciar-agentes-relays/) | Tercer tipo de acción, `reiniciar_agente` — mismo patrón que 021 pero para LaunchAgents de usuario y LaunchDaemons root de los relays de Home Assistant (`sudo` acotado por `sudoers`, nunca contraseña compartida); conecta también el hallazgo `Beszel (hub)` del inventario a la acción ya existente para su contenedor |
 
-Los dos candidatos futuros que quedaban documentados aquí —relays que
-escribían su log en `/tmp`, y contenedores sin healthcheck— se
-resolvieron el 2026-08-13, pero como intervención directa sobre el
-homelab (16 relays migrados, 15 contenedores con healthcheck nuevo),
-no como un nuevo tipo de acción de este proyecto: ninguno de los dos
-encajaba bien en el modelo de "acción reversible puntual" de
-`rotar_log`. `remediación automática` sigue teniendo un único tipo de
-acción real.
+Los dos candidatos futuros que quedaban documentados aquí en v1
+—relays que escribían su log en `/tmp`, y contenedores sin
+healthcheck— se resolvieron el 2026-08-13, pero como intervención
+directa sobre el homelab, no como un nuevo tipo de acción de este
+proyecto. La lista cerrada actual tiene tres acciones reales
+(`rotar_log`, `reiniciar_contenedor`, `reiniciar_agente`); quedan
+fuera a propósito, documentados como casuística para features
+futuras: los jobs de Hermes (`cron: *`, mecanismo distinto —
+`hermes cron run`) y el reinicio de `host_externo` por SSH (bloqueado
+hoy por no tener aún la credencial correcta).
 
 ## Estructura del repo
 
@@ -159,8 +172,9 @@ tests/selftest/                    Autocomprobaciones de los tres paquetes — s
 
 ## El inventario de cobertura
 
-Una de las dos piezas con código real de este repo (la otra es el motor
-de diagnóstico, más abajo). Recorre contenedores, integraciones de Home
+Una de las tres piezas con código real de este repo (las otras son el
+motor de diagnóstico y la remediación automática, más abajo). Recorre
+contenedores, integraciones de Home
 Assistant y la propia infraestructura de monitorización, y para cada
 componente responde tres preguntas: ¿tiene un estado esperado
 declarado?, ¿se vigila de verdad?, ¿llegaría al dashboard si fallara?
@@ -210,6 +224,41 @@ privados) el `--selftest` es la única vía con sentido: valida la lógica de
 evaluación, identidad de componentes y comparación entre ejecuciones contra
 datos sintéticos.
 
+## La remediación automática
+
+Ejecuta, dentro de una lista cerrada de acciones reversibles con
+rollback escrito, la corrección de una causa ya diagnosticada — nunca
+inventa una acción nueva ni actúa fuera de esa lista (Principios V y
+VI). Tres tipos de acción hoy: `rotar_log` (condición fija de
+tamaño), y `reiniciar_contenedor`/`reiniciar_agente` (DeepSeek decide,
+evidencia real en mano, si la acción aplica al caso concreto). Cada
+tipo —y cada contenedor individual— tiene su propio interruptor
+manual/automático controlado siempre desde el CLI, y un cortacircuito
+compartido de 3 intentos en 6 horas.
+
+```bash
+# Solo lectura — qué tipos de acción existen y en qué modo está cada uno
+PYTHONPATH=src python3 -m remediacion.cli tipos
+PYTHONPATH=src python3 -m remediacion.cli contenedores
+PYTHONPATH=src python3 -m remediacion.cli agentes
+
+# Evaluar ahora mismo — solo tiene sentido dentro del homelab real,
+# con sus credenciales de DeepSeek
+PYTHONPATH=src python3 -m remediacion.cli comprobar
+PYTHONPATH=src python3 -m remediacion.cli comprobar-contenedores
+PYTHONPATH=src python3 -m remediacion.cli comprobar-agentes
+
+# Intentos pendientes de aprobación, y decidir sobre uno
+PYTHONPATH=src python3 -m remediacion.cli pendientes
+PYTHONPATH=src python3 -m remediacion.cli aprobar INTENTO_ID
+PYTHONPATH=src python3 -m remediacion.cli rechazar INTENTO_ID
+PYTHONPATH=src python3 -m remediacion.cli deshacer INTENTO_ID
+
+# Autocomprobación de la lógica pura — misma suite compartida que
+# inventory.cli/diagnostico.cli --selftest (specs/025)
+PYTHONPATH=src python3 -m remediacion.cli --selftest
+```
+
 ## Qué no está aquí
 
 Por diseño (ver "Decisiones ya tomadas" en `BRIEFING.md`): topología real
@@ -218,13 +267,13 @@ de la vivienda. El código que corre dentro del homelab en sí —los scripts
 que Docker y Home Assistant ejecutan de verdad, incluido el propio
 dashboard web (`homelab-dashboard/scripts/app.py`, que consume lo que
 persiste el motor de diagnóstico)— vive fuera de este repositorio, en el
-homelab real; este repo contiene el inventario de cobertura y el motor de
-diagnóstico (ambos públicos desde el diseño) y la documentación completa
-del método.
+homelab real; este repo contiene el inventario de cobertura, el motor de
+diagnóstico y la remediación automática (los tres públicos desde el
+diseño) y la documentación completa del método.
 
 ## Leer más
 
 En este orden, si quieres entender el proyecto de verdad y no solo
 hojearlo: [`constitution.md`](.specify/memory/constitution.md) →
 [`BRIEFING.md`](BRIEFING.md) → [`METODO.md`](METODO.md) →
-[`BARRIDO-2026-08-01.md`](BARRIDO-2026-08-01.md).
+[`BARRIDO-2026-08-01.md`](barridos/BARRIDO-2026-08-01.md).
