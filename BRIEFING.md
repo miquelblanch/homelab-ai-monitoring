@@ -2525,7 +2525,7 @@ falta de esta feature.
    queda fuera y las dos siguen como hallazgos independientes?
 
 **Casuística completa (todos los grupos del inventario, dentro y fuera, con
-motivo):** ver `CASUISTICA-026-acciones-reversibles.md` en la raíz del repo —
+motivo):** ver `specs/026-reiniciar-agentes-relays/CASUISTICA-026-acciones-reversibles.md` —
 nace de repasar uno a uno los "fuera de alcance" de arriba con Miquel el
 2026-08-15/16. Recoge, entre otras cosas, dos hallazgos que no estaban aquí: el
 techo real sube a 89 de 792 (11 más por un `sudoers` acotado a
@@ -2561,6 +2561,46 @@ responde, revisa el canal principal"? ¿qué credencial de envío de correo exis
 ya en `.secrets/` (o hay que crear una)? ¿esto vive en este repo público, o es
 más una pieza de infraestructura del homelab general (como `verify_backups.py`),
 fuera de alcance de "homelab-ai-monitoring"?
+
+---
+
+## Regla fija — "Correcciones" es el historial completo de arreglos (2026-08-16)
+
+**A partir de esta fecha, cualquier corrección real sobre el homelab — automática
+(`remediacion`), asistida por IA (DeepSeek vía `remediacion`), o manual (Miquel o
+Claude tocando código/config directamente) — DEBE quedar registrada en la pestaña
+"Correcciones" del dashboard.** Es la fuente única de verdad del historial de
+arreglos, pensada explícitamente para alimentar más adelante el aprendizaje de
+GBrain sobre qué se rompe en el homelab y cómo se resuelve — así que un arreglo
+que no queda anotado aquí es un arreglo que ese aprendizaje futuro nunca verá.
+
+**Mecanismo — tres fuentes fusionadas en una sola lista cronológica** (todo el
+código vive en `homelab-dashboard/scripts/app.py`, fuera de este repo, no
+versionado — este apunte es su única referencia escrita):
+
+1. **Histórico de alarmas resueltas** (006) — automático, vía
+   `get_active_alarms()` + `ALARM_HISTORY_FILE`/`ALARM_MANUAL_CORRECTIONS_FILE`.
+2. **Intentos de remediación** (021/022/026) — vía `remediacion_estado.json`
+   (`intento_vigente` de logs/contenedores/agentes).
+3. **Arreglos manuales fuera de la lista cerrada** (nuevo, 2026-08-16) —
+   `/data/manual_fixes.json` (en la máquina real:
+   `/Volumes/FastData/homelab/docker/homelab-orchestrator/data/manual_fixes.json`):
+   fichero de solo apéndice, sin reconciliación automática, para lo que ni pasó
+   por `remediacion` ni disparó una alarma — como `couchdb`, que estaba
+   "unhealthy" pero nunca "caído", así que ninguna alarma de contenedor lo vio.
+
+**Cuándo escribir en `manual_fixes.json`.** Cada vez que Claude (o Miquel,
+siguiendo las indicaciones de Claude) arregle algo tocando código o
+configuración directamente — fuera de aprobar/rechazar un intento de
+`remediacion` ya existente —, se añade una entrada nueva con: `componente`,
+`categoria`, `clasificacion: "manual"`, `resuelto_en`, `titulo` corto,
+`aparecio_en`/`aparecio_en_aproximado` cuando se sepa (aunque sea una
+estimación, marcada como tal — nunca una hora exacta inventada), y `nota` con
+la causa real y el arreglo aplicado, explicado igual de completo que en un
+commit o una entrada de `research.md`. Si el arreglo vino después de que
+`remediacion` concluyera `sin_accion`, la nota empieza con "DeepSeek concluyó
+que ninguna acción de la lista cerrada aplica — por eso se hizo manual." — dejar
+constancia de que el diagnóstico automático fue correcto, no un fallo suyo.
 
 ---
 
