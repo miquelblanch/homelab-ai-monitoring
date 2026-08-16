@@ -2384,6 +2384,186 @@ adaptar):
 
 ---
 
+## Feature 026 — material de partida (2026-08-15): la primera acción reversible nueva desde 021
+
+**Punto de partida.** La feature 022 dejó dicho explícitamente que ampliar la lista
+cerrada de acciones a categorías sin ninguna hoy (`entidad_ha`, `integracion`,
+`host_externo`, `hermes`, `telegram`) "queda para features posteriores, uno por
+acción nueva, igual que 019 y 021 se hicieron por separado". Miquel quiere retomar
+eso ahora, con el objetivo declarado de que la clasificación "IA" llegue a cubrir de
+verdad al grueso de los ~790 componentes del inventario, no solo a los contenedores.
+
+**Investigación previa, antes de especificar — el techo realista es mucho más bajo
+de 790, y conviene que quede escrito antes de tocar `/speckit-specify`.**
+
+Estado real de la última ejecución del inventario (`ejecuciones.id=86`,
+2026-08-14T05:00, `inventario.db`):
+
+| Categoría | Componentes | ¿Puede tener acción reversible? |
+|---|---:|---|
+| `entidad_ha` | 684 | Casi nunca — ver más abajo |
+| `integracion` | 59 | Depende del subgrupo — ver desglose |
+| `contenedor` | 39 | Ya cubierta (`reiniciar_contenedor`, 021) |
+| `infra_monitorizacion` | 6 | 1 de 6 ya cubierta indirectamente, 5 son los propios monitores |
+| `host_externo` | 2 | No, nunca, desde este Mac |
+| `telegram` | 1 | No — es el propio canal de aviso |
+| `hermes` | 1 | No — el propio agente |
+| **Total** | **792** | |
+
+**`entidad_ha` (684, el 86% del inventario) — el motivo real por el que este grupo no
+puede llegar nunca a "automática"/"IA" de forma masiva.** El fallo típico de una
+entidad HA es "batería agotada", "sensor desconectado" o "lleva N días sin dato" — la
+misma familia de casos que ya documenta este `CLAUDE.md` general del homelab (aviso
+de bateria_cerradura). Ninguno tiene una acción de software con vuelta atrás: no hay
+forma reversible de "arreglar" una pila física. El caso donde sí hay una causa
+software (la entidad depende de un relay o integración caída) la resuelve la acción
+de la integración/relay, no una acción a nivel de entidad individual. **Conclusión:
+este grupo se queda fuera de alcance de cualquier feature de acciones nuevas — no es
+un hueco que llenar, es la clasificación correcta.**
+
+**`integracion` (59) — desglose real por mecanismo de reinicio, ejecutando la
+consulta agrupada por prefijo del nombre** (`src/inventory/sources.py`,
+`launchagent_components()`/`relay_components()`/`backup_components()`/
+`nextcloud_reminder_components()`):
+
+| Subgrupo | N | Mecanismo de reinicio real | Riesgo/permisos |
+|---|---:|---|---|
+| `amsterdam9.*` | 32 | `launchctl kickstart -k gui/$(id -u)/<label>` | Usuario normal, sin privilegios — **candidato real** |
+| `com.homeassistant.*` | 11 | Mismo comando, pero son **LaunchDaemons root** (`/Library/LaunchDaemons/`, CLAUDE.md general) | Requiere `sudo` — ningún script de todo el homelab automatiza esto hoy |
+| `Relay: *` | 10 | No tiene reinicio propio — es una **vista derivada** de `socat_relays.json` (conectividad real), separada del LaunchAgent/LaunchDaemon que la sirve | Acción real está en la fila del LaunchAgent correspondiente, no aquí — riesgo de diseñar la misma acción dos veces |
+| `cron: *` | 4 | Jobs de Hermes (`~/.hermes/.../cron/jobs.json`), no son LaunchAgents | Regla 4 del CLAUDE.md general: **"No modificar los LaunchAgents de Hermes directamente"** — un reinicio aquí, si existe, tiene que pasar por la interfaz de Hermes, no por `launchctl` |
+| "Backup diario" / "Recordatorios Nextcloud" | 2 | Cada uno es una vista funcional (heartbeat/efecto) de un LaunchAgent que **ya está contado aparte** en el grupo `amsterdam9.*` (`amsterdam9.backups`, `amsterdam9.bautista.calendar`) | Mismo problema de identidad duplicada que `Relay: *` |
+
+Comprobado además: **hoy nada en todo `/Volumes/FastData/homelab/scripts/` ejecuta
+`launchctl kickstart` de forma automática.** Los únicos usos existentes
+(`fix_quick_commands*.py`) solo **imprimen** la sugerencia para que Miquel la corra a
+mano. Una acción `reiniciar_agente` sería la primera vez que el sistema ejecuta un
+reinicio de proceso sin que Miquel teclee el comando — mismo salto cualitativo que
+`reiniciar_contenedor` dio en 021 para contenedores.
+
+**`infra_monitorizacion` (6) — un caso ya resuelto sin acción nueva, y cinco que son
+"quién vigila al vigilante".** `Beszel (hub)` ya tiene una acción real disponible:
+es el mismo software que el contenedor `beszel` (categoría `contenedor`, ya cubierto
+por `reiniciar_contenedor` desde 021) — visto desde otro ángulo (si hace bien su
+trabajo de vigilar los 3 sistemas, Caso 3 del `CLAUDE.md` de este repo), no un
+sistema distinto. Cablear esto es reutilizar, no inventar. Los otros 5
+(`dns_pi_monitor.py`, `docker_monitor.py`, `ha_monitor.py`, `heartbeat.py`,
+`verify_backups.py`) son justamente los LaunchAgents que hacen la vigilancia del
+resto del homelab — están también en el grupo `amsterdam9.*` de arriba. Que el propio
+sistema de remediación pueda reiniciar el monitor que lo vigila a él (o a otros)
+es una tensión real para `/speckit-clarify`, no algo que decidir aquí.
+
+**`host_externo` (2) y `telegram`/`hermes` (1+1) — fuera de alcance, sin ambigüedad.**
+Los dos hosts externos (AdGuard en la Pi, Uptime Kuma) están en máquinas físicamente
+distintas de este Mac, sin ninguna vía de actuar sobre ellos desde aquí. `telegram` y
+`hermes` son el propio canal de aviso y el propio agente — tocarlos automáticamente
+no encaja con ningún principio de este proyecto.
+
+**Precedente de reversibilidad para un reinicio de proceso — ya sentado por 021, no
+nuevo aquí.** El Principio VI exige "vuelta atrás documentada"; FR-016 de 021 declara
+explícitamente que **no hay operación de deshacer para un reinicio de contenedor**, y
+la feature se aceptó así. La justificación implícita (nunca escrita como tal en
+021): un reinicio no destruye estado, y si no arregla nada el componente queda como
+estaba antes de intentarlo — "reversible" se interpreta como "de bajo riesgo y sin
+efecto irreversible", no como "existe un botón deshacer". Un `reiniciar_agente` sobre
+un LaunchAgent de usuario encajaría en el mismo molde exacto. Vale la pena que
+`/speckit-clarify` lo confirme explícitamente en vez de asumir que aplica sin más.
+
+**Techo realista recalculado:** 39 contenedores (ya cubiertos) + hasta 32
+`amsterdam9.*` (si esta feature sale adelante) + 1 (`Beszel hub`, cableando lo que ya
+existe) = **72 de 792** con alguna acción real posible — no los ~790 del objetivo
+inicial. El resto (720) se queda "manual" de forma correcta y permanente, no por
+falta de esta feature.
+
+**Alcance propuesto (borrador, para `/speckit-plan`):**
+
+| Pieza | Dentro / Fuera |
+|---|---|
+| Acción nueva `reiniciar_agente`: `launchctl kickstart -k gui/$(id -u)/<label>` sobre un LaunchAgent `amsterdam9.*` (32 candidatos) | Dentro |
+| Cablear `Beszel (hub)` a la acción `reiniciar_contenedor` ya existente sobre el contenedor `beszel` | Dentro |
+| Diagnóstico previo (Principio IV) antes de proponer el reinicio — reutilizar el mismo patrón de evidencia de 021, adaptado a estado de `launchctl list` en vez de `docker inspect` | Dentro |
+| `com.homeassistant.*` (LaunchDaemons root, 11) | Fuera — necesitaría `sudo`, sin precedente en todo el proyecto; decisión aparte si se quiere abordar |
+| `cron: *` (Hermes, 4) | Fuera — regla 4 del CLAUDE.md general, cualquier acción tendría que pasar por la interfaz de Hermes, no por este proyecto |
+| `Relay: *` y las 2 vistas funcionales duplicadas | Fuera — resolver primero la identidad compartida con su LaunchAgent, si no la acción se duplicaría sin necesidad |
+| Ninguna acción nueva sobre `entidad_ha`, `host_externo`, `telegram`, `hermes` | Fuera — sin acción reversible posible, confirmado arriba, no es una omisión |
+
+**Descripción de partida para `/speckit-specify`** (pegar tal cual o adaptar):
+
+> Quiero una nueva acción reversible, `reiniciar_agente`, para la capa de
+> remediación: cuando un LaunchAgent de usuario (`amsterdam9.*`, hay 32 candidatos
+> reales hoy) está caído o en mal estado, el sistema reúne evidencia real (igual que
+> ya hace para contenedores desde 021), decide si reiniciarlo con el mismo patrón de
+> interruptor manual/automático por tipo de acción que ya existe, y si actúa, lo hace
+> con `launchctl kickstart -k gui/$(id -u)/<label>`. Igual que con los contenedores,
+> no prometo ni implemento una operación de deshacer explícita — un reinicio de
+> proceso no tiene vuelta atrás literal, solo la garantía de que no deja al agente
+> peor de lo que ya estaba. Esto NO incluye los LaunchDaemons `com.homeassistant.*`
+> (son root, necesitarían sudo, y nadie en el proyecto automatiza eso hoy), ni los
+> jobs de Hermes (`cron: *`, gestionados por Hermes, no por este proyecto), ni ninguna
+> acción sobre entidades de Home Assistant individuales, hosts externos, Telegram o
+> el propio Hermes — para esos, la clasificación sigue siendo "manual", de forma
+> correcta y permanente. Sí quiero que la entrada "Beszel (hub)" del inventario quede
+> conectada a la acción `reiniciar_contenedor` que ya existe para el contenedor
+> `beszel`, en vez de aparecer como sin acción cuando en realidad sí la tiene.
+
+**Preguntas abiertas para `/speckit-clarify`, no decididas aquí:**
+
+1. ¿El diagnóstico previo a `reiniciar_agente` se basa solo en el estado de
+   `launchctl list` (PID/estado), o también en algo equivalente a `container_metrics`
+   para procesos — y si no existe ese histórico, cómo evalúa DeepSeek sin evidencia
+   temporal?
+2. La tensión de "quién vigila al vigilante": ¿`docker_monitor.py`/`ha_monitor.py`/
+   etc. quedan dentro de los 32 candidatos de `reiniciar_agente`, o se excluyen
+   explícitamente como categoría especial (similar a como los contenedores críticos
+   quedan fuera de `reiniciar_contenedor`)?
+3. ¿Un LaunchAgent tiene "críticos" propios (p. ej. `amsterdam9.remediacion.*`, que es
+   quien decide los reinicios) que deban tratarse como la lista `CRITICAL` de
+   contenedores, o el eje crítico/no crítico sigue "limitado a contenedores por
+   ahora" como ya se decidió en 022?
+4. ¿Se resuelve la duplicación de identidad `Relay: X` / LaunchAgent antes de esta
+   feature (para que restablecer el agente cierre también la brecha del relay), o
+   queda fuera y las dos siguen como hallazgos independientes?
+
+**Casuística completa (todos los grupos del inventario, dentro y fuera, con
+motivo):** ver `CASUISTICA-026-acciones-reversibles.md` en la raíz del repo —
+nace de repasar uno a uno los "fuera de alcance" de arriba con Miquel el
+2026-08-15/16. Recoge, entre otras cosas, dos hallazgos que no estaban aquí: el
+techo real sube a 89 de 792 (11 más por un `sudoers` acotado a
+`com.homeassistant.*` y 4 por `hermes cron run`, vía oficial de la CLI de Hermes
+para los jobs `dreaming`/`noticias-ia`/`homelab-optimizer-weekly`/
+`gbrain-weekly-purge` — no hace falta tocar la regla 4 del `CLAUDE.md` general); y
+una exclusión permanente nueva, no solo pendiente: los enchufes inteligentes
+`switch.tapo_p115_mac_mini` y `switch.tapo_p115_datacenter` (Tapo P115) no son
+cámaras como parecía por su agrupación en el inventario — el primero controla la
+alimentación de este mismo Mac Mini. Cualquier acción futura sobre entidades
+`switch` DEBE excluirlos por nombre, con el mismo peso que `NEVER_RESTART` para
+contenedores.
+
+---
+
+## Feature 027 — material de partida (2026-08-16): canal de aviso secundario si Telegram falla
+
+**Punto de partida.** Al repasar la casuística de la 026, uno de los grupos sin
+acción posible es `telegram` (el propio canal de aviso, componente 12 de
+`CASUISTICA-026-acciones-reversibles.md`) — no es remediable porque es el canal
+por el que se entera todo lo demás. Miquel propuso, de pasada, un canal
+secundario (correo) que avise si Telegram deja de funcionar. Decidido con él:
+se abre como feature propia, no como parte de la 026 — es resiliencia del aviso
+(Principio I, "Alerta Persistente"), no una acción de remediación sobre un
+componente del inventario.
+
+**Sin investigar todavía.** A diferencia de las secciones anteriores, esta no
+lleva investigación previa — es la idea tal cual surgió, para retomarla cuando
+toque. Preguntas obvias sin respuesta aún: ¿qué detecta que Telegram "falló" (un
+envío que no se pudo hacer, o la ausencia de heartbeat del propio bot)? ¿el
+correo se manda por cada alarma perdida, o es un aviso único de "Telegram no
+responde, revisa el canal principal"? ¿qué credencial de envío de correo existe
+ya en `.secrets/` (o hay que crear una)? ¿esto vive en este repo público, o es
+más una pieza de infraestructura del homelab general (como `verify_backups.py`),
+fuera de alcance de "homelab-ai-monitoring"?
+
+---
+
 ## Método de trabajo
 
 - **Miquel ejecuta** todas las skills y todos los comandos. El objetivo es que
