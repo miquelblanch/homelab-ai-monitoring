@@ -211,6 +211,47 @@ def test_cli_comprobar_contenedores_y_aprobar_generalizado() -> None:
         check("el intento queda ejecutado tras aprobar por CLI", resuelto.estado == "ejecutado")
 
 
+def test_cli_comprobar_contenedores_escribe_snapshot() -> None:
+    """fix: a diferencia de comprobar-agentes (026), comprobar-contenedores
+    nunca escribía remediacion_estado.json — el dashboard dependía del
+    cron de logs (cada 15 min) para ver un cambio de estado de un
+    contenedor, hasta 15 min de retraso real (encontrado depurando
+    couchdb en producción, 2026-08-16)."""
+    with tempfile.TemporaryDirectory() as db_dir:
+        snap_path = Path(db_dir) / "remediacion_estado.json"
+        with patch.object(store, "db_path", return_value=_db(db_dir)), \
+             patch.object(diagnostico_store, "db_path", return_value=Path(db_dir) / "diagnostico.db"), \
+             patch.object(acciones, "_snapshot_path", return_value=snap_path), \
+             patch.object(acciones, "LOGS_VIGILADOS", []), \
+             patch.object(_homelab_bridge, "docker_critical", return_value=set()), \
+             patch.object(_homelab_bridge, "docker_never_restart", return_value=set()), \
+             patch.object(_homelab_bridge, "listar_contenedores", return_value=[
+                 {"name": "couchdb", "running": True, "healthy": False},
+             ]), \
+             patch.object(acciones.diagnostico_evidencia, "congelar_vivo") as mock_congelar:
+            from diagnostico.model import Episodio
+            mock_congelar.return_value = Episodio(
+                componente="couchdb", origen="contenedor", es_critico=False,
+                en_vivo=True, ventana_inicio="x", ventana_fin="y", snapshot_evidencia={}, id=1,
+            )
+            import os
+            try:
+                os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+                    {"accion_aplica": None, "razonamiento": "prueba: healthcheck mal configurado"}
+                )
+                codigo = cli.main(["comprobar-contenedores"])
+            finally:
+                os.environ.pop("REMEDIACION_DEEPSEEK_MOCK", None)
+
+            snapshot = json.loads(snap_path.read_text())
+            entrada = next(c for c in snapshot["contenedores"] if c["nombre"] == "couchdb")
+
+        check("comprobar-contenedores termina en 0", codigo == 0)
+        check("comprobar-contenedores escribe el snapshot (fix, no esperar al cron de logs)", snap_path.exists())
+        check("el snapshot refleja el intento recién creado, no uno viejo",
+              entrada["intento_vigente"]["estado"] == "sin_accion")
+
+
 # ── Contenedores críticos (specs/022-clasificacion-remediacion/) ────────
 
 

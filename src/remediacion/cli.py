@@ -296,6 +296,7 @@ def _run_comprobar_contenedores() -> int:
 
     with store.connect() as conn_remediacion, diagnostico_store.connect() as conn_diagnostico:
         creados = acciones.comprobar_reiniciar_contenedor(conn_remediacion, conn_diagnostico)
+        acciones.escribir_snapshot(conn_remediacion)  # fix: comprobar-contenedores nunca lo escribía, a diferencia de comprobar-agentes — el dashboard veía hasta 15 min de retraso (esperando al cron de logs)
 
     if not creados:
         print("nada por evaluar, o ya había un intento pendiente/sin_evaluar reciente")
