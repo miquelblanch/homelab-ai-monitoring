@@ -1,7 +1,7 @@
 # Homelab Diagnostic Agent
 
 Caso de estudio público de **Spec-Driven Development (SDD)** aplicado a un
-problema real: la monitorización de un homelab doméstico de 40 contenedores.
+problema real: la monitorización de un homelab doméstico de ~40 contenedores.
 No es una demo — es el desarrollo real, con sus especificaciones, sus
 correcciones y sus errores, de un sistema que hoy vigila ~800 componentes
 reales sin ninguna brecha de cobertura conocida.
