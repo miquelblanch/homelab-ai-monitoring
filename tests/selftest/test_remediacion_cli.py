@@ -81,8 +81,13 @@ def test_cli_tipos_no_escribe_y_refleja_el_modo() -> None:
         check("cli tipos no crea fila en configuracion_accion", filas_tras_tipos == 0)
         check("cli tipos termina en 0 con un modo ya fijado", codigo_despues == 0)
         check(
-            "cli tipos refleja rotar_log en automático tras el cambio, y reiniciar_contenedor (021) en manual por defecto",
-            modos == [("rotar_log", "automatico"), ("reiniciar_contenedor", "manual")],
+            "cli tipos refleja rotar_log en automático tras el cambio, y reiniciar_contenedor "
+            "(021)/reiniciar_agente (026) en manual por defecto",
+            modos == [
+                ("rotar_log", "automatico"),
+                ("reiniciar_contenedor", "manual"),
+                ("reiniciar_agente", "manual"),
+            ],
         )
 
 
@@ -316,3 +321,69 @@ def test_cli_deshacer_rechaza_intento_de_reinicio() -> None:
                 ))
             codigo = cli.main(["deshacer", str(intento_id)])
         check("deshacer sobre un intento_reinicio se rechaza (FR-016)", codigo == 1)
+
+
+# ── Agentes (specs/026-reiniciar-agentes-relays/) ────────────────────────
+
+
+def test_cli_comprobar_agentes_y_aprobar_generalizado() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(store, "db_path", return_value=_db(db_dir)), \
+             patch.object(diagnostico_store, "db_path", return_value=Path(db_dir) / "diagnostico.db"), \
+             patch.object(_homelab_bridge, "listar_agentes_conocidos", return_value=[
+                 {"label": "amsterdam9.test-agente", "pid": "-", "exit_code": "1",
+                  "running": False, "requiere_sudo": False},
+             ]), \
+             patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo") as mock_congelar:
+            from diagnostico.model import Episodio
+            mock_congelar.return_value = Episodio(
+                componente="amsterdam9.test-agente", origen="agente", es_critico=False,
+                en_vivo=True, ventana_inicio="x", ventana_fin="y", snapshot_evidencia={}, id=1,
+            )
+            import os
+            try:
+                os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+                    {"accion_aplica": "reiniciar_agente", "razonamiento": "prueba CLI"}
+                )
+                codigo_comprobar = cli.main(["comprobar-agentes"])
+                with store.connect(_db(db_dir)) as conn:
+                    pendiente_id = store.listar_pendientes_agente(conn)[0].id
+
+                with patch.object(acciones, "ejecutar_reiniciar_agente", return_value=True):
+                    codigo_aprobar = cli.main(["aprobar", str(pendiente_id)])
+
+                with store.connect(_db(db_dir)) as conn:
+                    resuelto = store.get_intento_agente(conn, pendiente_id)
+            finally:
+                os.environ.pop("REMEDIACION_DEEPSEEK_MOCK", None)
+
+        check("comprobar-agentes termina en 0", codigo_comprobar == 0)
+        check("crea un intento pendiente para el agente caído", pendiente_id is not None)
+        check("aprobar (comando genérico) resuelve sobre intentos_agente", codigo_aprobar == 0)
+        check("el intento queda ejecutado tras aprobar por CLI", resuelto.estado == "ejecutado")
+
+
+def test_cli_deshacer_rechaza_intento_de_agente() -> None:
+    from remediacion.model import IntentoAgente
+
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(store, "db_path", return_value=_db(db_dir)):
+            with store.connect(_db(db_dir)) as conn:
+                intento_id = store.insert_intento_agente(conn, IntentoAgente(
+                    label="amsterdam9.test", modo_en_deteccion="automatico", estado="ejecutado", detalle="x",
+                ))
+            codigo = cli.main(["deshacer", str(intento_id)])
+        check("deshacer sobre un intento_agente se rechaza (FR-007)", codigo == 1)
+
+
+def test_cli_agentes_solo_lectura() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(store, "db_path", return_value=_db(db_dir)), \
+             patch.object(_homelab_bridge, "listar_agentes_conocidos", return_value=[
+                 {"label": "amsterdam9.ok", "pid": "1", "exit_code": "-", "running": True, "requiere_sudo": False},
+                 {"label": "com.homeassistant.relay", "pid": "-", "exit_code": "1",
+                  "running": False, "requiere_sudo": True},
+             ]), \
+             patch.object(_homelab_bridge, "sudoers_permitido", return_value=False):
+            codigo = cli.main(["agentes"])
+        check("agentes termina en 0", codigo == 0)

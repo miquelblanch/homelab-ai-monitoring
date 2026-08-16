@@ -9,6 +9,8 @@ import json
 import os
 import sqlite3
 import ssl
+import subprocess
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -21,19 +23,27 @@ from diagnostico.deepseek import llamar_deepseek as diagnostico_llamar_deepseek
 
 from . import _homelab_bridge as bridge
 from . import clasificacion
+from . import deepseek_agentes
 from . import deepseek_contenedores
-from .model import IntentoReinicio, IntentoRemediacion
+from .model import IntentoAgente, IntentoReinicio, IntentoRemediacion
 from .store import (
     get_intento,
+    get_intento_agente,
     get_intento_reinicio,
     get_modo,
     get_modo_contenedor,
     insert_intento,
+    insert_intento_agente,
     insert_intento_reinicio,
+    intento_agente_vigente,
     intento_reciente_pendiente_o_sin_evaluar,
+    intento_reciente_pendiente_o_sin_evaluar_agente,
     intento_reinicio_vigente,
+    intento_vigente as store_intento_vigente,
     pendiente_existente,
     sin_evaluar_consecutivos,
+    sin_evaluar_consecutivos_agente,
+    update_intento_agente_estado,
     update_intento_estado,
     update_intento_reinicio_estado,
 )
@@ -94,11 +104,23 @@ TIPO_ACCION_ROTAR_LOG = "rotar_log"
 # fija: la elige DeepSeek con evidencia real (deepseek_contenedores.py).
 TIPO_ACCION_REINICIAR_CONTENEDOR = "reiniciar_contenedor"
 
+# specs/026-reiniciar-agentes-relays/ — tercer tipo de acción real,
+# mismo patrón que reiniciar_contenedor (DeepSeek decide, nunca una
+# condición fija) pero por tipo de acción, no por instancia (FR-008 de
+# 026): un LaunchAgent/LaunchDaemon no tiene eje crítico/no-crítico,
+# así que no hace falta una tabla de configuración por-componente como
+# configuracion_contenedor.
+TIPO_ACCION_REINICIAR_AGENTE = "reiniciar_agente"
+
 # Registro de todos los tipos de acción que existen en el código, sepan o no
 # de ellos configuracion_accion todavía (esa tabla solo tiene fila para un
 # tipo tras su primer get_modo()). Única fuente de verdad para "qué tipos
 # de acción existen".
-TIPOS_ACCION = (TIPO_ACCION_ROTAR_LOG, TIPO_ACCION_REINICIAR_CONTENEDOR)
+TIPOS_ACCION = (
+    TIPO_ACCION_ROTAR_LOG,
+    TIPO_ACCION_REINICIAR_CONTENEDOR,
+    TIPO_ACCION_REINICIAR_AGENTE,
+)
 
 # Mismo número que ya usa rotate_hermes_logs.sh (KEEP=4) para el otro
 # mecanismo de rotación del homelab — sin este límite,
@@ -296,7 +318,7 @@ def resolver_deshacer(conn: sqlite3.Connection, intento_id: int) -> IntentoRemed
     return get_intento(conn, intento_id)
 
 
-def _intento_vigente_a_dict(intento: IntentoReinicio | None) -> dict | None:
+def _intento_vigente_a_dict(intento: IntentoReinicio | IntentoAgente | None) -> dict | None:
     if intento is None:
         return None
     return {
@@ -340,6 +362,37 @@ def _snapshot_contenedores(conn: sqlite3.Connection) -> list[dict]:
     return contenedores
 
 
+def _snapshot_agentes(conn: sqlite3.Connection) -> list[dict]:
+    """Bloque `agentes` del snapshot (specs/026-reiniciar-agentes-relays/,
+    contracts/snapshot-json.md): los candidatos conocidos
+    (`amsterdam9.*`/`com.homeassistant.*`), con su clasificación,
+    estado del permiso `sudoers` para los que lo necesitan (FR-023), y
+    su intento vigente si lo hay. Un fallo al procesar un agente
+    concreto lo omite del array, no aborta el resto (garantía 9)."""
+    modo = get_modo(conn, TIPO_ACCION_REINICIAR_AGENTE)
+    agentes = []
+    for a in bridge.listar_agentes_conocidos():
+        label = a.get("label")
+        if not label:
+            continue
+        try:
+            requiere_sudo = bool(a.get("requiere_sudo"))
+            sudoers_instalado = bridge.sudoers_permitido(label) if requiere_sudo else None
+            agentes.append({
+                "label": label,
+                "tipo": "com.homeassistant" if requiere_sudo else "amsterdam9",
+                "running": bool(a.get("running")),
+                "clasificacion": clasificacion.clasificar_agente(label, modo),
+                "sudoers_instalado": sudoers_instalado,
+                "intento_vigente": _intento_vigente_a_dict(
+                    intento_agente_vigente(conn, label)
+                ),
+            })
+        except Exception:
+            continue
+    return agentes
+
+
 def escribir_snapshot(conn: sqlite3.Connection) -> None:
     """Escribe `remediacion_estado.json` con el estado real de los 17
     logs vigilados, el modo vigente de `rotar_log` (feature 020), y —
@@ -348,10 +401,13 @@ def escribir_snapshot(conn: sqlite3.Connection) -> None:
     cada uno (research.md §3), para que el dashboard (sin acceso a
     REMEDIACION_LOGS_DIR ni a `remediacion.db`) pueda pintar la columna
     de Inventario y el estado real en Alarmas sin montar ningún volumen
-    nuevo. Incluye dos totales de logs (research.md §9 de 020): el de
-    los ficheros activos, y el de activos + sus rotaciones archivadas.
-    Nunca lanza: un fallo de escritura no debe tumbar `comprobar`
-    (contracts/snapshot-json.md garantía 1; contracts/cli.md garantía 20)."""
+    nuevo. Desde specs/026-reiniciar-agentes-relays/, también un bloque
+    `agentes` (mismo nivel que `contenedores`), con `sudoers_instalado`
+    para los `com.homeassistant.*` (FR-023). Incluye dos totales de
+    logs (research.md §9 de 020): el de los ficheros activos, y el de
+    activos + sus rotaciones archivadas. Nunca lanza: un fallo de
+    escritura no debe tumbar `comprobar` (contracts/snapshot-json.md
+    garantía 1; contracts/cli.md garantía 20)."""
     modo = get_modo(conn, TIPO_ACCION_ROTAR_LOG)
     logs = []
     total_activos = 0
@@ -362,12 +418,19 @@ def escribir_snapshot(conn: sqlite3.Connection) -> None:
         rotaciones_bytes = sum(
             p.stat().st_size for p in ruta.parent.glob(f"{ruta.name}.rotado-*")
         )
+        try:
+            intento_vigente_log = _intento_vigente_a_dict(
+                store_intento_vigente(conn, TIPO_ACCION_ROTAR_LOG, nombre)
+            )
+        except Exception:
+            intento_vigente_log = None
         logs.append({
             "nombre": nombre,
             "tamano_bytes": tamano,
             "umbral_bytes": umbral_bytes,
             "supera_umbral": tamano > umbral_bytes,
             "clasificacion": clasificacion.clasificar_log(modo),
+            "intento_vigente": intento_vigente_log,
         })
         total_activos += tamano
         total_con_rotaciones += tamano + rotaciones_bytes
@@ -377,6 +440,11 @@ def escribir_snapshot(conn: sqlite3.Connection) -> None:
     except Exception:
         contenedores = []
 
+    try:
+        agentes = _snapshot_agentes(conn)
+    except Exception:
+        agentes = []
+
     payload = {
         "generado_en": datetime.now(timezone.utc).isoformat(),
         "modo_rotar_log": modo,
@@ -384,6 +452,7 @@ def escribir_snapshot(conn: sqlite3.Connection) -> None:
         "total_con_rotaciones_bytes": total_con_rotaciones,
         "logs": logs,
         "contenedores": contenedores,
+        "agentes": agentes,
     }
     try:
         destino = _snapshot_path()
@@ -669,3 +738,313 @@ def resolver_rechazo_reinicio(conn: sqlite3.Connection, intento_id: int) -> Inte
         raise ValueError(f"intento {intento_id} no está pendiente (estado={intento.estado})")
     update_intento_reinicio_estado(conn, intento_id, "rechazado", "rechazado por Miquel")
     return get_intento_reinicio(conn, intento_id)
+
+
+# ── Agentes (specs/026-reiniciar-agentes-relays/) ────────────────────────
+#
+# Tercer tipo de acción real, mismo patrón que reiniciar_contenedor:
+# DeepSeek decide con evidencia real, nunca una condición fija
+# (deepseek_agentes.py). A diferencia de contenedores, el modo es por
+# tipo de acción (configuracion_accion), no por instancia — un agente
+# no tiene eje crítico/no-crítico (FR-008). Primera vez que este
+# paquete ejecuta un comando de sistema (`launchctl`) directamente en
+# vez de bridgear a un script privado — no existe ningún equivalente a
+# docker_monitor.py para agentes (research.md §2).
+
+# Más corto que el margen de contenedores (que esperan un arranque de
+# imagen Docker) — relanzar un proceso nativo ya presente en disco
+# debería ser casi inmediato; ajustar con datos reales si resulta
+# insuficiente tras el primer despliegue (research.md §2b).
+REMEDIACION_AGENTE_ESPERA_VERIFICACION_SEGUNDOS = float(
+    os.environ.get("REMEDIACION_AGENTE_ESPERA_VERIFICACION_SEGUNDOS", "3")
+)
+
+# Medido contra la máquina real de producción (2026-08-16, T031): un
+# `launchctl kickstart` tarda ~18s en devolver el control en este Mac
+# — probablemente por la cantidad de jobs registrados en `launchd` en
+# este homelab concreto. 15s (el valor original) cortaba en seco una
+# operación que sí iba a terminar bien poco después — un `fallido`
+# falso, no un problema real de la acción en sí. 30s deja margen real
+# sobre el dato medido, no solo un número redondo.
+REMEDIACION_AGENTE_TIMEOUT_KICKSTART_SEGUNDOS = int(
+    os.environ.get("REMEDIACION_AGENTE_TIMEOUT_KICKSTART_SEGUNDOS", "30")
+)
+
+
+def _agente_activo_ahora(label: str) -> bool:
+    """Consulta EN VIVO si `label` tiene un proceso activo ahora mismo
+    — nunca releyendo `LAUNCHAGENTS_RAW`, que puede tener hasta 5
+    minutos de desfase y por tanto no sirve para verificar algo que
+    acaba de pasar hace segundos (research.md §2b, corregido tras
+    `/speckit-analyze` hallazgo D1). `launchctl list <label>` (forma de
+    un solo argumento, no la tabla completa) imprime el estado
+    detallado de ese label concreto, con una línea `"PID" = <n>;`
+    cuando hay un proceso activo. Cualquier fallo (label no encontrado,
+    sin permiso, timeout) se trata como "no activo" — más seguro que
+    "sin dato"."""
+    try:
+        resultado = subprocess.run(
+            ["launchctl", "list", label],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if resultado.returncode != 0:
+        return False
+    for linea in resultado.stdout.splitlines():
+        clave, _, valor = linea.strip().partition("=")
+        if clave.strip().strip('"') != "PID":
+            continue
+        if valor.strip().strip(";").strip().isdigit():
+            return True
+    return False
+
+
+def ejecutar_reiniciar_agente(label: str, requiere_sudo: bool) -> bool:
+    """Ejecuta `launchctl kickstart` y verifica EN VIVO que el proceso
+    volvió a estar activo — el código de salida de `kickstart` nunca
+    decide el resultado por sí solo (FR-006, research.md §2/§2b): un
+    `kickstart` con éxito pero un crash-loop inmediato es `False`, no
+    `True`. `REMEDIACION_TEST_FORZAR_FALLO_AGENTE` en el entorno fuerza
+    `False` sin invocar `launchctl` en absoluto (hook de pruebas,
+    quickstart.md Escenario 3)."""
+    if os.environ.get("REMEDIACION_TEST_FORZAR_FALLO_AGENTE"):
+        return False
+
+    if requiere_sudo:
+        # User Story 2 (T016): permiso sudo acotado al comando exacto
+        # vía sudoers — nunca genérico (FR-005, SC-005). `-n`: si el
+        # sudoers no está instalado o no cubre exactamente este
+        # comando, falla inmediato en vez de colgarse esperando una
+        # contraseña que nunca va a llegar (research.md §2).
+        comando = ["sudo", "-n", "launchctl", "kickstart", "-k", f"system/{label}"]
+    else:
+        comando = ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{label}"]
+
+    try:
+        # 30s, no 15 — medido contra la máquina real (2026-08-16): un
+        # `kickstart` tarda ~18s en devolver el control en este Mac
+        # (probablemente por la cantidad de jobs registrados en
+        # `launchd`), con margen. La restricción SÍ es real, solo la
+        # cifra estaba mal calibrada — 15s cortaba una operación que
+        # de verdad iba a terminar bien 3s más tarde.
+        subprocess.run(comando, capture_output=True, text=True, timeout=REMEDIACION_AGENTE_TIMEOUT_KICKSTART_SEGUNDOS)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+    time.sleep(REMEDIACION_AGENTE_ESPERA_VERIFICACION_SEGUNDOS)
+    # La verificación en vivo (research.md §2b) es la misma para las dos
+    # ramas — sin sudo: confirmado contra la máquina real (T032,
+    # 2026-08-16) que leer el estado de un LaunchDaemon root no
+    # requiere privilegio, solo mutarlo lo requiere.
+    return _agente_activo_ahora(label)
+
+
+def _detalle_fallo_agente(label: str, requiere_sudo: bool) -> str:
+    """Detalle real de un reinicio de agente fallido — distingue
+    "permiso sudo no instalado" de un fallo genérico (contracts/cli.md
+    garantía 22: "el motivo real", no un texto genérico siempre igual).
+    Segunda llamada de solo lectura a `sudoers_permitido()` — barata,
+    sin efecto secundario, solo en la rama de fallo."""
+    if requiere_sudo and not bridge.sudoers_permitido(label):
+        return "reinicio sin efecto — permiso sudo no instalado o no cubre este comando"
+    return "reinicio sin efecto — sigue caído"
+
+
+def _notificar_sin_accion_agente(label: str, razonamiento: str) -> bool:
+    return _notificar_sin_accion(label, razonamiento)
+
+
+def _notificar_cortacircuito_agente(label: str, detalle: str) -> bool:
+    return _notificar_cortacircuito(label, detalle)
+
+
+def _crear_intento_agente(
+    conn: sqlite3.Connection,
+    label: str,
+    modo: str,
+    episodio_id: int | None,
+    estado: str,
+    detalle: str,
+    accion_recomendada: str | None = None,
+    razonamiento: str | None = None,
+    coste_eur: float | None = None,
+) -> IntentoAgente:
+    """Punto único de escritura de `intentos_agente` — mismo rol que
+    `_crear_intento_reinicio()` para contenedores (`/speckit-analyze`
+    hallazgo E1): si `estado == "sin_evaluar"`, comprueba la racha y
+    dispara el aviso de fallo persistente (FR-014, contrapartida no
+    negociable del Principio VII enmendado) — sin este punto único, el
+    aviso podía quedar sin implementar si cada rama de `evaluar_agente`
+    lo comprobaba (o no) por su cuenta."""
+    intento = IntentoAgente(
+        label=label,
+        modo_en_deteccion=modo,
+        episodio_id=episodio_id,
+        accion_recomendada=accion_recomendada,
+        razonamiento_deepseek=razonamiento,
+        coste_eur=coste_eur,
+        estado=estado,
+        detalle=detalle,
+    )
+    intento.id = insert_intento_agente(conn, intento)
+    if estado == "sin_evaluar":
+        racha = sin_evaluar_consecutivos_agente(conn, label)
+        if racha >= REMEDIACION_SIN_EVALUAR_MAX_CONSECUTIVOS:
+            _notificar_sin_evaluar_persistente(label, racha)
+    return intento
+
+
+def evaluar_agente(
+    conn_remediacion: sqlite3.Connection,
+    conn_diagnostico: sqlite3.Connection,
+    label: str,
+    requiere_sudo: bool = False,
+) -> IntentoAgente:
+    """Orquesta la decisión de DeepSeek para un agente caído — mismo
+    esqueleto exacto que `evaluar_contenedor()`, con
+    `configuracion_accion` en vez de `configuracion_contenedor` (un
+    agente no tiene eje crítico): `modo = get_modo(...)` →
+    `congelar_agente_vivo` → presupuesto → `llamar_deepseek` → parsear
+    → crea el intento en el estado que corresponda, siempre vía
+    `_crear_intento_agente()` (nunca un INSERT directo)."""
+    modo = get_modo(conn_remediacion, TIPO_ACCION_REINICIAR_AGENTE)
+    episodio = diagnostico_evidencia.congelar_agente_vivo(conn_diagnostico, label)
+
+    mock = deepseek_agentes.respuesta_mock()
+    if mock is not None:
+        parsed = mock
+        coste: float | None = None
+    else:
+        prompt = deepseek_agentes.construir_prompt_agente(episodio, TIPOS_ACCION)
+        if not diagnostico_gasto.hay_presupuesto(
+            conn_diagnostico, _estimar_tokens_entrada(prompt)
+        ):
+            return _crear_intento_agente(
+                conn_remediacion, label, modo, episodio.id,
+                estado="sin_evaluar",
+                detalle="sin presupuesto diario disponible para preguntar a DeepSeek",
+            )
+        respuesta = diagnostico_llamar_deepseek(prompt, _modelo_deepseek())
+        if respuesta is None:
+            return _crear_intento_agente(
+                conn_remediacion, label, modo, episodio.id,
+                estado="sin_evaluar",
+                detalle="DeepSeek no respondió o la llamada falló",
+            )
+        parsed = deepseek_agentes.parsear_respuesta_agente(respuesta)
+        if parsed is None:
+            return _crear_intento_agente(
+                conn_remediacion, label, modo, episodio.id,
+                estado="sin_evaluar",
+                detalle="respuesta de DeepSeek inconsistente con el formato esperado",
+            )
+        coste = diagnostico_gasto.registrar_coste(
+            conn_diagnostico, parsed["tokens_entrada"], parsed["tokens_salida"]
+        )
+
+    accion = parsed["accion_aplica"]
+    razonamiento = parsed["razonamiento"]
+
+    if accion is None:
+        intento = _crear_intento_agente(
+            conn_remediacion, label, modo, episodio.id,
+            estado="sin_accion", detalle=razonamiento,
+            accion_recomendada=None, razonamiento=razonamiento, coste_eur=coste,
+        )
+        _notificar_sin_accion_agente(label, razonamiento)
+        return intento
+
+    # accion == TIPO_ACCION_REINICIAR_AGENTE — única acción candidata hoy
+    if modo == "manual":
+        return _crear_intento_agente(
+            conn_remediacion, label, modo, episodio.id,
+            estado="pendiente", detalle="pendiente de aprobación",
+            accion_recomendada=accion, razonamiento=razonamiento, coste_eur=coste,
+        )
+
+    # modo == "automatico" — mismo cortacircuito compartido que contenedores
+    # (Clarifications, sesión 2026-08-16: mismo umbral, sin configuración
+    # independiente para esta acción)
+    intentos_previos = bridge.recent_agent_restart_attempts(
+        conn_remediacion, label, REMEDIACION_CB_VENTANA_HORAS
+    )
+    permite, motivo_breaker = bridge.breaker_decision(intentos_previos, REMEDIACION_CB_MAX_INTENTOS)
+    if not permite:
+        intento = _crear_intento_agente(
+            conn_remediacion, label, modo, episodio.id,
+            estado="cortacircuito", detalle=motivo_breaker,
+            accion_recomendada=accion, razonamiento=razonamiento, coste_eur=coste,
+        )
+        _notificar_cortacircuito_agente(label, motivo_breaker)
+        return intento
+
+    ejecutado = ejecutar_reiniciar_agente(label, requiere_sudo=requiere_sudo)
+    estado_final = "ejecutado" if ejecutado else "fallido"
+    detalle = "reiniciado y verificado" if ejecutado else _detalle_fallo_agente(label, requiere_sudo)
+    return _crear_intento_agente(
+        conn_remediacion, label, modo, episodio.id,
+        estado=estado_final, detalle=detalle,
+        accion_recomendada=accion, razonamiento=razonamiento, coste_eur=coste,
+    )
+
+
+def comprobar_reiniciar_agente(
+    conn_remediacion: sqlite3.Connection, conn_diagnostico: sqlite3.Connection
+) -> list[IntentoAgente]:
+    """Recorre los labels que `bridge.listar_agentes_conocidos()`
+    conoce (`amsterdam9.*`/`com.homeassistant.*`, FR-012: nunca un
+    label desconocido), se queda con los que no tienen proceso activo,
+    salta los que ya tienen un intento `pendiente`/`sin_evaluar`
+    reciente, y evalúa el resto — `requiere_sudo` se determina por
+    prefijo del label."""
+    creados: list[IntentoAgente] = []
+
+    for agente in bridge.listar_agentes_conocidos():
+        label = agente["label"]
+        if agente["running"]:
+            continue
+        if intento_reciente_pendiente_o_sin_evaluar_agente(conn_remediacion, label):
+            continue
+        creados.append(
+            evaluar_agente(
+                conn_remediacion, conn_diagnostico, label,
+                requiere_sudo=agente["requiere_sudo"],
+            )
+        )
+
+    return creados
+
+
+def resolver_aprobacion_agente(conn_remediacion: sqlite3.Connection, intento_id: int) -> IntentoAgente:
+    """Aprueba un intento `pendiente` — ejecuta el reinicio en la misma
+    llamada, con la misma verificación en vivo que ya usa
+    `evaluar_agente` (FR-006)."""
+    intento = get_intento_agente(conn_remediacion, intento_id)
+    if intento is None:
+        raise ValueError(f"intento {intento_id} no existe")
+    if intento.estado != "pendiente":
+        raise ValueError(f"intento {intento_id} no está pendiente (estado={intento.estado})")
+
+    requiere_sudo = intento.label.startswith("com.homeassistant.")
+    ejecutado = ejecutar_reiniciar_agente(intento.label, requiere_sudo=requiere_sudo)
+    estado_final = "ejecutado" if ejecutado else "fallido"
+    detalle = (
+        "reiniciado y verificado (aprobado por Miquel)"
+        if ejecutado
+        else _detalle_fallo_agente(intento.label, requiere_sudo)
+    )
+    update_intento_agente_estado(conn_remediacion, intento_id, estado_final, detalle)
+    return get_intento_agente(conn_remediacion, intento_id)
+
+
+def resolver_rechazo_agente(conn_remediacion: sqlite3.Connection, intento_id: int) -> IntentoAgente:
+    """Rechaza un intento `pendiente` — el agente no se toca, el
+    razonamiento de DeepSeek se conserva."""
+    intento = get_intento_agente(conn_remediacion, intento_id)
+    if intento is None:
+        raise ValueError(f"intento {intento_id} no existe")
+    if intento.estado != "pendiente":
+        raise ValueError(f"intento {intento_id} no está pendiente (estado={intento.estado})")
+    update_intento_agente_estado(conn_remediacion, intento_id, "rechazado", "rechazado por Miquel")
+    return get_intento_agente(conn_remediacion, intento_id)

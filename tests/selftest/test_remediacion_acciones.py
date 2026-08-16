@@ -18,12 +18,20 @@ from unittest.mock import patch
 from diagnostico.model import Episodio
 from remediacion import _homelab_bridge as bridge
 from remediacion import acciones, store
-from remediacion.model import IntentoReinicio
+from remediacion.model import IntentoAgente, IntentoReinicio, IntentoRemediacion
 from tests.selftest import check
 
 
 def _db(tmp: str) -> Path:
     return Path(tmp) / "remediacion.db"
+
+
+def subprocess_completed(returncode: int, stdout: str = "", stderr: str = "") -> "subprocess.CompletedProcess":
+    """Doble de `subprocess.CompletedProcess`, mínimo para los tests de
+    `ejecutar_reiniciar_agente`/`_agente_activo_ahora` (specs/026-.../)."""
+    import subprocess
+
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 def _escribir(ruta: Path, tamano_bytes: int) -> None:
@@ -397,6 +405,33 @@ def test_escribir_snapshot_forma_correcta() -> None:
             "total_con_rotaciones_bytes suma también la rotación archivada (11 + 5 MB)",
             payload["total_con_rotaciones_bytes"] == 16 * 1024 * 1024,
         )
+
+
+def test_escribir_snapshot_logs_incluye_intento_vigente() -> None:
+    """specs/026-reiniciar-agentes-relays/, corrección tras verificar
+    T028: logs[] nunca había tenido este campo pese a que research.md
+    §9 (026) daba por hecho que sí, "desde 020" — FR-020 de 026 exige
+    que Correcciones pueda leerlo para los tres tipos de acción."""
+    with tempfile.TemporaryDirectory() as logs_dir, tempfile.TemporaryDirectory() as db_dir, \
+         tempfile.TemporaryDirectory() as snap_dir:
+        lista = [("health-docker", "health-docker.log", 10 * 1024 * 1024)]
+        snap_path = Path(snap_dir) / "remediacion_estado.json"
+
+        with patch.object(acciones, "REMEDIACION_LOGS_DIR", Path(logs_dir)), \
+             patch.object(acciones, "LOGS_VIGILADOS", lista), \
+             patch.object(acciones, "_snapshot_path", return_value=snap_path):
+            with store.connect(_db(db_dir)) as conn:
+                store.insert_intento(conn, IntentoRemediacion(
+                    tipo_accion="rotar_log", componente="health-docker", ruta="/tmp/x.log",
+                    modo_en_deteccion="manual", estado="pendiente", detalle="pendiente de aprobación",
+                ))
+                acciones.escribir_snapshot(conn)
+
+        payload = json.loads(snap_path.read_text())
+        log = payload["logs"][0]
+        check("logs[] incluye intento_vigente", "intento_vigente" in log)
+        check("refleja el intento pendiente real", log["intento_vigente"] is not None
+              and log["intento_vigente"]["estado"] == "pendiente")
 
 
 def test_escribir_snapshot_crea_el_directorio_si_hace_falta() -> None:
@@ -985,3 +1020,416 @@ def test_resolver_aprobacion_reinicio_declara_ia_solo_si_ejecuta() -> None:
                     pendiente2 = _crear_pendiente_reinicio(conn, "otro-contenedor")
                     acciones.resolver_aprobacion_reinicio(conn, pendiente2.id)
                 check("aprobar con fallo real nunca declara ia", declaraciones == [])
+
+
+# ── Agentes (specs/026-reiniciar-agentes-relays/) ────────────────────────
+#
+# `subprocess.run`/`time.sleep` siempre mockeados — ningún test de esta
+# sección toca `launchctl` real ni espera los 3s reales de verificación.
+
+
+def _episodio_agente(label: str = "amsterdam9.test-agente") -> Episodio:
+    return Episodio(
+        componente=label, origen="agente", es_critico=False, en_vivo=True,
+        ventana_inicio="2026-08-16T00:00:00", ventana_fin="2026-08-16T00:00:00",
+        snapshot_evidencia={"agente_actual": {"label": label, "pid": "-", "exit_code": "1", "running": False}},
+        id=1,
+    )
+
+
+def _crear_pendiente_agente(conn, label: str = "amsterdam9.test-agente") -> IntentoAgente:
+    from remediacion.store import insert_intento_agente
+
+    intento = IntentoAgente(
+        label=label, modo_en_deteccion="manual", estado="pendiente",
+        detalle="pendiente de aprobación", accion_recomendada="reiniciar_agente",
+        razonamiento_deepseek="prueba",
+    )
+    intento.id = insert_intento_agente(conn, intento)
+    return intento
+
+
+# ── ejecutar_reiniciar_agente / _agente_activo_ahora — verificación en vivo,
+# hallazgo D1 de /speckit-analyze (nunca LAUNCHAGENTS_RAW, nunca el código
+# de salida de kickstart) ──
+
+
+def test_agente_activo_ahora_detecta_pid() -> None:
+    salida = subprocess_completed(0, '\t"Label" = "x";\n\t"PID" = 4242;\n\t"LastExitStatus" = 0;\n')
+    with patch.object(acciones.subprocess, "run", return_value=salida):
+        check("detecta un PID numérico como activo", acciones._agente_activo_ahora("x") is True)
+
+
+def test_agente_activo_ahora_sin_pid_no_esta_activo() -> None:
+    salida = subprocess_completed(0, '\t"Label" = "x";\n\t"LastExitStatus" = 1;\n')
+    with patch.object(acciones.subprocess, "run", return_value=salida):
+        check("sin línea PID ⇒ no activo", acciones._agente_activo_ahora("x") is False)
+
+
+def test_agente_activo_ahora_label_no_encontrado() -> None:
+    salida = subprocess_completed(1, "", "Could not find service")
+    with patch.object(acciones.subprocess, "run", return_value=salida):
+        check("returncode != 0 ⇒ no activo", acciones._agente_activo_ahora("x") is False)
+
+
+def test_agente_activo_ahora_excepcion_no_lanza() -> None:
+    with patch.object(acciones.subprocess, "run", side_effect=OSError("boom")):
+        check("una excepción de subprocess se trata como no activo, nunca lanza",
+              acciones._agente_activo_ahora("x") is False)
+
+
+def test_ejecutar_reiniciar_agente_verifica_en_vivo_nunca_por_codigo_de_salida() -> None:
+    """Hallazgo D1: un kickstart con éxito (código 0) pero el proceso
+    caído otra vez (crash-loop) es False, no True."""
+    kickstart_ok = subprocess_completed(0, "", "")
+    with patch.object(acciones.subprocess, "run", return_value=kickstart_ok), \
+         patch.object(acciones, "_agente_activo_ahora", return_value=False) as mock_verifica, \
+         patch.object(acciones.time, "sleep"):
+        resultado = acciones.ejecutar_reiniciar_agente("amsterdam9.test-agente", requiere_sudo=False)
+    check("kickstart con éxito pero sin PID después ⇒ False (crash-loop)", resultado is False)
+    check("la verificación en vivo se llamó de verdad", mock_verifica.called is True)
+
+
+def test_ejecutar_reiniciar_agente_exito_real() -> None:
+    kickstart_ok = subprocess_completed(0, "", "")
+    with patch.object(acciones.subprocess, "run", return_value=kickstart_ok), \
+         patch.object(acciones, "_agente_activo_ahora", return_value=True), \
+         patch.object(acciones.time, "sleep") as mock_sleep:
+        resultado = acciones.ejecutar_reiniciar_agente("amsterdam9.test-agente", requiere_sudo=False)
+    check("kickstart con éxito y proceso activo tras la espera ⇒ True", resultado is True)
+    check("espera antes de verificar (research.md §2b)", mock_sleep.called is True)
+
+
+def test_ejecutar_reiniciar_agente_hook_de_pruebas_fuerza_fallo() -> None:
+    try:
+        os.environ["REMEDIACION_TEST_FORZAR_FALLO_AGENTE"] = "1"
+        with patch.object(acciones.subprocess, "run") as mock_run:
+            resultado = acciones.ejecutar_reiniciar_agente("amsterdam9.test-agente", requiere_sudo=False)
+        check("el hook fuerza False sin invocar launchctl en absoluto", resultado is False)
+        check("launchctl nunca se invoca con el hook activo", mock_run.called is False)
+    finally:
+        os.environ.pop("REMEDIACION_TEST_FORZAR_FALLO_AGENTE", None)
+
+
+def test_ejecutar_reiniciar_agente_requiere_sudo_construye_comando_correcto() -> None:
+    """User Story 2 (T016) — FR-005: sudo -n acotado al comando exacto,
+    target `system/<label>` (LaunchDaemon root), nunca `gui/<uid>/...`."""
+    kickstart_ok = subprocess_completed(0, "", "")
+    with patch.object(acciones.subprocess, "run", return_value=kickstart_ok) as mock_run, \
+         patch.object(acciones, "_agente_activo_ahora", return_value=True), \
+         patch.object(acciones.time, "sleep"):
+        acciones.ejecutar_reiniciar_agente("com.homeassistant.test-relay", requiere_sudo=True)
+
+    comando = mock_run.call_args[0][0]
+    check("usa sudo -n, nunca sudo interactivo", comando[:2] == ["sudo", "-n"])
+    check("apunta al dominio system/, no gui/", "system/com.homeassistant.test-relay" in comando)
+
+
+def test_ejecutar_reiniciar_agente_sudo_no_instalado_falla_con_motivo_real() -> None:
+    """FR-005/FR-023 — sudoers no instalado ⇒ fallido con el motivo
+    real, nunca un intento ignorado en silencio (contracts/cli.md
+    garantía 22)."""
+    sudo_denegado = subprocess_completed(1, "", "sudo: a password is required")
+    with patch.object(acciones.subprocess, "run", return_value=sudo_denegado), \
+         patch.object(acciones.time, "sleep"):
+        resultado = acciones.ejecutar_reiniciar_agente("com.homeassistant.test-relay", requiere_sudo=True)
+    check("sudo -n denegado ⇒ False (se verifica en vivo, no hay PID nuevo)", resultado is False)
+
+
+def test_ejecutar_reiniciar_agente_sin_sudo_usa_dominio_gui() -> None:
+    kickstart_ok = subprocess_completed(0, "", "")
+    with patch.object(acciones.subprocess, "run", return_value=kickstart_ok) as mock_run, \
+         patch.object(acciones, "_agente_activo_ahora", return_value=True), \
+         patch.object(acciones.time, "sleep"):
+        acciones.ejecutar_reiniciar_agente("amsterdam9.test-agente", requiere_sudo=False)
+
+    comando = mock_run.call_args[0][0]
+    check("sin sudo, apunta al dominio gui/<uid>/", any(c.startswith("gui/") for c in comando))
+    check("nunca usa sudo cuando requiere_sudo=False", "sudo" not in comando)
+
+
+# ── sudoers_permitido — de solo lectura, nunca ejecuta (research.md §3) ──
+
+
+def test_sudoers_permitido_instalado() -> None:
+    permitido = subprocess_completed(0, "", "")
+    with patch.object(bridge.subprocess, "run", return_value=permitido) as mock_run:
+        check("código 0 ⇒ permitido", bridge.sudoers_permitido("com.homeassistant.test-relay") is True)
+    comando = mock_run.call_args[0][0]
+    check("usa sudo -n -l, nunca ejecuta el comando que comprueba", comando[:3] == ["sudo", "-n", "-l"])
+
+
+def test_sudoers_permitido_no_instalado() -> None:
+    denegado = subprocess_completed(1, "", "sudo: a password is required")
+    with patch.object(bridge.subprocess, "run", return_value=denegado):
+        check("código != 0 ⇒ no permitido", bridge.sudoers_permitido("com.homeassistant.test-relay") is False)
+
+
+def test_sudoers_permitido_fallo_de_comprobacion_nunca_lanza() -> None:
+    with patch.object(bridge.subprocess, "run", side_effect=OSError("boom")):
+        check("una excepción se trata como no permitido, nunca lanza",
+              bridge.sudoers_permitido("com.homeassistant.test-relay") is False)
+
+
+# ── evaluar_agente: modo automático, cortacircuito, sin_evaluar persistente ──
+
+
+def test_evaluar_agente_modo_automatico_ejecuta_sin_pendiente() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with store.connect(_db(db_dir)) as conn:
+            store.set_modo(conn, acciones.TIPO_ACCION_REINICIAR_AGENTE, "automatico")
+
+        with patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio_agente()), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
+             patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
+             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+                 "choices": [{"message": {"content": json.dumps(
+                     {"accion_aplica": "reiniciar_agente", "razonamiento": "prueba"}
+                 )}}],
+                 "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+             }), \
+             patch.object(acciones.bridge, "recent_agent_restart_attempts", return_value=0), \
+             patch.object(acciones, "ejecutar_reiniciar_agente", return_value=True) as mock_ejecutar:
+            with store.connect(_db(db_dir)) as conn:
+                intento = acciones.evaluar_agente(conn, conn, "amsterdam9.test-agente")
+                pendientes = store.listar_pendientes_agente(conn)
+
+        check("automático ejecuta directo, nunca pasa por pendiente", intento.estado == "ejecutado")
+        check("sin ningún pendiente tras la ejecución automática", pendientes == [])
+        check("ejecutar_reiniciar_agente se llamó exactamente una vez", mock_ejecutar.call_count == 1)
+
+
+def test_cortacircuito_agente_abre_al_cuarto_intento() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with store.connect(_db(db_dir)) as conn:
+            store.set_modo(conn, acciones.TIPO_ACCION_REINICIAR_AGENTE, "automatico")
+
+        with patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio_agente()), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
+             patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.0), \
+             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+                 "choices": [{"message": {"content": json.dumps(
+                     {"accion_aplica": "reiniciar_agente", "razonamiento": "prueba"}
+                 )}}],
+                 "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+             }), \
+             patch.object(acciones, "ejecutar_reiniciar_agente", return_value=False) as mock_ejecutar, \
+             patch.object(acciones, "_notificar_cortacircuito_agente") as mock_aviso:
+            with store.connect(_db(db_dir)) as conn:
+                estados = [
+                    acciones.evaluar_agente(conn, conn, "amsterdam9.test-agente").estado
+                    for _ in range(4)
+                ]
+
+        check("los 3 primeros intentos fallan de verdad", estados[:3] == ["fallido", "fallido", "fallido"])
+        check("el 4º intento no llega a ejecutar_reiniciar_agente — cortacircuito", estados[3] == "cortacircuito")
+        check("ejecutar_reiniciar_agente se llamó exactamente 3 veces, nunca una 4ª", mock_ejecutar.call_count == 3)
+        check("el cortacircuito de agentes avisa por Telegram", mock_aviso.called is True)
+
+
+def test_sin_evaluar_persistente_agente_dispara_aviso_al_umbral() -> None:
+    """FR-014 — contrapartida no negociable del Principio VII enmendado,
+    hallazgo E1 de /speckit-analyze: antes de la corrección, este aviso
+    no tenía ninguna prueba (ni conexión real) para agentes."""
+    with tempfile.TemporaryDirectory() as db_dir:
+        avisos: list[tuple[str, int]] = []
+        with patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio_agente()), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=False), \
+             patch.object(acciones, "_notificar_sin_evaluar_persistente",
+                           side_effect=lambda c, r: avisos.append((c, r))):
+            with store.connect(_db(db_dir)) as conn:
+                for _ in range(2):
+                    acciones.evaluar_agente(conn, conn, "amsterdam9.test-agente")
+                check("2 sin_evaluar seguidos, todavía sin alcanzar el umbral (3) ⇒ sin aviso", avisos == [])
+
+                acciones.evaluar_agente(conn, conn, "amsterdam9.test-agente")
+        check("al 3er sin_evaluar consecutivo, se dispara el aviso (FR-014)", len(avisos) == 1 and avisos[0][1] == 3)
+
+
+def test_sin_evaluar_persistente_agente_se_resetea_con_una_evaluacion_real() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        avisos: list[tuple[str, int]] = []
+        with patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio_agente()), \
+             patch.object(acciones, "_notificar_sin_evaluar_persistente",
+                           side_effect=lambda c, r: avisos.append((c, r))), \
+             patch.object(acciones, "_notificar_sin_accion_agente"):
+            with store.connect(_db(db_dir)) as conn:
+                with patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=False):
+                    acciones.evaluar_agente(conn, conn, "amsterdam9.test-agente")
+                    acciones.evaluar_agente(conn, conn, "amsterdam9.test-agente")
+
+                try:
+                    os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+                        {"accion_aplica": None, "razonamiento": "evaluación real, resetea la racha"}
+                    )
+                    acciones.evaluar_agente(conn, conn, "amsterdam9.test-agente")
+                finally:
+                    os.environ.pop("REMEDIACION_DEEPSEEK_MOCK", None)
+
+                racha = store.sin_evaluar_consecutivos_agente(conn, "amsterdam9.test-agente")
+
+        check("una evaluación real (no sin_evaluar) resetea la racha a 0", racha == 0)
+        check("nunca se llegó a avisar (la racha se rompió antes del umbral)", avisos == [])
+
+
+# ── comprobar_reiniciar_agente / resolver_aprobacion_agente / resolver_rechazo_agente ──
+
+
+def test_comprobar_reiniciar_agente_solo_evalua_los_caidos() -> None:
+    agentes = [
+        {"label": "amsterdam9.activo", "pid": "123", "exit_code": "-", "running": True, "requiere_sudo": False},
+        {"label": "amsterdam9.caido", "pid": "-", "exit_code": "1", "running": False, "requiere_sudo": False},
+    ]
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones.bridge, "listar_agentes_conocidos", return_value=agentes), \
+             patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio_agente("amsterdam9.caido")), \
+             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+                 "choices": [{"message": {"content": json.dumps(
+                     {"accion_aplica": None, "razonamiento": "prueba"}
+                 )}}],
+                 "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+             }), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
+             patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.0), \
+             patch.object(acciones, "_notificar_sin_accion_agente"):
+            with store.connect(_db(db_dir)) as conn:
+                creados = acciones.comprobar_reiniciar_agente(conn, conn)
+
+        check("solo evalúa el agente caído, nunca el activo", len(creados) == 1)
+        check("el evaluado es el caído", creados[0].label == "amsterdam9.caido")
+
+
+def test_comprobar_reiniciar_agente_no_duplica_pendiente() -> None:
+    agentes = [
+        {"label": "amsterdam9.caido", "pid": "-", "exit_code": "1", "running": False, "requiere_sudo": False},
+    ]
+    with tempfile.TemporaryDirectory() as db_dir:
+        with store.connect(_db(db_dir)) as conn:
+            _crear_pendiente_agente(conn, "amsterdam9.caido")
+
+        with patch.object(acciones.bridge, "listar_agentes_conocidos", return_value=agentes), \
+             patch.object(acciones, "evaluar_agente") as mock_evaluar:
+            with store.connect(_db(db_dir)) as conn:
+                creados = acciones.comprobar_reiniciar_agente(conn, conn)
+
+        check("con un pendiente ya existente, no evalúa de nuevo", mock_evaluar.called is False)
+        check("no crea ningún intento nuevo", creados == [])
+
+
+def test_resolver_aprobacion_agente_ejecuta_y_verifica() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones, "ejecutar_reiniciar_agente", return_value=True) as mock_ejecutar:
+            with store.connect(_db(db_dir)) as conn:
+                pendiente = _crear_pendiente_agente(conn)
+                intento = acciones.resolver_aprobacion_agente(conn, pendiente.id)
+
+        check("aprobar ejecuta y verifica ⇒ ejecutado", intento.estado == "ejecutado")
+        check("ejecutar_reiniciar_agente llamado con requiere_sudo=False para amsterdam9.*",
+              mock_ejecutar.call_args.kwargs.get("requiere_sudo") is False)
+
+
+def test_resolver_aprobacion_agente_sudo_para_com_homeassistant() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones, "ejecutar_reiniciar_agente", return_value=False) as mock_ejecutar, \
+             patch.object(acciones.bridge, "sudoers_permitido", return_value=False):
+            with store.connect(_db(db_dir)) as conn:
+                pendiente = _crear_pendiente_agente(conn, "com.homeassistant.test-relay")
+                intento = acciones.resolver_aprobacion_agente(conn, pendiente.id)
+
+        _, kwargs = mock_ejecutar.call_args
+        check("com.homeassistant.* aprueba con requiere_sudo=True", kwargs.get("requiere_sudo") is True)
+        check("el detalle del fallo distingue el permiso no instalado (garantía 22)",
+              "permiso" in intento.detalle)
+
+
+def test_detalle_fallo_agente_generico_si_no_requiere_sudo() -> None:
+    with patch.object(acciones.bridge, "sudoers_permitido") as mock_sudoers:
+        detalle = acciones._detalle_fallo_agente("amsterdam9.test", requiere_sudo=False)
+    check("amsterdam9.* nunca comprueba sudoers en el fallo", mock_sudoers.called is False)
+    check("detalle genérico cuando no aplica sudo", detalle == "reinicio sin efecto — sigue caído")
+
+
+def test_resolver_rechazo_agente_no_toca_el_agente() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones, "ejecutar_reiniciar_agente") as mock_ejecutar:
+            with store.connect(_db(db_dir)) as conn:
+                pendiente = _crear_pendiente_agente(conn)
+                intento = acciones.resolver_rechazo_agente(conn, pendiente.id)
+
+        check("rechazar no ejecuta nada", mock_ejecutar.called is False)
+        check("estado queda rechazado", intento.estado == "rechazado")
+
+
+def test_resolver_agente_sobre_estado_equivocado_se_rechaza() -> None:
+    with tempfile.TemporaryDirectory() as db_dir:
+        with store.connect(_db(db_dir)) as conn:
+            pendiente = _crear_pendiente_agente(conn)
+            acciones.resolver_rechazo_agente(conn, pendiente.id)
+            lanzo_aprobar = False
+            try:
+                acciones.resolver_aprobacion_agente(conn, pendiente.id)
+            except ValueError:
+                lanzo_aprobar = True
+        check("aprobar un intento ya rechazado se rechaza con un error claro", lanzo_aprobar is True)
+
+
+# ── escribir_snapshot: bloque agentes[] (User Story 4) ──
+
+
+def test_escribir_snapshot_incluye_bloque_agentes() -> None:
+    agentes = [
+        {"label": "amsterdam9.ok", "pid": "1", "exit_code": "-", "running": True, "requiere_sudo": False},
+        {"label": "com.homeassistant.relay", "pid": "-", "exit_code": "1", "running": False, "requiere_sudo": True},
+    ]
+    with tempfile.TemporaryDirectory() as db_dir, tempfile.TemporaryDirectory() as snap_dir:
+        snap_path = Path(snap_dir) / "remediacion_estado.json"
+        with patch.object(acciones, "_snapshot_path", return_value=snap_path), \
+             patch.object(acciones.bridge, "listar_agentes_conocidos", return_value=agentes), \
+             patch.object(acciones.bridge, "sudoers_permitido", return_value=False):
+            with store.connect(_db(db_dir)) as conn:
+                acciones.escribir_snapshot(conn)
+
+        payload = json.loads(snap_path.read_text())
+        check("bloque agentes presente", "agentes" in payload)
+        check("2 entradas, una por agente conocido", len(payload["agentes"]) == 2)
+
+        por_label = {a["label"]: a for a in payload["agentes"]}
+        check("amsterdam9.* nunca pregunta por sudoers_instalado (None)",
+              por_label["amsterdam9.ok"]["sudoers_instalado"] is None)
+        check("com.homeassistant.* refleja sudoers_instalado real",
+              por_label["com.homeassistant.relay"]["sudoers_instalado"] is False)
+        check("com.homeassistant.* se marca con tipo correcto",
+              por_label["com.homeassistant.relay"]["tipo"] == "com.homeassistant")
+        check("amsterdam9.* se marca con tipo correcto",
+              por_label["amsterdam9.ok"]["tipo"] == "amsterdam9")
+        check("ningún agente en este bloque aparece clasificado manual",
+              all(a["clasificacion"] != "manual" for a in payload["agentes"]))
+
+
+def test_escribir_snapshot_agentes_no_rompe_si_uno_falla() -> None:
+    agentes = [
+        {"label": "amsterdam9.ok", "pid": "1", "exit_code": "-", "running": True, "requiere_sudo": False},
+        {"label": "amsterdam9.rompe", "pid": "-", "exit_code": "1", "running": False, "requiere_sudo": False},
+    ]
+    with tempfile.TemporaryDirectory() as db_dir, tempfile.TemporaryDirectory() as snap_dir:
+        snap_path = Path(snap_dir) / "remediacion_estado.json"
+
+        def falla_para_rompe(conn, label):
+            if label == "amsterdam9.rompe":
+                raise RuntimeError("boom")
+            return None
+
+        with patch.object(acciones, "_snapshot_path", return_value=snap_path), \
+             patch.object(acciones.bridge, "listar_agentes_conocidos", return_value=agentes), \
+             patch.object(acciones, "intento_agente_vigente", side_effect=falla_para_rompe):
+            with store.connect(_db(db_dir)) as conn:
+                acciones.escribir_snapshot(conn)
+
+        payload = json.loads(snap_path.read_text())
+        check("un fallo en un agente concreto no aborta el resto del bloque",
+              len(payload["agentes"]) == 1 and payload["agentes"][0]["label"] == "amsterdam9.ok")
+
+
+def test_clasificar_agente_siempre_ia() -> None:
+    check("clasificar_agente siempre devuelve ia", acciones.clasificacion.clasificar_agente("x", "manual") == "ia")
+    check("clasificar_agente ignora modo", acciones.clasificacion.clasificar_agente("x", None) == "ia")

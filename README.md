@@ -151,7 +151,8 @@ BITACORA.md                        Una línea por sesión: qué midió el métod
 specs/0NN-*/                       Un directorio por feature: spec, plan, tasks, research...
 src/inventory/                     El inventario de cobertura (feature 001)
 src/diagnostico/                   El motor de diagnóstico (features 007-017), 10 orígenes
-src/remediacion/                   Remediación automática (features 019-020), rotar_log
+src/remediacion/                   Remediación automática (features 019-026) — rotar_log,
+                                    reiniciar_contenedor, reiniciar_agente
 tests/selftest/                    Autocomprobaciones de los tres paquetes — sin tocar
                                     datos reales, sin llamar a DeepSeek, sin tocar logs reales
 ```

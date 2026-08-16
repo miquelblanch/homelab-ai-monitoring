@@ -300,6 +300,61 @@ def test_ids_de_intentos_nunca_colisionan_entre_las_dos_tablas() -> None:
         check("un rotar_log nuevo tampoco colisiona con reinicios ya existentes", id_remediacion > 3)
 
 
+def test_localizar_intento_con_las_tres_tablas_pobladas() -> None:
+    """specs/026-reiniciar-agentes-relays/, research.md §1 — ampliación
+    del espacio de id compartido de dos a tres tablas. Con
+    intentos_remediacion e intentos_reinicio ya pobladas (como en
+    producción), un intentos_agente nuevo no debe colisionar con
+    ninguna de las dos, y localizar_intento debe resolverlo en
+    'agente' — mismo criterio que ya protegía la pareja
+    remediacion/reinicio desde 021."""
+    from remediacion.model import IntentoAgente, IntentoReinicio, IntentoRemediacion
+
+    with tempfile.TemporaryDirectory() as tmp:
+        with store.connect(_db(tmp)) as conn:
+            for _ in range(2):
+                store.insert_intento(conn, IntentoRemediacion(
+                    tipo_accion="rotar_log", componente="health-docker", ruta="/tmp/x.log",
+                    modo_en_deteccion="manual", estado="ejecutado", detalle="x",
+                ))
+            for _ in range(2):
+                store.insert_intento_reinicio(conn, IntentoReinicio(
+                    contenedor="test", modo_en_deteccion="manual", estado="ejecutado", detalle="x",
+                ))
+            id_agente = store.insert_intento_agente(conn, IntentoAgente(
+                label="amsterdam9.test", modo_en_deteccion="manual", estado="pendiente", detalle="x",
+            ))
+            ubicacion = store.localizar_intento(conn, id_agente)
+
+        check("el nuevo intento de agente no colisiona con los 4 ya existentes", id_agente > 4)
+        check("localizar_intento lo encuentra en la tabla 'agente'", ubicacion is not None and ubicacion[0] == "agente")
+
+        with store.connect(Path(tmp) / "otra.db") as conn:
+            # A la inversa: intentos_agente ya poblada, un rotar_log y un
+            # reinicio nuevos tampoco deben colisionar con ella.
+            for _ in range(3):
+                store.insert_intento_agente(conn, IntentoAgente(
+                    label="amsterdam9.test", modo_en_deteccion="manual", estado="ejecutado", detalle="x",
+                ))
+            id_remediacion = store.insert_intento(conn, IntentoRemediacion(
+                tipo_accion="rotar_log", componente="health-docker", ruta="/tmp/x.log",
+                modo_en_deteccion="manual", estado="pendiente", detalle="x",
+            ))
+            id_reinicio = store.insert_intento_reinicio(conn, IntentoReinicio(
+                contenedor="test", modo_en_deteccion="manual", estado="pendiente", detalle="x",
+            ))
+        check("un rotar_log nuevo no colisiona con agentes ya existentes", id_remediacion > 3)
+        check("un reinicio nuevo no colisiona con agentes ya existentes", id_reinicio > 3)
+        check("los dos ids nuevos son distintos entre sí", id_remediacion != id_reinicio)
+
+
+def test_localizar_intento_agente_id_inexistente_devuelve_none() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        with store.connect(_db(tmp)) as conn:
+            ubicacion = store.localizar_intento(conn, 424242)
+        check("un id que no existe en ninguna de las tres tablas ⇒ None", ubicacion is None)
+
+
 # ── Contenedores críticos (specs/022-clasificacion-remediacion/) ────────
 
 
@@ -402,3 +457,36 @@ def test_intento_reinicio_vigente_prioriza_el_mas_reciente() -> None:
             vigente = store.intento_reinicio_vigente(conn, "test")
         check("con un pendiente real, ese es el vigente, no el rechazado previo",
               vigente is not None and vigente.detalle == "nuevo")
+
+
+# ── intento_vigente para rotar_log (specs/026-reiniciar-agentes-relays/,
+# corrección tras verificar T028 — logs[] nunca había tenido esto) ──
+
+
+def test_intento_vigente_log_pendiente_es_vigente() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        with store.connect(_db(tmp)) as conn:
+            store.insert_intento(conn, IntentoRemediacion(
+                tipo_accion="rotar_log", componente="health-docker", ruta="/tmp/x.log",
+                modo_en_deteccion="manual", estado="pendiente", detalle="x",
+            ))
+            vigente = store.intento_vigente(conn, "rotar_log", "health-docker")
+        check("un intento de log pendiente es vigente", vigente is not None and vigente.estado == "pendiente")
+
+
+def test_intento_vigente_log_sin_ninguno_es_none() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        with store.connect(_db(tmp)) as conn:
+            check("sin ningún intento, vigente es None",
+                  store.intento_vigente(conn, "rotar_log", "health-docker") is None)
+
+
+def test_intento_vigente_log_no_mezcla_componentes_distintos() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        with store.connect(_db(tmp)) as conn:
+            store.insert_intento(conn, IntentoRemediacion(
+                tipo_accion="rotar_log", componente="health-ha", ruta="/tmp/y.log",
+                modo_en_deteccion="manual", estado="pendiente", detalle="x",
+            ))
+            check("un log distinto no tiene vigente prestado de otro",
+                  store.intento_vigente(conn, "rotar_log", "health-docker") is None)

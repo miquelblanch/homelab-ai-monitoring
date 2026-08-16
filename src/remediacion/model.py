@@ -105,3 +105,27 @@ class EvaluacionDeepSeek:
     tokens_salida: int = 0
     fallo: bool = False
     motivo_fallo: str | None = None
+
+
+# ── Agentes (specs/026-reiniciar-agentes-relays/) ────────────────────────
+
+
+@dataclass
+class IntentoAgente:
+    """Una propuesta o ejecución de reiniciar_agente originada por una
+    evaluación de DeepSeek — data-model.md de 026. Mismos campos que
+    IntentoReinicio, `label` en vez de `contenedor` — reutiliza
+    ESTADOS_INTENTO_REINICIO tal cual (mismo conjunto de estados, sin
+    tupla nueva). Sin campo de rollback (FR-007)."""
+
+    label: str
+    modo_en_deteccion: str
+    estado: str
+    detalle: str
+    episodio_id: int | None = None
+    accion_recomendada: str | None = None
+    razonamiento_deepseek: str | None = None
+    coste_eur: float | None = None
+    creado_en: str | None = None
+    resuelto_en: str | None = None
+    id: int | None = None

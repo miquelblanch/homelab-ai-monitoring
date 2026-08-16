@@ -5,9 +5,11 @@ specs/021-remediacion-contenedores/contracts/cli.md.
 Uso:
     python3 -m remediacion.cli comprobar
     python3 -m remediacion.cli comprobar-contenedores
+    python3 -m remediacion.cli comprobar-agentes
     python3 -m remediacion.cli pendientes
     python3 -m remediacion.cli tipos
     python3 -m remediacion.cli contenedores
+    python3 -m remediacion.cli agentes
     python3 -m remediacion.cli aprobar INTENTO_ID
     python3 -m remediacion.cli rechazar INTENTO_ID
     python3 -m remediacion.cli deshacer INTENTO_ID
@@ -53,6 +55,24 @@ contracts/cli.md), válidas para contenedores críticos:
 13. `contenedores --incluir-criticos` añade los críticos a la lista,
     con `modo: null` — nunca mezclados con el modo real de los no
     críticos.
+
+Garantías añadidas por 026 (contracts/cli.md), válidas para
+`reiniciar_agente`:
+14. DeepSeek nunca elige fuera de la lista cerrada de acciones para un
+    agente (mismo criterio que la garantía 6).
+15. Ningún `com.homeassistant.*` se reinicia sin que `sudo -n`
+    confirme el permiso exacto en el momento de ejecutar — un permiso
+    no instalado produce `estado="fallido"` con el motivo real, nunca
+    un intento ignorado en silencio.
+16. Un reinicio de agente se verifica EN VIVO (`launchctl list`),
+    nunca contra el volcado periódico `LAUNCHAGENTS_RAW` ni contra el
+    código de salida de `launchctl kickstart` (FR-006).
+17. Sin operación de deshacer para un intento de agente (FR-007) —
+    `deshacer` lo rechaza explícitamente, mismo criterio que un
+    reinicio de contenedor.
+18. El cortacircuito de agentes cuenta solo sobre `intentos_agente`,
+    con el mismo umbral compartido que contenedores (3 intentos/6h,
+    Clarifications sesión 2026-08-16).
 """
 
 from __future__ import annotations
@@ -83,7 +103,11 @@ def build_parser() -> argparse.ArgumentParser:
         "comprobar-contenedores",
         help="Evalúa con DeepSeek los contenedores no críticos caídos (021, FR-001/FR-002/FR-006).",
     )
-    subparsers.add_parser("pendientes", help="Lista los intentos pendientes de aprobación (rotar_log y reiniciar_contenedor).")
+    subparsers.add_parser(
+        "comprobar-agentes",
+        help="Evalúa con DeepSeek los LaunchAgents/LaunchDaemons caídos (026, FR-001/FR-002/FR-012).",
+    )
+    subparsers.add_parser("pendientes", help="Lista los intentos pendientes de aprobación (rotar_log, reiniciar_contenedor y reiniciar_agente).")
     subparsers.add_parser("tipos", help="Lista los tipos de acción que existen y su modo actual — solo lectura.")
     contenedores_parser = subparsers.add_parser(
         "contenedores",
@@ -94,6 +118,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Añade también los contenedores críticos, con modo null (022, contracts/cli.md).",
     )
+    subparsers.add_parser(
+        "agentes",
+        help="Lista los 43 candidatos (amsterdam9.*/com.homeassistant.*) con su estado — solo lectura (026).",
+    )
 
     aprobar_parser = subparsers.add_parser("aprobar", help="Aprueba un intento pendiente y lo ejecuta.")
     aprobar_parser.add_argument("intento_id", type=int)
@@ -101,7 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
     rechazar_parser = subparsers.add_parser("rechazar", help="Rechaza un intento pendiente, sin ejecutar nada.")
     rechazar_parser.add_argument("intento_id", type=int)
 
-    deshacer_parser = subparsers.add_parser("deshacer", help="Deshace un intento ya ejecutado (FR-010 de 019). Rechaza reinicios de contenedor (FR-016 de 021).")
+    deshacer_parser = subparsers.add_parser("deshacer", help="Deshace un intento ya ejecutado (FR-010 de 019). Rechaza reinicios de contenedor (FR-016 de 021) y de agente (FR-007 de 026).")
     deshacer_parser.add_argument("intento_id", type=int)
 
     modo_parser = subparsers.add_parser("modo", help="Cambia el modo de un tipo de acción (FR-003).")
@@ -155,14 +183,17 @@ def _run_pendientes() -> int:
     with store.connect() as conn:
         pendientes = store.listar_pendientes(conn)
         pendientes_reinicio = store.listar_pendientes_reinicio(conn)
+        pendientes_agente = store.listar_pendientes_agente(conn)
 
-    if not pendientes and not pendientes_reinicio:
+    if not pendientes and not pendientes_reinicio and not pendientes_agente:
         print("sin propuestas pendientes")
         return 0
     for intento in pendientes:
         print(f"intento {intento.id} — {intento.tipo_accion} — {intento.componente} — {intento.detalle}")
     for intento in pendientes_reinicio:
         print(f"intento {intento.id} — reiniciar_contenedor — {intento.contenedor} — {intento.detalle}")
+    for intento in pendientes_agente:
+        print(f"intento {intento.id} — reiniciar_agente — {intento.label} — {intento.detalle}")
     return 0
 
 
@@ -190,6 +221,9 @@ def _run_aprobar(intento_id: int) -> int:
             if tabla == "reinicio":
                 intento = acciones.resolver_aprobacion_reinicio(conn, intento_id)
                 print(f"intento {intento.id} — {intento.contenedor} — {intento.estado} — {intento.detalle}")
+            elif tabla == "agente":
+                intento = acciones.resolver_aprobacion_agente(conn, intento_id)
+                print(f"intento {intento.id} — {intento.label} — {intento.estado} — {intento.detalle}")
             else:
                 intento = acciones.resolver_aprobacion(conn, intento_id)
                 print(f"intento {intento.id} — {intento.estado} — {intento.detalle}")
@@ -212,6 +246,9 @@ def _run_rechazar(intento_id: int) -> int:
             if tabla == "reinicio":
                 intento = acciones.resolver_rechazo_reinicio(conn, intento_id)
                 print(f"intento {intento.id} — {intento.contenedor} — {intento.estado}")
+            elif tabla == "agente":
+                intento = acciones.resolver_rechazo_agente(conn, intento_id)
+                print(f"intento {intento.id} — {intento.label} — {intento.estado}")
             else:
                 intento = acciones.resolver_rechazo(conn, intento_id)
                 print(f"intento {intento.id} — {intento.estado}")
@@ -237,6 +274,13 @@ def _run_deshacer(intento_id: int) -> int:
                 file=sys.stderr,
             )
             return 1
+        if tabla == "agente":
+            print(
+                f"intento {intento_id} es un reinicio de agente — sin operación "
+                f"de deshacer (FR-007 de 026)",
+                file=sys.stderr,
+            )
+            return 1
         try:
             intento = acciones.resolver_deshacer(conn, intento_id)
         except ValueError as e:
@@ -258,6 +302,39 @@ def _run_comprobar_contenedores() -> int:
         return 0
     for intento in creados:
         print(f"intento {intento.id} — {intento.contenedor} — {intento.estado} — {intento.detalle}")
+    return 0
+
+
+def _run_comprobar_agentes() -> int:
+    from . import acciones, store
+    from diagnostico import store as diagnostico_store
+
+    with store.connect() as conn_remediacion, diagnostico_store.connect() as conn_diagnostico:
+        creados = acciones.comprobar_reiniciar_agente(conn_remediacion, conn_diagnostico)
+        acciones.escribir_snapshot(conn_remediacion)  # 026 — bloque agentes[] para el dashboard
+
+    if not creados:
+        print("nada por evaluar, o ya había un intento pendiente/sin_evaluar reciente")
+        return 0
+    for intento in creados:
+        print(f"intento {intento.id} — {intento.label} — {intento.estado} — {intento.detalle}")
+    return 0
+
+
+def _run_agentes() -> int:
+    from . import _homelab_bridge as bridge
+    from . import store
+
+    with store.connect() as conn:
+        modo = store.get_modo(conn, "reiniciar_agente")
+        for agente in bridge.listar_agentes_conocidos():
+            label = agente["label"]
+            estado = "activo" if agente["running"] else "caído"
+            linea = f"{label} — {estado} — modo {modo}"
+            if agente["requiere_sudo"]:
+                sudoers_ok = bridge.sudoers_permitido(label)
+                linea += f" — sudoers {'instalado' if sudoers_ok else 'NO instalado'}"
+            print(linea)
     return 0
 
 
@@ -348,12 +425,16 @@ def main(argv: list[str] | None = None) -> int:
         return _run_comprobar()
     if args.comando == "comprobar-contenedores":
         return _run_comprobar_contenedores()
+    if args.comando == "comprobar-agentes":
+        return _run_comprobar_agentes()
     if args.comando == "pendientes":
         return _run_pendientes()
     if args.comando == "tipos":
         return _run_tipos()
     if args.comando == "contenedores":
         return _run_contenedores(args.incluir_criticos)
+    if args.comando == "agentes":
+        return _run_agentes()
     if args.comando == "aprobar":
         return _run_aprobar(args.intento_id)
     if args.comando == "rechazar":

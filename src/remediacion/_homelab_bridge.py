@@ -23,6 +23,11 @@ Desde specs/021-remediacion-contenedores/ (research.md §4), este bridge
 también expone las funciones ya probadas de `docker_monitor.py` para el
 reinicio de contenedores — nunca se reimplementan aquí.
 
+Desde specs/026-reiniciar-agentes-relays/ (research.md §4), también lee
+`LAUNCHAGENTS_RAW` directamente para los candidatos a `reiniciar_agente`
+— sin bridgear nada, porque no existe ningún script privado equivalente
+a `docker_monitor.py` para LaunchAgents/LaunchDaemons.
+
 Contrato: si el script no está disponible (repo público clonado fuera
 del homelab, por ejemplo), las funciones de este módulo devuelven un
 resultado inocuo (cadenas vacías, conjuntos vacíos, listas vacías,
@@ -32,6 +37,7 @@ resultado inocuo (cadenas vacías, conjuntos vacíos, listas vacías,
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 from _homelab_bridge_common import (
@@ -119,6 +125,87 @@ def recent_restart_attempts(conn_remediacion, contenedor: str, window_hours: int
     desde = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).isoformat()
     intentos = store.intentos_recientes_contenedor(conn_remediacion, contenedor, desde)
     return sum(1 for i in intentos if i.estado in ("ejecutado", "fallido"))
+
+
+# ── Agentes (specs/026-reiniciar-agentes-relays/) ────────────────────────
+#
+# A diferencia de los contenedores, no hay ningún "agent_monitor.py"
+# privado del que bridgear (research.md §2) — este bridge lee
+# LAUNCHAGENTS_RAW directamente, misma fuente cruda que ya usa
+# `diagnostico.evidencia.agente` (research.md §4), sin importar ese
+# módulo (remediacion no depende de la forma interna de Episodio para
+# esto, solo del fichero compartido).
+
+_DEFAULT_LAUNCHAGENTS_RAW = (
+    "/Volumes/FastData/homelab/docker/homelab-orchestrator/data/launchagents_raw.txt"
+)
+
+_PREFIJOS_AGENTE = ("amsterdam9.", "com.homeassistant.")
+
+
+def _launchagents_raw_path() -> Path:
+    return Path(os.environ.get("LAUNCHAGENTS_RAW", _DEFAULT_LAUNCHAGENTS_RAW))
+
+
+def listar_agentes_conocidos() -> list[dict]:
+    """Labels `amsterdam9.*`/`com.homeassistant.*` presentes en
+    `LAUNCHAGENTS_RAW`, con su estado actual — research.md §4. Lista
+    vacía si el fichero no existe o no se puede leer (mismo principio
+    "a prueba de fallos" que el resto de este módulo). No incluye
+    labels con otro prefijo (FR-012: nunca actuar sobre algo
+    desconocido o mal identificado)."""
+    try:
+        lineas = _launchagents_raw_path().read_text().splitlines()
+    except OSError:
+        return []
+
+    agentes: list[dict] = []
+    for linea in lineas:
+        partes = linea.split("\t")
+        if len(partes) < 3:
+            continue
+        pid, exit_code, label = partes[0].strip(), partes[1].strip(), partes[2].strip()
+        if not label.startswith(_PREFIJOS_AGENTE):
+            continue
+        agentes.append({
+            "label": label,
+            "pid": pid,
+            "exit_code": exit_code,
+            "running": pid != "-",
+            "requiere_sudo": label.startswith("com.homeassistant."),
+        })
+    return agentes
+
+
+def recent_agent_restart_attempts(conn_remediacion, label: str, window_hours: int = 6) -> int:
+    """Mismo cálculo que `recent_restart_attempts()`, sobre
+    `intentos_agente` — alimenta el mismo `breaker_decision()`
+    compartido (Clarifications, sesión 2026-08-16: mismo umbral que
+    contenedores, sin configuración independiente)."""
+    from datetime import datetime, timedelta, timezone
+
+    from . import store
+
+    desde = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).isoformat()
+    intentos = store.intentos_recientes_agente(conn_remediacion, label, desde)
+    return sum(1 for i in intentos if i.estado in ("ejecutado", "fallido"))
+
+
+def sudoers_permitido(label: str) -> bool:
+    """¿Está instalado el permiso `sudoers` acotado para reiniciar el
+    LaunchDaemon root `label`? `sudo -n -l <comando>` le pregunta a
+    `sudo` si ese comando exacto está permitido **sin ejecutarlo**
+    (research.md §3, FR-023) — de solo lectura por diseño: nunca
+    dispara un reinicio real solo por comprobar el permiso. Código de
+    salida `0` = permitido. Cualquier fallo (comando no encontrado,
+    timeout, excepción) se trata como `False` — más seguro tratar un
+    fallo de comprobación como bloqueado que como permitido."""
+    comando = ["sudo", "-n", "-l", "launchctl", "kickstart", "-k", f"system/{label}"]
+    try:
+        resultado = subprocess.run(comando, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return resultado.returncode == 0
 
 
 # ── Pestaña Correcciones del dashboard (homelab-dashboard, 2026-08-14) ──
