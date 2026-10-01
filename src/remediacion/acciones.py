@@ -19,12 +19,12 @@ from pathlib import Path
 
 from diagnostico import evidencia as diagnostico_evidencia
 from diagnostico import gasto as diagnostico_gasto
-from diagnostico.deepseek import llamar_deepseek as diagnostico_llamar_deepseek
+from diagnostico.llm_model import llamar_llm_model as diagnostico_llamar_llm_model
 
 from . import _homelab_bridge as bridge
 from . import clasificacion
-from . import deepseek_agentes
-from . import deepseek_contenedores
+from . import llm_agentes
+from . import llm_contenedores
 from .model import IntentoAgente, IntentoReinicio, IntentoRemediacion
 from .store import (
     get_intento,
@@ -101,7 +101,7 @@ TIPO_ACCION_ROTAR_LOG = "rotar_log"
 
 # specs/021-remediacion-contenedores/ — segundo tipo de acción real. A
 # diferencia de rotar_log, la decisión de si aplica no es una condición
-# fija: la elige DeepSeek con evidencia real (deepseek_contenedores.py).
+# fija: la elige DeepSeek con evidencia real (llm_contenedores.py).
 TIPO_ACCION_REINICIAR_CONTENEDOR = "reiniciar_contenedor"
 
 # specs/026-reiniciar-agentes-relays/ — tercer tipo de acción real,
@@ -475,7 +475,7 @@ def escribir_snapshot(conn: sqlite3.Connection) -> None:
 # se muestra en Inventario vive en el módulo puro `clasificacion.py`,
 # no aquí — este fichero solo la consume al escribir el snapshot.
 
-REMEDIACION_DEEPSEEK_MODEL_DEFAULT = "deepseek-v4-flash"
+REMEDIACION_LLM_MODEL_DEFAULT = "gpt-6-luna"  # OpenAI desde 2026-10-01 (nombre histórico)
 
 # Mismos valores por defecto que docker_monitor.CB_MAX_ATTEMPTS/
 # CB_WINDOW_HOURS — configurables para poder probar el cortacircuito
@@ -492,13 +492,13 @@ REMEDIACION_SIN_EVALUAR_MAX_CONSECUTIVOS = int(
 )
 
 
-def _modelo_deepseek() -> str:
-    return os.environ.get("REMEDIACION_DEEPSEEK_MODEL", REMEDIACION_DEEPSEEK_MODEL_DEFAULT)
+def _modelo_llm() -> str:
+    return os.environ.get("REMEDIACION_LLM_MODEL", REMEDIACION_LLM_MODEL_DEFAULT)
 
 
 def _estimar_tokens_entrada(prompt: str) -> int:
     """Estimación previa a la llamada — ~4 caracteres por token, misma
-    regla aproximada que ya usa `diagnostico.deepseek` (no se importa
+    regla aproximada que ya usa `diagnostico.llm_model` (no se importa
     esa función privada, se replica la fórmula: solo decide si se
     llama o no, gasto.hay_presupuesto)."""
     return max(1, len(prompt) // 4)
@@ -571,7 +571,7 @@ def evaluar_contenedor(
 ) -> IntentoReinicio:
     """Orquesta la decisión de DeepSeek para un contenedor caído
     (data-model.md de 021, ampliado por 022): congelar_vivo →
-    hay_presupuesto (o REMEDIACION_DEEPSEEK_MOCK) → llamar_deepseek →
+    hay_presupuesto (o REMEDIACION_LLM_MOCK) → llamar_llm_model →
     parsear → crea el intento_reinicio en el estado que corresponda.
 
     `modo_forzado` (specs/022-clasificacion-remediacion/, research.md
@@ -586,12 +586,12 @@ def evaluar_contenedor(
     modo = modo_forzado if modo_forzado is not None else get_modo_contenedor(conn_remediacion, contenedor)
     episodio = diagnostico_evidencia.congelar_vivo(conn_diagnostico, contenedor)
 
-    mock = deepseek_contenedores.respuesta_mock()
+    mock = llm_contenedores.respuesta_mock()
     if mock is not None:
         parsed = mock
         coste: float | None = None
     else:
-        prompt = deepseek_contenedores.construir_prompt_remediacion(episodio, TIPOS_ACCION)
+        prompt = llm_contenedores.construir_prompt_remediacion(episodio, TIPOS_ACCION)
         if not diagnostico_gasto.hay_presupuesto(
             conn_diagnostico, _estimar_tokens_entrada(prompt)
         ):
@@ -600,14 +600,14 @@ def evaluar_contenedor(
                 estado="sin_evaluar",
                 detalle="sin presupuesto diario disponible para preguntar a DeepSeek",
             )
-        respuesta = diagnostico_llamar_deepseek(prompt, _modelo_deepseek())
+        respuesta = diagnostico_llamar_llm_model(prompt, _modelo_llm())
         if respuesta is None:
             return _crear_intento_reinicio(
                 conn_remediacion, contenedor, modo, episodio.id,
                 estado="sin_evaluar",
                 detalle="DeepSeek no respondió o la llamada falló",
             )
-        parsed = deepseek_contenedores.parsear_respuesta_remediacion(respuesta)
+        parsed = llm_contenedores.parsear_respuesta_remediacion(respuesta)
         if parsed is None:
             return _crear_intento_reinicio(
                 conn_remediacion, contenedor, modo, episodio.id,
@@ -744,7 +744,7 @@ def resolver_rechazo_reinicio(conn: sqlite3.Connection, intento_id: int) -> Inte
 #
 # Tercer tipo de acción real, mismo patrón que reiniciar_contenedor:
 # DeepSeek decide con evidencia real, nunca una condición fija
-# (deepseek_agentes.py). A diferencia de contenedores, el modo es por
+# (llm_agentes.py). A diferencia de contenedores, el modo es por
 # tipo de acción (configuracion_accion), no por instancia — un agente
 # no tiene eje crítico/no-crítico (FR-008). Primera vez que este
 # paquete ejecuta un comando de sistema (`launchctl`) directamente en
@@ -905,18 +905,18 @@ def evaluar_agente(
     esqueleto exacto que `evaluar_contenedor()`, con
     `configuracion_accion` en vez de `configuracion_contenedor` (un
     agente no tiene eje crítico): `modo = get_modo(...)` →
-    `congelar_agente_vivo` → presupuesto → `llamar_deepseek` → parsear
+    `congelar_agente_vivo` → presupuesto → `llamar_llm_model` → parsear
     → crea el intento en el estado que corresponda, siempre vía
     `_crear_intento_agente()` (nunca un INSERT directo)."""
     modo = get_modo(conn_remediacion, TIPO_ACCION_REINICIAR_AGENTE)
     episodio = diagnostico_evidencia.congelar_agente_vivo(conn_diagnostico, label)
 
-    mock = deepseek_agentes.respuesta_mock()
+    mock = llm_agentes.respuesta_mock()
     if mock is not None:
         parsed = mock
         coste: float | None = None
     else:
-        prompt = deepseek_agentes.construir_prompt_agente(episodio, TIPOS_ACCION)
+        prompt = llm_agentes.construir_prompt_agente(episodio, TIPOS_ACCION)
         if not diagnostico_gasto.hay_presupuesto(
             conn_diagnostico, _estimar_tokens_entrada(prompt)
         ):
@@ -925,14 +925,14 @@ def evaluar_agente(
                 estado="sin_evaluar",
                 detalle="sin presupuesto diario disponible para preguntar a DeepSeek",
             )
-        respuesta = diagnostico_llamar_deepseek(prompt, _modelo_deepseek())
+        respuesta = diagnostico_llamar_llm_model(prompt, _modelo_llm())
         if respuesta is None:
             return _crear_intento_agente(
                 conn_remediacion, label, modo, episodio.id,
                 estado="sin_evaluar",
                 detalle="DeepSeek no respondió o la llamada falló",
             )
-        parsed = deepseek_agentes.parsear_respuesta_agente(respuesta)
+        parsed = llm_agentes.parsear_respuesta_agente(respuesta)
         if parsed is None:
             return _crear_intento_agente(
                 conn_remediacion, label, modo, episodio.id,

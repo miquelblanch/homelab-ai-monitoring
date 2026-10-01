@@ -1,17 +1,17 @@
-"""deepseek_agentes — Pregunta propia de esta feature a DeepSeek: dada
+"""llm_agentes — Pregunta propia de esta feature a DeepSeek: dada
 la evidencia real de un LaunchAgent/LaunchDaemon sin proceso activo,
 ¿aplica `reiniciar_agente`, o ninguna acción de la lista cerrada
 resuelve el caso? (specs/026-reiniciar-agentes-relays/research.md §5)
 
-Mismo patrón que `deepseek_contenedores.py` — módulo propio, distinto
-de `diagnostico.deepseek.construir_prompt` (esa pregunta "¿cuál es la
+Mismo patrón que `llm_contenedores.py` — módulo propio, distinto
+de `diagnostico.llm_model.construir_prompt` (esa pregunta "¿cuál es la
 causa probable?" es abierta; esta es "¿aplica esta acción, sí o no?").
 Reutiliza la extracción de contenido/tokens ya compartida
-(`diagnostico.deepseek._extraer_contenido_y_tokens`, consolidada en
+(`diagnostico.llm_model._extraer_contenido_y_tokens`, consolidada en
 025) — nunca la lógica de negocio de hipótesis.
 
-`REMEDIACION_DEEPSEEK_MOCK` (la misma variable de entorno que ya usa
-`deepseek_contenedores.py`) sustituye la llamada real por una
+`REMEDIACION_LLM_MOCK` (la misma variable de entorno que ya usa
+`llm_contenedores.py`) sustituye la llamada real por una
 respuesta ya parseada — un solo mock activo por invocación de CLI,
 nunca se llaman ambos flujos (contenedores/agentes) a la vez.
 """
@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import os
 
-from diagnostico.deepseek import _extraer_contenido_y_tokens
+from diagnostico.llm_model import _extraer_contenido_y_tokens
 
 
 def construir_prompt_agente(episodio, acciones_candidatas: tuple[str, ...]) -> str:
@@ -85,7 +85,7 @@ def parsear_respuesta_agente(respuesta: dict) -> dict | None:
     """Valida antes de devolver nada — `None` si el contenido no es
     JSON válido, no tiene los campos esperados, o `accion_aplica` no
     está en la lista cerrada. Mismo respaldo `content`/`reasoning_content`
-    que `diagnostico.deepseek.parsear_respuesta`, vía la extracción
+    que `diagnostico.llm_model.parsear_respuesta`, vía la extracción
     compartida `_extraer_contenido_y_tokens` (025)."""
     try:
         parsed, tokens_entrada, tokens_salida = _extraer_contenido_y_tokens(respuesta)
@@ -95,10 +95,10 @@ def parsear_respuesta_agente(respuesta: dict) -> dict | None:
 
 
 def respuesta_mock() -> dict | None:
-    """Lee `REMEDIACION_DEEPSEEK_MOCK` — `None` si no está presente, no
+    """Lee `REMEDIACION_LLM_MOCK` — `None` si no está presente, no
     es JSON válido, o no cumple el invariante de la lista cerrada. Sin
     coste asociado (nunca gasta presupuesto real)."""
-    crudo = os.environ.get("REMEDIACION_DEEPSEEK_MOCK")
+    crudo = os.environ.get("REMEDIACION_LLM_MOCK")
     if not crudo:
         return None
     try:

@@ -4,7 +4,7 @@
 `homelab.db` conserve esas filas más allá de su retención — usa los tres
 snapshots reales congelados en `fixtures/beszel_baseline.py`.
 
-Con `llamar_deepseek` mockeado para devolver una respuesta
+Con `llamar_llm_model` mockeado para devolver una respuesta
 `no_diagnosticable` (la conclusión honesta que corresponde a evidencia
 vacía, no una que el modelo real haya confirmado — ver el docstring de
 la fixture), comprueba que la tubería completa persiste esa conclusión
@@ -21,7 +21,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from diagnostico import deepseek, store
+from diagnostico import llm_model, store
 from diagnostico.model import Episodio
 from tests.selftest import check
 from tests.selftest.fixtures.beszel_baseline import EPISODIOS_SIN_EVIDENCIA
@@ -57,12 +57,12 @@ def test_los_tres_episodios_sin_evidencia_concluyen_no_diagnosticable() -> None:
                 )
                 episodio_ids.append(episodio_id)
 
-            with patch.object(deepseek.bridge, "get_secret", return_value="fake-key-for-test"), \
-                 patch.object(deepseek, "llamar_deepseek", return_value=_RESPUESTA_NO_DIAGNOSTICABLE):
+            with patch.object(llm_model.bridge, "get_secret", return_value="fake-key-for-test"), \
+                 patch.object(llm_model, "llamar_llm_model", return_value=_RESPUESTA_NO_DIAGNOSTICABLE):
                 conclusiones = []
                 for episodio_id in episodio_ids:
                     episodio = store.get_episodio(conn, episodio_id)
-                    diagnostico, _ = deepseek.diagnosticar_episodio(conn, episodio)
+                    diagnostico, _ = llm_model.diagnosticar_episodio(conn, episodio)
                     conclusiones.append(diagnostico.conclusion_tipo)
 
         check(

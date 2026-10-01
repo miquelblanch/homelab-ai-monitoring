@@ -1,5 +1,5 @@
 """test_reproducibilidad — T023, resuelve el hallazgo E2 de
-/speckit-analyze (2026-08-10): con `llamar_deepseek` fijado a la misma
+/speckit-analyze (2026-08-10): con `llamar_llm_model` fijado a la misma
 respuesta en dos invocaciones seguidas de `diagnosticar_episodio` sobre
 el mismo episodio ya congelado, la tubería determinista (parseo →
 persistencia) debe producir el mismo `conclusion_tipo` y el mismo
@@ -17,7 +17,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from diagnostico import deepseek, store
+from diagnostico import llm_model, store
 from diagnostico.model import Episodio
 from tests.selftest import check
 
@@ -50,10 +50,10 @@ def test_dos_diagnosticos_sobre_el_mismo_episodio_coinciden() -> None:
             )
             episodio = store.get_episodio(conn, episodio_id)
 
-            with patch.object(deepseek.bridge, "get_secret", return_value="fake-key-for-test"), \
-                 patch.object(deepseek, "llamar_deepseek", return_value=_RESPUESTA_FIJA):
-                diagnostico_1, hipotesis_1 = deepseek.diagnosticar_episodio(conn, episodio)
-                diagnostico_2, hipotesis_2 = deepseek.diagnosticar_episodio(conn, episodio)
+            with patch.object(llm_model.bridge, "get_secret", return_value="fake-key-for-test"), \
+                 patch.object(llm_model, "llamar_llm_model", return_value=_RESPUESTA_FIJA):
+                diagnostico_1, hipotesis_1 = llm_model.diagnosticar_episodio(conn, episodio)
+                diagnostico_2, hipotesis_2 = llm_model.diagnosticar_episodio(conn, episodio)
 
         check(
             "SC-001: mismo conclusion_tipo en los dos intentos",

@@ -1,7 +1,7 @@
-"""test_remediacion_deepseek_agentes — prompt propio, parseo, el
-soporte de REMEDIACION_DEEPSEEK_MOCK, y evaluar_agente() de extremo a
+"""test_remediacion_llm_agentes — prompt propio, parseo, el
+soporte de REMEDIACION_LLM_MOCK, y evaluar_agente() de extremo a
 extremo (specs/026-reiniciar-agentes-relays/). `congelar_agente_vivo`,
-`launchctl` y `llamar_deepseek` siempre mockeados — ningún test de
+`launchctl` y `llamar_llm_model` siempre mockeados — ningún test de
 este módulo toca un LaunchAgent real ni la API real de DeepSeek."""
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from diagnostico.model import Episodio
-from remediacion import acciones, deepseek_agentes, store
+from remediacion import acciones, llm_agentes, store
 from tests.selftest import check
 
 
@@ -44,14 +44,14 @@ def _db(tmp: str) -> Path:
 
 
 def _limpiar_mock_env() -> None:
-    os.environ.pop("REMEDIACION_DEEPSEEK_MOCK", None)
+    os.environ.pop("REMEDIACION_LLM_MOCK", None)
 
 
 # ── construir_prompt_agente ──
 
 
 def test_construir_prompt_incluye_evidencia_y_acciones() -> None:
-    prompt = deepseek_agentes.construir_prompt_agente(_episodio(), ("reiniciar_agente",))
+    prompt = llm_agentes.construir_prompt_agente(_episodio(), ("reiniciar_agente",))
     check("el prompt menciona la acción candidata", "reiniciar_agente" in prompt)
     check("el prompt incluye la evidencia real serializada", "amsterdam9.test-agente" in prompt)
     check("el prompt no reutiliza el prompt de causa_probable", "causa probable" not in prompt.lower())
@@ -61,7 +61,7 @@ def test_construir_prompt_incluye_evidencia_y_acciones() -> None:
 
 
 def test_parsear_respuesta_agente_acepta_accion_valida() -> None:
-    parsed = deepseek_agentes.parsear_respuesta_agente(
+    parsed = llm_agentes.parsear_respuesta_agente(
         _respuesta_deepseek("reiniciar_agente", "el proceso no responde")
     )
     check("acepta reiniciar_agente", parsed is not None and parsed["accion_aplica"] == "reiniciar_agente")
@@ -70,14 +70,14 @@ def test_parsear_respuesta_agente_acepta_accion_valida() -> None:
 
 
 def test_parsear_respuesta_agente_acepta_null() -> None:
-    parsed = deepseek_agentes.parsear_respuesta_agente(
+    parsed = llm_agentes.parsear_respuesta_agente(
         _respuesta_deepseek(None, "el problema es un permiso del sistema")
     )
     check("acepta accion_aplica null", parsed is not None and parsed["accion_aplica"] is None)
 
 
 def test_parsear_respuesta_agente_rechaza_accion_fuera_de_lista() -> None:
-    parsed = deepseek_agentes.parsear_respuesta_agente(
+    parsed = llm_agentes.parsear_respuesta_agente(
         _respuesta_deepseek("borrar_plist", "inventada")
     )
     check("una acción inventada se rechaza por completo", parsed is None)
@@ -91,28 +91,28 @@ def test_parsear_respuesta_agente_usa_reasoning_content_si_content_vacio() -> No
         }}],
         "usage": {"prompt_tokens": 1, "completion_tokens": 1},
     }
-    parsed = deepseek_agentes.parsear_respuesta_agente(respuesta)
+    parsed = llm_agentes.parsear_respuesta_agente(respuesta)
     check("recupera la decisión de reasoning_content", parsed is not None and parsed["razonamiento"] == "vía reasoning_content")
 
 
 def test_parsear_respuesta_agente_json_invalido_devuelve_none() -> None:
     respuesta = {"choices": [{"message": {"content": "esto no es json"}}], "usage": {}}
-    check("contenido no-JSON ⇒ None, sin lanzar", deepseek_agentes.parsear_respuesta_agente(respuesta) is None)
+    check("contenido no-JSON ⇒ None, sin lanzar", llm_agentes.parsear_respuesta_agente(respuesta) is None)
 
 
 def test_parsear_respuesta_agente_estructura_inesperada_devuelve_none() -> None:
-    check("respuesta sin 'choices' ⇒ None, sin lanzar", deepseek_agentes.parsear_respuesta_agente({}) is None)
+    check("respuesta sin 'choices' ⇒ None, sin lanzar", llm_agentes.parsear_respuesta_agente({}) is None)
 
 
-# ── respuesta_mock (REMEDIACION_DEEPSEEK_MOCK, compartida con contenedores) ──
+# ── respuesta_mock (REMEDIACION_LLM_MOCK, compartida con contenedores) ──
 
 
 def test_respuesta_mock_lee_env_var() -> None:
     try:
-        os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+        os.environ["REMEDIACION_LLM_MOCK"] = json.dumps(
             {"accion_aplica": "reiniciar_agente", "razonamiento": "prueba: agente caído"}
         )
-        parsed = deepseek_agentes.respuesta_mock()
+        parsed = llm_agentes.respuesta_mock()
     finally:
         _limpiar_mock_env()
     check("el mock se lee y valida correctamente", parsed is not None and parsed["accion_aplica"] == "reiniciar_agente")
@@ -120,15 +120,15 @@ def test_respuesta_mock_lee_env_var() -> None:
 
 def test_respuesta_mock_sin_env_var_devuelve_none() -> None:
     _limpiar_mock_env()
-    check("sin REMEDIACION_DEEPSEEK_MOCK ⇒ None", deepseek_agentes.respuesta_mock() is None)
+    check("sin REMEDIACION_LLM_MOCK ⇒ None", llm_agentes.respuesta_mock() is None)
 
 
 def test_respuesta_mock_accion_invalida_devuelve_none() -> None:
     try:
-        os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+        os.environ["REMEDIACION_LLM_MOCK"] = json.dumps(
             {"accion_aplica": "borrar_plist", "razonamiento": "inventada"}
         )
-        check("mock con acción fuera de la lista cerrada ⇒ None", deepseek_agentes.respuesta_mock() is None)
+        check("mock con acción fuera de la lista cerrada ⇒ None", llm_agentes.respuesta_mock() is None)
     finally:
         _limpiar_mock_env()
 
@@ -139,7 +139,7 @@ def test_respuesta_mock_accion_invalida_devuelve_none() -> None:
 def test_evaluar_agente_recomienda_reiniciar_modo_manual() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         with patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio()), \
-             patch.object(acciones, "diagnostico_llamar_deepseek",
+             patch.object(acciones, "diagnostico_llamar_llm_model",
                            return_value=_respuesta_deepseek("reiniciar_agente", "proceso colgado")), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001):
@@ -158,7 +158,7 @@ def test_evaluar_agente_ninguna_accion_aplica_no_reinicia() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         avisos: list[tuple[str, str]] = []
         with patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio()), \
-             patch.object(acciones, "diagnostico_llamar_deepseek",
+             patch.object(acciones, "diagnostico_llamar_llm_model",
                            return_value=_respuesta_deepseek(None, "permiso del sistema, no el proceso")), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
@@ -173,7 +173,7 @@ def test_evaluar_agente_ninguna_accion_aplica_no_reinicia() -> None:
 def test_evaluar_agente_fallo_llamada_es_sin_evaluar_no_sin_accion() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         with patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio()), \
-             patch.object(acciones, "diagnostico_llamar_deepseek", return_value=None), \
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value=None), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True):
             with store.connect(_db(db_dir)) as conn:
                 intento = acciones.evaluar_agente(conn, conn, "amsterdam9.test-agente")
@@ -186,7 +186,7 @@ def test_evaluar_agente_sin_presupuesto_es_sin_evaluar() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         with patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio()), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=False), \
-             patch.object(acciones, "diagnostico_llamar_deepseek") as mock_llamada:
+             patch.object(acciones, "diagnostico_llamar_llm_model") as mock_llamada:
             with store.connect(_db(db_dir)) as conn:
                 intento = acciones.evaluar_agente(conn, conn, "amsterdam9.test-agente")
 
@@ -196,13 +196,13 @@ def test_evaluar_agente_sin_presupuesto_es_sin_evaluar() -> None:
 
 def test_evaluar_agente_usa_mock_sin_gastar_presupuesto() -> None:
     try:
-        os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+        os.environ["REMEDIACION_LLM_MOCK"] = json.dumps(
             {"accion_aplica": "reiniciar_agente", "razonamiento": "prueba vía mock"}
         )
         with tempfile.TemporaryDirectory() as db_dir:
             with patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio()), \
                  patch.object(acciones.diagnostico_gasto, "hay_presupuesto") as mock_presupuesto, \
-                 patch.object(acciones, "diagnostico_llamar_deepseek") as mock_llamada:
+                 patch.object(acciones, "diagnostico_llamar_llm_model") as mock_llamada:
                 with store.connect(_db(db_dir)) as conn:
                     intento = acciones.evaluar_agente(conn, conn, "amsterdam9.test-agente")
 

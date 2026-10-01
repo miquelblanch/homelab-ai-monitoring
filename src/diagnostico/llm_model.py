@@ -1,4 +1,4 @@
-"""deepseek — Formula hipótesis de causa probable y las contrasta contra
+"""llm_model — Formula hipótesis de causa probable y las contrasta contra
 la evidencia congelada, en una sola llamada a DeepSeek (FR-004 a FR-008,
 research.md §2/§3). Orquesta también el ciclo completo de `diagnosticar`
 (cortacircuitos de gasto, llamada, parseo, persistencia) — mismo patrón
@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import ssl
+import sys
 import urllib.error
 import urllib.request
 
@@ -21,15 +22,21 @@ from . import _homelab_bridge as bridge
 from . import evidencia, gasto, store
 from .model import CONCLUSION_TIPOS, DESENLACES, Diagnostico, Episodio, Hipotesis
 
-_ENDPOINT = "https://api.deepseek.com/chat/completions"
-_DEFAULT_MODEL = "deepseek-v4-flash"
+# Proveedor principal: OpenAI (desde 2026-10-01). Si la CUENTA falla (sin
+# saldo, clave rechazada) se reintenta en el proveedor de reserva, DeepSeek.
+# Nombres genéricos a propósito (antes `deepseek.py` / `llamar_deepseek`) para
+# que un cambio de modelo o proveedor no obligue a renombrar nada. Variables
+# de entorno: DIAGNOSTICO_LLM_MODEL, DIAGNOSTICO_LLM_MAX_TOKENS (antes *_DEEPSEEK_*).
+_DEFAULT_MODEL = "gpt-6-luna"
+_FALLBACK_MODEL = os.environ.get("DIAGNOSTICO_FALLBACK_MODEL", "deepseek-v4-flash")
 
-# Límite duro de tokens de salida enviado como `max_tokens` — también es
+# Límite duro de tokens de salida enviado como `max_completion_tokens` — también es
 # el número exacto que usa `gasto.hay_presupuesto()` para estimar el
-# coste antes de llamar (research.md §6, hallazgo B1 de /speckit-analyze:
+# coste antes de llamar. 8000 y no 2000: gpt-6-luna cuenta los tokens de
+# razonamiento dentro de la salida y 2000 cortaría la respuesta (research.md §6, hallazgo B1 de /speckit-analyze:
 # cifra concreta, no un margen "prudente" sin definir).
-DIAGNOSTICO_DEEPSEEK_MAX_TOKENS = int(
-    os.environ.get("DIAGNOSTICO_DEEPSEEK_MAX_TOKENS", "2000")
+DIAGNOSTICO_LLM_MAX_TOKENS = int(
+    os.environ.get("DIAGNOSTICO_LLM_MAX_TOKENS", "8000")
 )
 
 _PROMPT_INSTRUCCIONES = """\
@@ -223,40 +230,82 @@ def _estimar_tokens_entrada(prompt: str) -> int:
     return max(1, len(prompt) // 4)
 
 
-def llamar_deepseek(prompt: str, modelo: str) -> dict | None:
-    """Llamada HTTP pura — sin persistencia, sin lógica de negocio
-    (research.md §3). `None` si no hay credencial o si la llamada falla
-    por cualquier motivo de red/HTTP; nunca lanza."""
-    api_key = bridge.get_secret("DEEPSEEK_API_KEY")
+def _cuerpo_openai(prompt: str, modelo: str) -> dict:
+    # gpt-6-luna rechaza `max_tokens` y `temperature` distinto del valor por
+    # defecto (comprobado 2026-10-01).
+    return {
+        "model": modelo,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_completion_tokens": DIAGNOSTICO_LLM_MAX_TOKENS,
+        "response_format": {"type": "json_object"},
+    }
+
+
+def _cuerpo_deepseek(prompt: str, modelo: str) -> dict:
+    return {
+        "model": modelo,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0,
+        "max_tokens": DIAGNOSTICO_LLM_MAX_TOKENS,
+        "response_format": {"type": "json_object"},
+    }
+
+
+_PRINCIPAL = ("openai", "https://api.openai.com/v1/chat/completions", "OPENAI_API_KEY", _cuerpo_openai)
+_RESERVA = ("deepseek", "https://api.deepseek.com/chat/completions", "DEEPSEEK_API_KEY", _cuerpo_deepseek)
+
+
+def _post(proveedor: tuple, prompt: str, modelo: str) -> tuple[str, dict | None]:
+    """('ok', respuesta) · ('cuenta', None) si falla la CUENTA (sin saldo,
+    clave rechazada, sin credencial: el motivo por el que se pasa a la
+    reserva) · ('otro', None) para cualquier otro fallo."""
+    nombre, endpoint, clave, cuerpo = proveedor
+    api_key = bridge.get_secret(clave)
     if not api_key:
-        return None
-
-    body = json.dumps(
-        {
-            "model": modelo,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
-            "max_tokens": DIAGNOSTICO_DEEPSEEK_MAX_TOKENS,
-            "response_format": {"type": "json_object"},
-        }
-    ).encode()
-
+        return "cuenta", None
     req = urllib.request.Request(
-        _ENDPOINT,
-        data=body,
+        endpoint,
+        data=json.dumps(cuerpo(prompt, modelo)).encode(),
         method="POST",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
     )
     try:
         with urllib.request.urlopen(
             req, context=ssl.create_default_context(), timeout=90
         ) as r:
-            return json.loads(r.read())
+            return "ok", json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            codigo = (json.loads(e.read()).get("error") or {}).get("code") or ""
+        except Exception:
+            codigo = ""
+        if e.code in (401, 402, 403) or codigo == "insufficient_quota":
+            return "cuenta", None
+        return "otro", None
     except (urllib.error.URLError, OSError, ValueError):
-        return None
+        return "otro", None
+
+
+def llamar_llm_model(prompt: str, modelo: str) -> dict | None:
+    """Llamada HTTP pura — sin persistencia, sin lógica de negocio
+    (research.md §3). `None` si ningún proveedor responde; nunca lanza.
+
+    Prueba primero OpenAI con `modelo`. Si falla la cuenta (sin saldo,
+    clave rechazada) pasa a DeepSeek con `_FALLBACK_MODEL`; un fallo de
+    red o un 5xx puntual NO activa la reserva (se trata como "no
+    respondió", igual que siempre). La respuesta trae en `model` el
+    modelo que de verdad contestó. El aviso de que OpenAI está caído lo
+    da `scripts/openai_monitor.py`; aquí solo se deja constancia en stderr."""
+    estado, respuesta = _post(_PRINCIPAL, prompt, modelo)
+    if estado == "ok":
+        return respuesta
+    if estado == "cuenta":
+        print(f"llm_model: la cuenta de {_PRINCIPAL[0]} falló (saldo/clave) — "
+              f"usando la reserva {_RESERVA[0]}/{_FALLBACK_MODEL}", file=sys.stderr)
+        estado, respuesta = _post(_RESERVA, prompt, _FALLBACK_MODEL)
+        if estado == "ok":
+            return respuesta
+    return None
 
 
 def _extraer_contenido_y_tokens(respuesta: dict) -> tuple[dict, int, int]:
@@ -264,7 +313,7 @@ def _extraer_contenido_y_tokens(respuesta: dict) -> tuple[dict, int, int]:
     entrada/salida de una respuesta cruda de la API de DeepSeek.
     Compartida entre el diagnóstico de episodios
     (`parsear_respuesta`) y la remediación de contenedores
-    (`remediacion.deepseek_contenedores.parsear_respuesta_remediacion`)
+    (`remediacion.llm_contenedores.parsear_respuesta_remediacion`)
     — specs/025-consolidar-parseo-deepseek/.
 
     Respaldo `content`/`reasoning_content` (hallazgo real al validar
@@ -352,7 +401,7 @@ def diagnosticar_episodio(
     FR-002), aplica el cortacircuitos de gasto (FR-010), llama a
     DeepSeek si hay presupuesto, parsea, persiste el diagnóstico y sus
     hipótesis, y registra el coste real."""
-    modelo = os.environ.get("DIAGNOSTICO_DEEPSEEK_MODEL", _DEFAULT_MODEL)
+    modelo = os.environ.get("DIAGNOSTICO_LLM_MODEL", _DEFAULT_MODEL)
     prompt = construir_prompt(episodio.snapshot_evidencia, episodio.es_critico)
 
     def _persistir_sin_llamada(motivo: str, tokens_entrada: int = 0, tokens_salida: int = 0,
@@ -372,13 +421,14 @@ def diagnosticar_episodio(
     if not gasto.hay_presupuesto(conn, _estimar_tokens_entrada(prompt)):
         return _persistir_sin_llamada("no se puede diagnosticar sin superar el límite de gasto diario")
 
-    if not bridge.get_secret("DEEPSEEK_API_KEY"):
-        return _persistir_sin_llamada("sin credencial DEEPSEEK_API_KEY configurada")
+    if not (bridge.get_secret(_PRINCIPAL[2]) or bridge.get_secret(_RESERVA[2])):
+        return _persistir_sin_llamada("sin credencial OPENAI_API_KEY ni DEEPSEEK_API_KEY configurada")
 
-    respuesta = llamar_deepseek(prompt, modelo)
+    respuesta = llamar_llm_model(prompt, modelo)
     if respuesta is None:
         return _persistir_sin_llamada("DeepSeek no respondió o la llamada falló")
 
+    modelo = respuesta.get("model") or modelo  # el que de verdad contestó (puede ser la reserva)
     parsed = parsear_respuesta(respuesta)
     if parsed is None:
         # La llamada sí ocurrió (hay coste real que registrar) aunque el

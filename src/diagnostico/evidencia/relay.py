@@ -73,7 +73,7 @@ def _relay_actual(nombre: str) -> dict | None:
 def listar_nombres_relay() -> set[str]:
     """Los `name` de todos los relays que aparecen ahora mismo en
     `socat_relays.json` — usado por
-    `deepseek._menciona_relay_concreto()` para comprobar que un
+    `llm_model._menciona_relay_concreto()` para comprobar que un
     diagnóstico en diferido no nombra un relay concreto sin evidencia
     real de cuál falló (FR-006, hallazgo F1 de /speckit-analyze,
     2026-08-12; research.md §10 de 012)."""
@@ -131,7 +131,7 @@ def _agregado_relays_ventana(
 
 def nombres_relay_evidenciados(agregado: list[dict] | None) -> set[str]:
     """Nombres de relay que sí aparecen como caídos en alguna entrada
-    de `relay_agregado` — usado por `deepseek.py` para permitir que un
+    de `relay_agregado` — usado por `llm_model.py` para permitir que un
     diagnóstico en diferido nombre un relay concreto SOLO cuando hay
     evidencia real de que fue justo ese el que falló en la ventana.
     Vacío para cualquier episodio congelado antes del 2026-08-13 (el

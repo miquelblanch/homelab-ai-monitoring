@@ -630,7 +630,7 @@ def test_evaluar_contenedor_modo_automatico_ejecuta_sin_pendiente() -> None:
         with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
-             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value={
                  "choices": [{"message": {"content": json.dumps(
                      {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba"}
                  )}}],
@@ -658,7 +658,7 @@ def test_evaluar_contenedor_modo_automatico_sin_accion_nunca_reinicia() -> None:
         with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
-             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value={
                  "choices": [{"message": {"content": json.dumps(
                      {"accion_aplica": None, "razonamiento": "problema externo"}
                  )}}],
@@ -685,7 +685,7 @@ def test_cortacircuito_abre_al_cuarto_intento() -> None:
         with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.0), \
-             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value={
                  "choices": [{"message": {"content": json.dumps(
                      {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba"}
                  )}}],
@@ -737,12 +737,12 @@ def test_sin_evaluar_persistente_se_resetea_con_una_evaluacion_real() -> None:
                     acciones.evaluar_contenedor(conn, conn, "test-contenedor")
 
                 try:
-                    os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+                    os.environ["REMEDIACION_LLM_MOCK"] = json.dumps(
                         {"accion_aplica": None, "razonamiento": "evaluación real, resetea la racha"}
                     )
                     acciones.evaluar_contenedor(conn, conn, "test-contenedor")
                 finally:
-                    os.environ.pop("REMEDIACION_DEEPSEEK_MOCK", None)
+                    os.environ.pop("REMEDIACION_LLM_MOCK", None)
 
                 racha = store.sin_evaluar_consecutivos(conn, "test-contenedor")
 
@@ -788,7 +788,7 @@ def test_evaluar_contenedor_modo_automatico_declara_ia_solo_si_ejecuta() -> None
         with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
-             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value={
                  "choices": [{"message": {"content": json.dumps(
                      {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba ia"}
                  )}}],
@@ -830,7 +830,7 @@ def test_evaluar_contenedor_modo_forzado_ignora_configuracion() -> None:
         with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
-             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value={
                  "choices": [{"message": {"content": json.dumps(
                      {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba crítico"}
                  )}}],
@@ -860,7 +860,7 @@ def test_comprobar_reiniciar_contenedor_incluye_criticos_como_pendiente() -> Non
              patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio("test-critico")), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
-             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value={
                  "choices": [{"message": {"content": json.dumps(
                      {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba crítico caído"}
                  )}}],
@@ -904,7 +904,7 @@ def test_evaluar_contenedor_critico_nunca_llega_a_cortacircuito() -> None:
         with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio("test-critico")), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.0), \
-             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value={
                  "choices": [{"message": {"content": json.dumps(
                      {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba"}
                  )}}],
@@ -1182,7 +1182,7 @@ def test_evaluar_agente_modo_automatico_ejecuta_sin_pendiente() -> None:
         with patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio_agente()), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
-             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value={
                  "choices": [{"message": {"content": json.dumps(
                      {"accion_aplica": "reiniciar_agente", "razonamiento": "prueba"}
                  )}}],
@@ -1207,7 +1207,7 @@ def test_cortacircuito_agente_abre_al_cuarto_intento() -> None:
         with patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio_agente()), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.0), \
-             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value={
                  "choices": [{"message": {"content": json.dumps(
                      {"accion_aplica": "reiniciar_agente", "razonamiento": "prueba"}
                  )}}],
@@ -1259,12 +1259,12 @@ def test_sin_evaluar_persistente_agente_se_resetea_con_una_evaluacion_real() -> 
                     acciones.evaluar_agente(conn, conn, "amsterdam9.test-agente")
 
                 try:
-                    os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+                    os.environ["REMEDIACION_LLM_MOCK"] = json.dumps(
                         {"accion_aplica": None, "razonamiento": "evaluación real, resetea la racha"}
                     )
                     acciones.evaluar_agente(conn, conn, "amsterdam9.test-agente")
                 finally:
-                    os.environ.pop("REMEDIACION_DEEPSEEK_MOCK", None)
+                    os.environ.pop("REMEDIACION_LLM_MOCK", None)
 
                 racha = store.sin_evaluar_consecutivos_agente(conn, "amsterdam9.test-agente")
 
@@ -1283,7 +1283,7 @@ def test_comprobar_reiniciar_agente_solo_evalua_los_caidos() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         with patch.object(acciones.bridge, "listar_agentes_conocidos", return_value=agentes), \
              patch.object(acciones.diagnostico_evidencia, "congelar_agente_vivo", return_value=_episodio_agente("amsterdam9.caido")), \
-             patch.object(acciones, "diagnostico_llamar_deepseek", return_value={
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value={
                  "choices": [{"message": {"content": json.dumps(
                      {"accion_aplica": None, "razonamiento": "prueba"}
                  )}}],

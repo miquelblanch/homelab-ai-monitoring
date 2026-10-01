@@ -1,18 +1,18 @@
-"""deepseek_contenedores — Pregunta propia de esta feature a DeepSeek:
+"""llm_contenedores — Pregunta propia de esta feature a DeepSeek:
 dada la evidencia real de un contenedor no crítico caído, ¿aplica
 `reiniciar_contenedor`, o ninguna acción de la lista cerrada resuelve
 el caso? (specs/021-remediacion-contenedores/research.md §3)
 
-Distinta, deliberadamente, de `diagnostico.deepseek.construir_prompt`
+Distinta, deliberadamente, de `diagnostico.llm_model.construir_prompt`
 (que pregunta "¿cuál es la causa probable?", una pregunta abierta que
 en 36/36 casos reales termina en `no_diagnosticable`) — reutiliza la
-llamada HTTP pura (`diagnostico.deepseek.llamar_deepseek`) y, desde
+llamada HTTP pura (`diagnostico.llm_model.llamar_llm_model`) y, desde
 specs/025-consolidar-parseo-deepseek/, también la extracción de
-contenido/tokens (`diagnostico.deepseek._extraer_contenido_y_tokens`,
+contenido/tokens (`diagnostico.llm_model._extraer_contenido_y_tokens`,
 con el respaldo `content`/`reasoning_content`) — nunca la lógica de
 negocio de hipótesis, que sigue siendo exclusiva de cada uno.
 
-`REMEDIACION_DEEPSEEK_MOCK` (variable de entorno, JSON con
+`REMEDIACION_LLM_MOCK` (variable de entorno, JSON con
 `accion_aplica`/`razonamiento`) sustituye la llamada real por una
 respuesta ya parseada, controlada — nunca gasta presupuesto real ni
 depende de que DeepSeek esté disponible (quickstart.md, todos los
@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import os
 
-from diagnostico.deepseek import _extraer_contenido_y_tokens
+from diagnostico.llm_model import _extraer_contenido_y_tokens
 
 
 def construir_prompt_remediacion(episodio, acciones_candidatas: tuple[str, ...]) -> str:
@@ -90,7 +90,7 @@ def parsear_respuesta_remediacion(respuesta: dict) -> dict | None:
     es JSON válido, no tiene los campos esperados, o `accion_aplica` no
     está en la lista cerrada (nunca confía en un valor libre devuelto
     por el modelo). Mismo respaldo `content`/`reasoning_content` que
-    `diagnostico.deepseek.parsear_respuesta`, vía la extracción
+    `diagnostico.llm_model.parsear_respuesta`, vía la extracción
     compartida `_extraer_contenido_y_tokens` (specs/025-consolidar-parseo-deepseek/,
     antes duplicada aquí; research.md §3 de 021 para el resto del
     contrato)."""
@@ -102,10 +102,10 @@ def parsear_respuesta_remediacion(respuesta: dict) -> dict | None:
 
 
 def respuesta_mock() -> dict | None:
-    """Lee `REMEDIACION_DEEPSEEK_MOCK` — `None` si no está presente, no
+    """Lee `REMEDIACION_LLM_MOCK` — `None` si no está presente, no
     es JSON válido, o no cumple el invariante FR-003. Sin coste
     asociado (nunca gasta presupuesto real)."""
-    crudo = os.environ.get("REMEDIACION_DEEPSEEK_MOCK")
+    crudo = os.environ.get("REMEDIACION_LLM_MOCK")
     if not crudo:
         return None
     try:

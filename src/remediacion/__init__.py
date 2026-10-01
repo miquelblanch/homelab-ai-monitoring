@@ -2,7 +2,7 @@
 (Principios IV-VIII, Modelo Operacional B). Ya NO es independiente de
 `diagnostico` (lo era hasta 019) — desde 021 importa tres cosas
 concretas y acotadas: `diagnostico.evidencia.congelar_vivo` (recogida
-de evidencia), `diagnostico.deepseek.llamar_deepseek` (llamada HTTP
+de evidencia), `diagnostico.llm_model.llamar_llm_model` (llamada HTTP
 pura, sin lógica de negocio), y `diagnostico.gasto` (presupuesto
 diario compartido) — nunca `diagnostico.store`/`model` ni la vía de
 `causa_probable` (research.md §2 de specs/021-remediacion-contenedores/).

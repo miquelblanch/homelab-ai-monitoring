@@ -190,7 +190,7 @@ def test_cli_comprobar_contenedores_y_aprobar_generalizado() -> None:
             )
             import os
             try:
-                os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+                os.environ["REMEDIACION_LLM_MOCK"] = json.dumps(
                     {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba CLI"}
                 )
                 codigo_comprobar = cli.main(["comprobar-contenedores"])
@@ -204,7 +204,7 @@ def test_cli_comprobar_contenedores_y_aprobar_generalizado() -> None:
                 with store.connect(_db(db_dir)) as conn:
                     resuelto = store.get_intento_reinicio(conn, pendiente_id)
             finally:
-                os.environ.pop("REMEDIACION_DEEPSEEK_MOCK", None)
+                os.environ.pop("REMEDIACION_LLM_MOCK", None)
 
         check("comprobar-contenedores termina en 0", codigo_comprobar == 0)
         check("crea un intento pendiente para el contenedor caído", pendiente_id is not None)
@@ -237,12 +237,12 @@ def test_cli_comprobar_contenedores_escribe_snapshot() -> None:
             )
             import os
             try:
-                os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+                os.environ["REMEDIACION_LLM_MOCK"] = json.dumps(
                     {"accion_aplica": None, "razonamiento": "prueba: healthcheck mal configurado"}
                 )
                 codigo = cli.main(["comprobar-contenedores"])
             finally:
-                os.environ.pop("REMEDIACION_DEEPSEEK_MOCK", None)
+                os.environ.pop("REMEDIACION_LLM_MOCK", None)
 
             snapshot = json.loads(snap_path.read_text())
             entrada = next(c for c in snapshot["contenedores"] if c["nombre"] == "couchdb")
@@ -339,14 +339,14 @@ def test_cli_comprobar_contenedores_incluye_critico_como_pendiente() -> None:
             )
             import os
             try:
-                os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+                os.environ["REMEDIACION_LLM_MOCK"] = json.dumps(
                     {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba crítico vía CLI"}
                 )
                 codigo = cli.main(["comprobar-contenedores"])
                 with store.connect(_db(db_dir)) as conn:
                     pendientes = store.listar_pendientes_reinicio(conn)
             finally:
-                os.environ.pop("REMEDIACION_DEEPSEEK_MOCK", None)
+                os.environ.pop("REMEDIACION_LLM_MOCK", None)
 
         check("comprobar-contenedores por CLI también evalúa críticos (FR-009)", codigo == 0)
         check("crea exactamente un pendiente para el crítico", len(pendientes) == 1)
@@ -386,7 +386,7 @@ def test_cli_comprobar_agentes_y_aprobar_generalizado() -> None:
             )
             import os
             try:
-                os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+                os.environ["REMEDIACION_LLM_MOCK"] = json.dumps(
                     {"accion_aplica": "reiniciar_agente", "razonamiento": "prueba CLI"}
                 )
                 codigo_comprobar = cli.main(["comprobar-agentes"])
@@ -399,7 +399,7 @@ def test_cli_comprobar_agentes_y_aprobar_generalizado() -> None:
                 with store.connect(_db(db_dir)) as conn:
                     resuelto = store.get_intento_agente(conn, pendiente_id)
             finally:
-                os.environ.pop("REMEDIACION_DEEPSEEK_MOCK", None)
+                os.environ.pop("REMEDIACION_LLM_MOCK", None)
 
         check("comprobar-agentes termina en 0", codigo_comprobar == 0)
         check("crea un intento pendiente para el agente caído", pendiente_id is not None)

@@ -11,7 +11,7 @@ FR-006 de 023).
 Este `__init__.py` es una fachada de compatibilidad: reexporta
 exactamente los nombres que los tres consumidores reales usan hoy
 (`diagnostico/cli.py`, `remediacion/acciones.py`,
-`diagnostico/deepseek.py` — ver contracts/fachada-evidencia.md de 023),
+`diagnostico/llm_model.py` — ver contracts/fachada-evidencia.md de 023),
 para que ninguno de los tres tenga que cambiar cómo importa. Cualquier
 función privada de un origen concreto se usa, fuera de su propio
 módulo, solo desde su test de origen correspondiente — nunca desde

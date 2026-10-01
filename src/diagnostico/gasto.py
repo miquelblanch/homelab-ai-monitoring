@@ -15,12 +15,14 @@ from datetime import date
 
 from . import store
 
-# EUR por millón de tokens — revisar contra el precio vigente de DeepSeek
-# (research.md §6). Valores de partida a la espera de confirmación con la
-# tarifa real en el momento de desplegar.
+# Techo entre los dos proveedores (2026-10-01): gpt-6-luna cuesta 0,10/0,50 por
+# millón y la reserva, DeepSeek flash, 0,27/1,10. Se usa el más caro para el
+# cortacircuitos: sobreestima el gasto con OpenAI (lado seguro) y no lo
+# subestima si responde la reserva. Sobrescribible con
+# DIAGNOSTICO_PRECIO_ENTRADA / DIAGNOSTICO_PRECIO_SALIDA (EUR por millón).
 PRECIOS_EUR_POR_MILLON_TOKENS = {
-    "entrada": 0.27,
-    "salida": 1.10,
+    "entrada": float(os.environ.get("DIAGNOSTICO_PRECIO_ENTRADA", "0.27")),
+    "salida": float(os.environ.get("DIAGNOSTICO_PRECIO_SALIDA", "1.10")),
 }
 
 _LIMITE_POR_DEFECTO_EUR = 5.0
@@ -52,9 +54,9 @@ def hay_presupuesto(conn: sqlite3.Connection, tokens_entrada_reales: int) -> boo
     envía a la API como estimación del peor caso de salida (research.md
     §6, hallazgo B1 de /speckit-analyze — no un margen "prudente" sin
     definir)."""
-    from .deepseek import DIAGNOSTICO_DEEPSEEK_MAX_TOKENS
+    from .llm_model import DIAGNOSTICO_LLM_MAX_TOKENS
 
-    coste_estimado = calcular_coste_eur(tokens_entrada_reales, DIAGNOSTICO_DEEPSEEK_MAX_TOKENS)
+    coste_estimado = calcular_coste_eur(tokens_entrada_reales, DIAGNOSTICO_LLM_MAX_TOKENS)
     return gasto_hoy(conn) + coste_estimado <= limite_diario_eur()
 
 

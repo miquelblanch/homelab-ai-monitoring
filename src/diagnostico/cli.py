@@ -362,7 +362,7 @@ def _run_congelar(
 
 
 def _run_diagnosticar(episodio_id: int) -> int:
-    from . import deepseek, store
+    from . import llm_model, store
 
     with store.connect() as conn:
         episodio = store.get_episodio(conn, episodio_id)
@@ -370,10 +370,10 @@ def _run_diagnosticar(episodio_id: int) -> int:
             print(f"episodio {episodio_id} no existe", file=sys.stderr)
             return 1
 
-        # deepseek.diagnosticar_episodio ya aplica el cortacircuitos de
+        # llm_model.diagnosticar_episodio ya aplica el cortacircuitos de
         # gasto (FR-010), llama a DeepSeek si hay presupuesto, persiste
         # el diagnóstico y sus hipótesis, y registra el coste real.
-        diagnostico, hipotesis = deepseek.diagnosticar_episodio(conn, episodio)
+        diagnostico, hipotesis = llm_model.diagnosticar_episodio(conn, episodio)
 
     print(f"diagnóstico #{diagnostico.id}: {diagnostico.conclusion_tipo}")
     print(f"  {diagnostico.conclusion_texto}")

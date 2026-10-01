@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from diagnostico import deepseek
+from diagnostico import llm_model
 from tests.selftest import check
 
 
@@ -24,8 +24,8 @@ def _respuesta_deepseek(contenido: dict, tokens_entrada: int = 500, tokens_salid
 
 def test_construir_prompt_incluye_clausula_sin_accion_si_es_critico() -> None:
     snapshot = {"restart_history": None, "container_metrics": []}
-    prompt_critico = deepseek.construir_prompt(snapshot, es_critico=True)
-    prompt_normal = deepseek.construir_prompt(snapshot, es_critico=False)
+    prompt_critico = llm_model.construir_prompt(snapshot, es_critico=True)
+    prompt_normal = llm_model.construir_prompt(snapshot, es_critico=False)
 
     check(
         "prompt de contenedor crítico incluye la cláusula de no proponer acciones",
@@ -45,7 +45,7 @@ def test_construir_prompt_disco_nunca_lleva_clausula_de_critico() -> None:
         "disco": {"label": "FastData", "path": "/Volumes/FastData"},
         "disk_metrics": [],
     }
-    prompt = deepseek.construir_prompt(snapshot_disco, es_critico=False)
+    prompt = llm_model.construir_prompt(snapshot_disco, es_critico=False)
     check(
         "prompt de episodio de disco no lleva la cláusula de contenedor crítico",
         "NO propongas ninguna acción correctiva" not in prompt,
@@ -59,7 +59,7 @@ def test_construir_prompt_backup_nunca_lleva_clausula_de_critico() -> None:
         "backup_log_path": "/Volumes/FastData/homelab/logs/backup_2026-08-12_02-00-00.log",
         "backup_resumen_final": "Duración 17m 36s — rsync completo",
     }
-    prompt = deepseek.construir_prompt(snapshot_backup, es_critico=False)
+    prompt = llm_model.construir_prompt(snapshot_backup, es_critico=False)
     check(
         "prompt de episodio de backup no lleva la cláusula de contenedor crítico",
         "NO propongas ninguna acción correctiva" not in prompt,
@@ -86,7 +86,7 @@ def test_parsear_respuesta_backup_con_varias_hipotesis() -> None:
              "desenlace": "descartada"},
         ],
     })
-    parsed = deepseek.parsear_respuesta(respuesta)
+    parsed = llm_model.parsear_respuesta(respuesta)
 
     check("respuesta de backup bien formada se acepta", parsed is not None)
     check("SC-002: más de una hipótesis registrada para un episodio de backup", len(parsed["hipotesis"]) > 1)
@@ -99,8 +99,8 @@ def test_construir_prompt_relay_clausula_agregado_solo_en_diferido() -> None:
     snapshot_vivo = {"relay_nombre": "Beszel AdGuard", "relay_estado_actual": {"ok": True}}
     snapshot_diferido = {"relay_agregado": [{"momento": "2026-05-24T08:00:00", "ok": 9, "total": 10}]}
 
-    prompt_vivo = deepseek.construir_prompt(snapshot_vivo, es_critico=False)
-    prompt_diferido = deepseek.construir_prompt(snapshot_diferido, es_critico=False)
+    prompt_vivo = llm_model.construir_prompt(snapshot_vivo, es_critico=False)
+    prompt_diferido = llm_model.construir_prompt(snapshot_diferido, es_critico=False)
 
     check("prompt generalizado menciona relay", "relay" in prompt_vivo)
     check(
@@ -135,7 +135,7 @@ def test_parsear_respuesta_relay_con_varias_hipotesis() -> None:
              "desenlace": "descartada"},
         ],
     })
-    parsed = deepseek.parsear_respuesta(respuesta)
+    parsed = llm_model.parsear_respuesta(respuesta)
 
     check("respuesta de relay bien formada se acepta", parsed is not None)
     check("SC-002: más de una hipótesis registrada para un episodio de relay", len(parsed["hipotesis"]) > 1)
@@ -154,15 +154,15 @@ def test_menciona_relay_concreto() -> None:
     }
     check(
         "detecta un nombre real citado en conclusion_texto",
-        deepseek._menciona_relay_concreto(con_nombre, nombres) is True,
+        llm_model._menciona_relay_concreto(con_nombre, nombres) is True,
     )
     check(
         "no da falso positivo cuando no se nombra ningún relay real",
-        deepseek._menciona_relay_concreto(sin_nombre, nombres) is False,
+        llm_model._menciona_relay_concreto(sin_nombre, nombres) is False,
     )
     check(
         "sin nombres conocidos (fichero no disponible), nunca lanza ni da falso positivo",
-        deepseek._menciona_relay_concreto(con_nombre, set()) is False,
+        llm_model._menciona_relay_concreto(con_nombre, set()) is False,
     )
 
 
@@ -200,10 +200,10 @@ def test_diagnosticar_episodio_relay_rechaza_respuesta_que_nombra_un_relay() -> 
             )
             episodio = store.get_episodio(conn, episodio_id)
 
-            with patch.object(deepseek.bridge, "get_secret", return_value="fake-key-for-test"), \
-                 patch.object(deepseek, "llamar_deepseek", return_value=respuesta_indebida), \
+            with patch.object(llm_model.bridge, "get_secret", return_value="fake-key-for-test"), \
+                 patch.object(llm_model, "llamar_llm_model", return_value=respuesta_indebida), \
                  patch.object(evidencia, "listar_nombres_relay", return_value={"Beszel AdGuard"}):
-                diagnostico, hipotesis = deepseek.diagnosticar_episodio(conn, episodio)
+                diagnostico, hipotesis = llm_model.diagnosticar_episodio(conn, episodio)
 
         check(
             "respuesta que nombra un relay concreto en diferido se rechaza (F1, FR-006)",
@@ -253,10 +253,10 @@ def test_diagnosticar_episodio_relay_acepta_nombre_con_evidencia_real() -> None:
             )
             episodio = store.get_episodio(conn, episodio_id)
 
-            with patch.object(deepseek.bridge, "get_secret", return_value="fake-key-for-test"), \
-                 patch.object(deepseek, "llamar_deepseek", return_value=respuesta_con_evidencia), \
+            with patch.object(llm_model.bridge, "get_secret", return_value="fake-key-for-test"), \
+                 patch.object(llm_model, "llamar_llm_model", return_value=respuesta_con_evidencia), \
                  patch.object(evidencia, "listar_nombres_relay", return_value={"Beszel AdGuard", "HA Shelly"}):
-                diagnostico, hipotesis = deepseek.diagnosticar_episodio(conn, episodio)
+                diagnostico, hipotesis = llm_model.diagnosticar_episodio(conn, episodio)
 
         check(
             "respuesta que nombra un relay CON evidencia real en fallan se acepta",
@@ -275,7 +275,7 @@ def test_construir_prompt_inventario_menciona_origen_nuevo() -> None:
         "inventario_hallazgo": {"categoria": "hermes", "nombre_actual": "Agente Hermes/Bautista"},
         "inventario_brecha": {"tipo": "no_llega_a_dashboard"},
     }
-    prompt = deepseek.construir_prompt(snapshot, es_critico=False)
+    prompt = llm_model.construir_prompt(snapshot, es_critico=False)
 
     check("prompt generalizado menciona inventario", "inventario" in prompt)
     check(
@@ -305,7 +305,7 @@ def test_parsear_respuesta_inventario_con_varias_hipotesis() -> None:
              "desenlace": "descartada"},
         ],
     })
-    parsed = deepseek.parsear_respuesta(respuesta)
+    parsed = llm_model.parsear_respuesta(respuesta)
 
     check("respuesta de inventario bien formada se acepta", parsed is not None)
     check("SC-002: más de una hipótesis registrada para un episodio de inventario", len(parsed["hipotesis"]) > 1)
@@ -350,10 +350,10 @@ def test_diagnosticar_episodio_inventario_no_dispara_ningun_rechazo_de_otro_orig
             )
             episodio = store.get_episodio(conn, episodio_id)
 
-            with patch.object(deepseek.bridge, "get_secret", return_value="fake-key-for-test"), \
-                 patch.object(deepseek, "llamar_deepseek", return_value=respuesta), \
+            with patch.object(llm_model.bridge, "get_secret", return_value="fake-key-for-test"), \
+                 patch.object(llm_model, "llamar_llm_model", return_value=respuesta), \
                  patch.object(evidencia, "listar_nombres_relay", return_value={"algún relay"}):
-                diagnostico, hipotesis = deepseek.diagnosticar_episodio(conn, episodio)
+                diagnostico, hipotesis = llm_model.diagnosticar_episodio(conn, episodio)
 
     check(
         "episodio de inventario se acepta normalmente, sin rechazo cruzado de otro origen",
@@ -371,8 +371,8 @@ def test_construir_prompt_host_externo_clausula_solo_en_diferido() -> None:
     snapshot_vivo = {"host_externo_actual": {"nombre": "Host de Uptime Kuma", "status": "arriba"}}
     snapshot_diferido = {"host_externo_stats": {"total_muestras": 0, "primera": None, "ultima": None, "por_tipo": {}}}
 
-    prompt_vivo = deepseek.construir_prompt(snapshot_vivo, es_critico=False)
-    prompt_diferido = deepseek.construir_prompt(snapshot_diferido, es_critico=False)
+    prompt_vivo = llm_model.construir_prompt(snapshot_vivo, es_critico=False)
+    prompt_diferido = llm_model.construir_prompt(snapshot_diferido, es_critico=False)
 
     check("prompt generalizado menciona host externo", "Beszel ya vigila" in prompt_vivo)
     check(
@@ -405,7 +405,7 @@ def test_parsear_respuesta_host_externo_con_varias_hipotesis() -> None:
              "desenlace": "descartada"},
         ],
     })
-    parsed = deepseek.parsear_respuesta(respuesta)
+    parsed = llm_model.parsear_respuesta(respuesta)
 
     check("respuesta de host externo bien formada se acepta", parsed is not None)
     check("SC-002: más de una hipótesis registrada para un episodio de host externo", len(parsed["hipotesis"]) > 1)
@@ -448,10 +448,10 @@ def test_diagnosticar_episodio_host_externo_no_dispara_ningun_rechazo_de_otro_or
             )
             episodio = store.get_episodio(conn, episodio_id)
 
-            with patch.object(deepseek.bridge, "get_secret", return_value="fake-key-for-test"), \
-                 patch.object(deepseek, "llamar_deepseek", return_value=respuesta), \
+            with patch.object(llm_model.bridge, "get_secret", return_value="fake-key-for-test"), \
+                 patch.object(llm_model, "llamar_llm_model", return_value=respuesta), \
                  patch.object(evidencia, "listar_nombres_relay", return_value={"algún relay"}):
-                diagnostico, hipotesis = deepseek.diagnosticar_episodio(conn, episodio)
+                diagnostico, hipotesis = llm_model.diagnosticar_episodio(conn, episodio)
 
     check(
         "episodio de host externo se acepta normalmente, sin rechazo cruzado de otro origen",
@@ -467,8 +467,8 @@ def test_construir_prompt_hub_beszel_clausula_solo_en_diferido() -> None:
     snapshot_vivo = {"hub_beszel_actual": {"systems": [], "sano": True}}
     snapshot_diferido = {"hub_beszel_stats": {"por_sistema": {}, "todos_sin_muestras": True}}
 
-    prompt_vivo = deepseek.construir_prompt(snapshot_vivo, es_critico=False)
-    prompt_diferido = deepseek.construir_prompt(snapshot_diferido, es_critico=False)
+    prompt_vivo = llm_model.construir_prompt(snapshot_vivo, es_critico=False)
+    prompt_diferido = llm_model.construir_prompt(snapshot_diferido, es_critico=False)
 
     check("prompt generalizado menciona el hub de Beszel", "hub de Beszel" in prompt_vivo)
     check(
@@ -500,7 +500,7 @@ def test_parsear_respuesta_hub_beszel_con_varias_hipotesis() -> None:
              "desenlace": "descartada"},
         ],
     })
-    parsed = deepseek.parsear_respuesta(respuesta)
+    parsed = llm_model.parsear_respuesta(respuesta)
 
     check("respuesta del hub bien formada se acepta", parsed is not None)
     check("SC-002: más de una hipótesis registrada para un episodio del hub", len(parsed["hipotesis"]) > 1)
@@ -542,10 +542,10 @@ def test_diagnosticar_episodio_hub_beszel_no_dispara_ningun_rechazo_de_otro_orig
             )
             episodio = store.get_episodio(conn, episodio_id)
 
-            with patch.object(deepseek.bridge, "get_secret", return_value="fake-key-for-test"), \
-                 patch.object(deepseek, "llamar_deepseek", return_value=respuesta), \
+            with patch.object(llm_model.bridge, "get_secret", return_value="fake-key-for-test"), \
+                 patch.object(llm_model, "llamar_llm_model", return_value=respuesta), \
                  patch.object(evidencia, "listar_nombres_relay", return_value={"algún relay"}):
-                diagnostico, hipotesis = deepseek.diagnosticar_episodio(conn, episodio)
+                diagnostico, hipotesis = llm_model.diagnosticar_episodio(conn, episodio)
 
     check(
         "episodio del hub se acepta normalmente, sin rechazo cruzado de otro origen",
@@ -559,7 +559,7 @@ def test_construir_prompt_agente_menciona_origen_nuevo() -> None:
     restricción de contenido (research.md §4 de 016) — el estado de un
     agente es un hecho directo, no una inferencia sobre ausencia."""
     snapshot = {"agente_actual": {"label": "amsterdam9.docker-monitor", "status": "running"}}
-    prompt = deepseek.construir_prompt(snapshot, es_critico=False)
+    prompt = llm_model.construir_prompt(snapshot, es_critico=False)
 
     check("prompt generalizado menciona LaunchAgent", "LaunchAgent" in prompt)
     check(
@@ -583,7 +583,7 @@ def test_parsear_respuesta_agente_con_varias_hipotesis() -> None:
              "desenlace": "descartada"},
         ],
     })
-    parsed = deepseek.parsear_respuesta(respuesta)
+    parsed = llm_model.parsear_respuesta(respuesta)
 
     check("respuesta de agente bien formada se acepta", parsed is not None)
     check("SC-002: más de una hipótesis registrada para un episodio de agente", len(parsed["hipotesis"]) > 1)
@@ -597,7 +597,7 @@ def test_construir_prompt_ha_nunca_lleva_clausula_de_critico() -> None:
         "ha_check": {"id": "bateria_interruptor_salon", "type": "entity_value_below"},
         "ha_history": [{"state": "18", "last_changed": "2026-08-12T10:00:00"}],
     }
-    prompt = deepseek.construir_prompt(snapshot_ha, es_critico=False)
+    prompt = llm_model.construir_prompt(snapshot_ha, es_critico=False)
     check(
         "prompt de episodio de HA no lleva la cláusula de contenedor crítico",
         "NO propongas ninguna acción correctiva" not in prompt,
@@ -624,21 +624,21 @@ def test_construir_prompt_ha_incluye_clausula_de_estado_solo_si_hay_check_status
         "ha_check_status": {"ok": True, "detalle": "OK", "motivo": ""},
         "docker_logs_tail": "ERROR no relacionado de otra integración",
     }
-    prompt_ha = deepseek.construir_prompt(snapshot_ha_sano, es_critico=False)
+    prompt_ha = llm_model.construir_prompt(snapshot_ha_sano, es_critico=False)
     check(
         "prompt de episodio de HA con check_status incluye la cláusula de estado",
         "ha_check_status" in prompt_ha and "no hay ningún episodio real de" in prompt_ha,
     )
 
     snapshot_ha_inexistente = {"ha_check": None, "ha_check_status": None}
-    prompt_sin_estado = deepseek.construir_prompt(snapshot_ha_inexistente, es_critico=False)
+    prompt_sin_estado = llm_model.construir_prompt(snapshot_ha_inexistente, es_critico=False)
     check(
         "sin ha_check_status resuelto (check inexistente), no se incluye la cláusula",
         "no hay ningún episodio real de" not in prompt_sin_estado,
     )
 
     snapshot_contenedor = {"restart_history": None, "container_metrics": []}
-    prompt_contenedor = deepseek.construir_prompt(snapshot_contenedor, es_critico=False)
+    prompt_contenedor = llm_model.construir_prompt(snapshot_contenedor, es_critico=False)
     check(
         "un episodio de contenedor (sin ha_check_status) no lleva la cláusula de HA",
         "no hay ningún episodio real de" not in prompt_contenedor,
@@ -662,7 +662,7 @@ def test_parsear_respuesta_ha_con_varias_hipotesis() -> None:
              "desenlace": "descartada"},
         ],
     })
-    parsed = deepseek.parsear_respuesta(respuesta)
+    parsed = llm_model.parsear_respuesta(respuesta)
 
     check("respuesta de HA bien formada se acepta", parsed is not None)
     check("SC-002: más de una hipótesis registrada para un episodio de HA", len(parsed["hipotesis"]) > 1)
@@ -685,7 +685,7 @@ def test_parsear_respuesta_disco_con_varias_hipotesis() -> None:
              "desenlace": "descartada"},
         ],
     })
-    parsed = deepseek.parsear_respuesta(respuesta)
+    parsed = llm_model.parsear_respuesta(respuesta)
 
     check("respuesta de disco bien formada se acepta", parsed is not None)
     check("SC-002: más de una hipótesis registrada para un episodio de disco", len(parsed["hipotesis"]) > 1)
@@ -702,7 +702,7 @@ def test_parsear_respuesta_bien_formada_con_varias_hipotesis() -> None:
              "desenlace": "descartada"},
         ],
     })
-    parsed = deepseek.parsear_respuesta(respuesta)
+    parsed = llm_model.parsear_respuesta(respuesta)
 
     check("respuesta bien formada se acepta", parsed is not None)
     check("conclusion_tipo se conserva", parsed["conclusion_tipo"] == "causa_probable")
@@ -719,7 +719,7 @@ def test_parsear_respuesta_no_diagnosticable_sin_confirmadas() -> None:
              "desenlace": "sin_evidencia_suficiente"},
         ],
     })
-    parsed = deepseek.parsear_respuesta(respuesta)
+    parsed = llm_model.parsear_respuesta(respuesta)
     check("no_diagnosticable sin ninguna confirmada se acepta", parsed is not None)
 
 
@@ -746,7 +746,7 @@ def test_parsear_respuesta_usa_reasoning_content_si_content_vacio() -> None:
         }],
         "usage": {"prompt_tokens": 100, "completion_tokens": 80},
     }
-    parsed = deepseek.parsear_respuesta(respuesta)
+    parsed = llm_model.parsear_respuesta(respuesta)
     check("content vacío con reasoning_content válido se recupera, no se descarta", parsed is not None)
     check(
         "la conclusión recuperada es la que llevaba reasoning_content",
@@ -771,7 +771,7 @@ def test_parsear_respuesta_content_vacio_y_reasoning_content_no_json_se_rechaza(
     }
     check(
         "reasoning_content truncado y no-JSON se rechaza igual que antes",
-        deepseek.parsear_respuesta(respuesta) is None,
+        llm_model.parsear_respuesta(respuesta) is None,
     )
 
 
@@ -780,7 +780,7 @@ def test_parsear_respuesta_rechaza_json_invalido() -> None:
         "choices": [{"message": {"content": "esto no es JSON"}}],
         "usage": {"prompt_tokens": 10, "completion_tokens": 5},
     }
-    check("contenido no-JSON se rechaza (None)", deepseek.parsear_respuesta(respuesta) is None)
+    check("contenido no-JSON se rechaza (None)", llm_model.parsear_respuesta(respuesta) is None)
 
 
 def test_parsear_respuesta_rechaza_invariante_fr007_violado() -> None:
@@ -792,7 +792,7 @@ def test_parsear_respuesta_rechaza_invariante_fr007_violado() -> None:
     })
     check(
         "causa_probable sin hipótesis confirmada viola FR-007 ⇒ se rechaza",
-        deepseek.parsear_respuesta(respuesta_1) is None,
+        llm_model.parsear_respuesta(respuesta_1) is None,
     )
 
     # no_diagnosticable con una hipótesis confirmada — también viola FR-007
@@ -803,7 +803,7 @@ def test_parsear_respuesta_rechaza_invariante_fr007_violado() -> None:
     })
     check(
         "no_diagnosticable con hipótesis confirmada viola FR-007 ⇒ se rechaza",
-        deepseek.parsear_respuesta(respuesta_2) is None,
+        llm_model.parsear_respuesta(respuesta_2) is None,
     )
 
 
@@ -823,7 +823,7 @@ def test_parsear_respuesta_rechaza_mas_de_una_confirmada() -> None:
     })
     check(
         "causa_probable con dos hipótesis confirmada a la vez viola FR-007 ⇒ se rechaza",
-        deepseek.parsear_respuesta(respuesta) is None,
+        llm_model.parsear_respuesta(respuesta) is None,
     )
 
 
@@ -833,7 +833,7 @@ def test_parsear_respuesta_rechaza_desenlace_invalido() -> None:
         "conclusion_texto": "algo",
         "hipotesis": [{"descripcion": "a", "comprobacion": "b", "desenlace": "quizas"}],
     })
-    check("desenlace fuera del vocabulario se rechaza", deepseek.parsear_respuesta(respuesta) is None)
+    check("desenlace fuera del vocabulario se rechaza", llm_model.parsear_respuesta(respuesta) is None)
 
 
 # ── Latidos de monitores (feature 017: specs/017-diagnostico-latidos/) ─────
@@ -845,7 +845,7 @@ def test_construir_prompt_latido_menciona_origen_nuevo() -> None:
     igual que en HA (010), así que sí lleva cláusula nueva
     (research.md §4 de 017)."""
     snapshot = {"latido_actual": {"job": "docker-monitor", "ok": True, "status": "ok"}}
-    prompt = deepseek.construir_prompt(snapshot, es_critico=False)
+    prompt = llm_model.construir_prompt(snapshot, es_critico=False)
 
     check("prompt generalizado menciona latido", "latido" in prompt)
     check(
@@ -859,14 +859,14 @@ def test_construir_prompt_latido_incluye_clausula_de_estado_solo_si_hay_latido_a
     incluye cuando el snapshot trae `latido_actual` resuelto — un
     episodio de otro origen no debe llevarla."""
     snapshot_con_latido = {"latido_actual": {"job": "docker-monitor", "ok": True, "status": "error"}}
-    prompt_latido = deepseek.construir_prompt(snapshot_con_latido, es_critico=False)
+    prompt_latido = llm_model.construir_prompt(snapshot_con_latido, es_critico=False)
     check(
         "con latido_actual presente, la cláusula se incluye",
         "latido_actual.ok" in prompt_latido and "no lo recalcules" in prompt_latido,
     )
 
     snapshot_sin_latido = {"agente_actual": {"label": "amsterdam9.docker-monitor", "status": "running"}}
-    prompt_sin_latido = deepseek.construir_prompt(snapshot_sin_latido, es_critico=False)
+    prompt_sin_latido = llm_model.construir_prompt(snapshot_sin_latido, es_critico=False)
     check(
         "un episodio de agente (sin latido_actual) no lleva la cláusula de latido",
         "latido_actual.ok" not in prompt_sin_latido,
@@ -888,7 +888,50 @@ def test_parsear_respuesta_latido_con_varias_hipotesis() -> None:
              "desenlace": "sin_evidencia_suficiente"},
         ],
     })
-    parsed = deepseek.parsear_respuesta(respuesta)
+    parsed = llm_model.parsear_respuesta(respuesta)
 
     check("respuesta de latido bien formada se acepta", parsed is not None)
     check("SC-002: más de una hipótesis registrada para un episodio de latido", len(parsed["hipotesis"]) > 1)
+
+
+# ── Fallback OpenAI → DeepSeek (2026-10-01) ──
+
+def test_llamar_llm_model_pasa_a_la_reserva_solo_si_falla_la_cuenta() -> None:
+    ok = {"model": "deepseek-flash", "choices": [], "usage": {}}
+
+    def sin_saldo_en_openai(prov, prompt, modelo):
+        return ("cuenta", None) if prov[0] == "openai" else ("ok", ok)
+
+    with patch.object(llm_model, "_post", sin_saldo_en_openai):
+        check("sin saldo/clave en OpenAI ⇒ responde la reserva",
+              llm_model.llamar_llm_model("p", "gpt-6-luna") is ok)
+
+    llamados: list[str] = []
+
+    def fallo_de_red(prov, prompt, modelo):
+        llamados.append(prov[0])
+        return "otro", None
+
+    with patch.object(llm_model, "_post", fallo_de_red):
+        res = llm_model.llamar_llm_model("p", "gpt-6-luna")
+    check("un fallo de red/5xx NO activa la reserva", res is None and llamados == ["openai"])
+
+    def todo_cae(prov, prompt, modelo):
+        return "cuenta", None
+
+    with patch.object(llm_model, "_post", todo_cae):
+        check("cuenta caída en los dos proveedores ⇒ None, sin lanzar",
+              llm_model.llamar_llm_model("p", "gpt-6-luna") is None)
+
+
+def test_llamar_llm_model_usa_el_modelo_de_reserva_en_la_reserva() -> None:
+    vistos: list[tuple[str, str]] = []
+
+    def espia(prov, prompt, modelo):
+        vistos.append((prov[0], modelo))
+        return ("cuenta", None) if prov[0] == "openai" else ("ok", {})
+
+    with patch.object(llm_model, "_post", espia):
+        llm_model.llamar_llm_model("p", "gpt-6-luna")
+    check("OpenAI recibe el modelo pedido y DeepSeek el modelo de reserva",
+          vistos == [("openai", "gpt-6-luna"), ("deepseek", llm_model._FALLBACK_MODEL)])

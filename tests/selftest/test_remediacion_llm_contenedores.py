@@ -1,7 +1,7 @@
-"""test_remediacion_deepseek_contenedores — prompt propio, parseo, el
-soporte de REMEDIACION_DEEPSEEK_MOCK, y evaluar_contenedor() de
+"""test_remediacion_llm_contenedores — prompt propio, parseo, el
+soporte de REMEDIACION_LLM_MOCK, y evaluar_contenedor() de
 extremo a extremo (specs/021-remediacion-contenedores/). `congelar_vivo`
-y `llamar_deepseek` siempre mockeados — ningún test de este módulo
+y `llamar_llm_model` siempre mockeados — ningún test de este módulo
 llama a Docker real ni a la API real de DeepSeek."""
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from diagnostico.model import Episodio
-from remediacion import acciones, deepseek_contenedores, store
+from remediacion import acciones, llm_contenedores, store
 from tests.selftest import check
 
 
@@ -44,14 +44,14 @@ def _db(tmp: str) -> Path:
 
 
 def _limpiar_mock_env() -> None:
-    os.environ.pop("REMEDIACION_DEEPSEEK_MOCK", None)
+    os.environ.pop("REMEDIACION_LLM_MOCK", None)
 
 
 # ── construir_prompt_remediacion ──
 
 
 def test_construir_prompt_incluye_evidencia_y_acciones() -> None:
-    prompt = deepseek_contenedores.construir_prompt_remediacion(
+    prompt = llm_contenedores.construir_prompt_remediacion(
         _episodio(), ("reiniciar_contenedor",)
     )
     check("el prompt menciona la acción candidata", "reiniciar_contenedor" in prompt)
@@ -63,7 +63,7 @@ def test_construir_prompt_incluye_evidencia_y_acciones() -> None:
 
 
 def test_parsear_respuesta_remediacion_acepta_accion_valida() -> None:
-    parsed = deepseek_contenedores.parsear_respuesta_remediacion(
+    parsed = llm_contenedores.parsear_respuesta_remediacion(
         _respuesta_deepseek("reiniciar_contenedor", "el proceso no responde")
     )
     check("acepta reiniciar_contenedor", parsed is not None and parsed["accion_aplica"] == "reiniciar_contenedor")
@@ -72,7 +72,7 @@ def test_parsear_respuesta_remediacion_acepta_accion_valida() -> None:
 
 
 def test_parsear_respuesta_remediacion_acepta_null() -> None:
-    parsed = deepseek_contenedores.parsear_respuesta_remediacion(
+    parsed = llm_contenedores.parsear_respuesta_remediacion(
         _respuesta_deepseek(None, "el problema es externo")
     )
     check("acepta accion_aplica null", parsed is not None and parsed["accion_aplica"] is None)
@@ -80,14 +80,14 @@ def test_parsear_respuesta_remediacion_acepta_null() -> None:
 
 def test_parsear_respuesta_remediacion_rechaza_accion_fuera_de_lista() -> None:
     """FR-003 — nunca confía en un valor libre devuelto por el modelo."""
-    parsed = deepseek_contenedores.parsear_respuesta_remediacion(
+    parsed = llm_contenedores.parsear_respuesta_remediacion(
         _respuesta_deepseek("borrar_volumen", "inventada")
     )
     check("una acción inventada se rechaza por completo", parsed is None)
 
 
 def test_parsear_respuesta_remediacion_usa_reasoning_content_si_content_vacio() -> None:
-    """Mismo respaldo que diagnostico.deepseek.parsear_respuesta
+    """Mismo respaldo que diagnostico.llm_model.parsear_respuesta
     (research.md §3): un modelo de razonamiento puede dejar `content`
     vacío y escribir la respuesta completa en `reasoning_content`."""
     respuesta = {
@@ -97,28 +97,28 @@ def test_parsear_respuesta_remediacion_usa_reasoning_content_si_content_vacio() 
         }}],
         "usage": {"prompt_tokens": 1, "completion_tokens": 1},
     }
-    parsed = deepseek_contenedores.parsear_respuesta_remediacion(respuesta)
+    parsed = llm_contenedores.parsear_respuesta_remediacion(respuesta)
     check("recupera la decisión de reasoning_content", parsed is not None and parsed["razonamiento"] == "vía reasoning_content")
 
 
 def test_parsear_respuesta_remediacion_json_invalido_devuelve_none() -> None:
     respuesta = {"choices": [{"message": {"content": "esto no es json"}}], "usage": {}}
-    check("contenido no-JSON ⇒ None, sin lanzar", deepseek_contenedores.parsear_respuesta_remediacion(respuesta) is None)
+    check("contenido no-JSON ⇒ None, sin lanzar", llm_contenedores.parsear_respuesta_remediacion(respuesta) is None)
 
 
 def test_parsear_respuesta_remediacion_estructura_inesperada_devuelve_none() -> None:
-    check("respuesta sin 'choices' ⇒ None, sin lanzar", deepseek_contenedores.parsear_respuesta_remediacion({}) is None)
+    check("respuesta sin 'choices' ⇒ None, sin lanzar", llm_contenedores.parsear_respuesta_remediacion({}) is None)
 
 
-# ── respuesta_mock (REMEDIACION_DEEPSEEK_MOCK) ──
+# ── respuesta_mock (REMEDIACION_LLM_MOCK) ──
 
 
 def test_respuesta_mock_lee_env_var() -> None:
     try:
-        os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+        os.environ["REMEDIACION_LLM_MOCK"] = json.dumps(
             {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba: contenedor caído"}
         )
-        parsed = deepseek_contenedores.respuesta_mock()
+        parsed = llm_contenedores.respuesta_mock()
     finally:
         _limpiar_mock_env()
     check("el mock se lee y valida correctamente", parsed is not None and parsed["accion_aplica"] == "reiniciar_contenedor")
@@ -126,23 +126,23 @@ def test_respuesta_mock_lee_env_var() -> None:
 
 def test_respuesta_mock_sin_env_var_devuelve_none() -> None:
     _limpiar_mock_env()
-    check("sin REMEDIACION_DEEPSEEK_MOCK ⇒ None", deepseek_contenedores.respuesta_mock() is None)
+    check("sin REMEDIACION_LLM_MOCK ⇒ None", llm_contenedores.respuesta_mock() is None)
 
 
 def test_respuesta_mock_json_invalido_devuelve_none() -> None:
     try:
-        os.environ["REMEDIACION_DEEPSEEK_MOCK"] = "no es json"
-        check("mock con JSON inválido ⇒ None, sin lanzar", deepseek_contenedores.respuesta_mock() is None)
+        os.environ["REMEDIACION_LLM_MOCK"] = "no es json"
+        check("mock con JSON inválido ⇒ None, sin lanzar", llm_contenedores.respuesta_mock() is None)
     finally:
         _limpiar_mock_env()
 
 
 def test_respuesta_mock_accion_invalida_devuelve_none() -> None:
     try:
-        os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+        os.environ["REMEDIACION_LLM_MOCK"] = json.dumps(
             {"accion_aplica": "borrar_volumen", "razonamiento": "inventada"}
         )
-        check("mock con acción fuera de la lista cerrada ⇒ None (FR-003)", deepseek_contenedores.respuesta_mock() is None)
+        check("mock con acción fuera de la lista cerrada ⇒ None (FR-003)", llm_contenedores.respuesta_mock() is None)
     finally:
         _limpiar_mock_env()
 
@@ -153,7 +153,7 @@ def test_respuesta_mock_accion_invalida_devuelve_none() -> None:
 def test_evaluar_contenedor_recomienda_reiniciar_modo_manual() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
-             patch.object(acciones, "diagnostico_llamar_deepseek",
+             patch.object(acciones, "diagnostico_llamar_llm_model",
                            return_value=_respuesta_deepseek("reiniciar_contenedor", "proceso colgado")), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001):
@@ -171,7 +171,7 @@ def test_evaluar_contenedor_ninguna_accion_aplica_no_reinicia() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         avisos: list[tuple[str, str]] = []
         with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
-             patch.object(acciones, "diagnostico_llamar_deepseek",
+             patch.object(acciones, "diagnostico_llamar_llm_model",
                            return_value=_respuesta_deepseek(None, "el problema es de red externa")), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
              patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
@@ -187,7 +187,7 @@ def test_evaluar_contenedor_fallo_llamada_es_sin_evaluar_no_sin_accion() -> None
     """FR-015 — un fallo de la llamada nunca se confunde con 'ninguna acción aplica'."""
     with tempfile.TemporaryDirectory() as db_dir:
         with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
-             patch.object(acciones, "diagnostico_llamar_deepseek", return_value=None), \
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value=None), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True):
             with store.connect(_db(db_dir)) as conn:
                 intento = acciones.evaluar_contenedor(conn, conn, "test-contenedor")
@@ -201,7 +201,7 @@ def test_evaluar_contenedor_sin_presupuesto_es_sin_evaluar() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
              patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=False) as mock_presupuesto, \
-             patch.object(acciones, "diagnostico_llamar_deepseek") as mock_llamada:
+             patch.object(acciones, "diagnostico_llamar_llm_model") as mock_llamada:
             with store.connect(_db(db_dir)) as conn:
                 intento = acciones.evaluar_contenedor(conn, conn, "test-contenedor")
 
@@ -211,13 +211,13 @@ def test_evaluar_contenedor_sin_presupuesto_es_sin_evaluar() -> None:
 
 def test_evaluar_contenedor_usa_mock_sin_gastar_presupuesto() -> None:
     try:
-        os.environ["REMEDIACION_DEEPSEEK_MOCK"] = json.dumps(
+        os.environ["REMEDIACION_LLM_MOCK"] = json.dumps(
             {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba vía mock"}
         )
         with tempfile.TemporaryDirectory() as db_dir:
             with patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio()), \
                  patch.object(acciones.diagnostico_gasto, "hay_presupuesto") as mock_presupuesto, \
-                 patch.object(acciones, "diagnostico_llamar_deepseek") as mock_llamada:
+                 patch.object(acciones, "diagnostico_llamar_llm_model") as mock_llamada:
                 with store.connect(_db(db_dir)) as conn:
                     intento = acciones.evaluar_contenedor(conn, conn, "test-contenedor")
 

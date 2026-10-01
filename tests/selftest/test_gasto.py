@@ -1,6 +1,6 @@
 """test_gasto — T028: cálculo de coste a partir de tokens fijos,
 `hay_presupuesto()` en los tres casos (por debajo / al límite / por
-encima) usando la cifra concreta de `DIAGNOSTICO_DEEPSEEK_MAX_TOKENS`
+encima) usando la cifra concreta de `DIAGNOSTICO_LLM_MAX_TOKENS`
 (research.md §6, hallazgo B1), y reinicio del acumulado al cambiar de
 día natural (Edge Case del spec).
 """
