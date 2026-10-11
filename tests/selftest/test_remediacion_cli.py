@@ -125,17 +125,17 @@ def test_cli_aprobar_id_inexistente_devuelve_error() -> None:
 # ── Contenedores (specs/021-remediacion-contenedores/) ──────────────────
 
 
-def test_cli_modo_contenedor_rechaza_critico_sin_escribir() -> None:
+def test_cli_modo_contenedor_acepta_critico() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         with patch.object(store, "db_path", return_value=_db(db_dir)), \
              patch.object(_homelab_bridge, "docker_critical", return_value={"homeassistant"}), \
              patch.object(_homelab_bridge, "docker_never_restart", return_value=set()):
             codigo = cli.main(["modo-contenedor", "homeassistant", "--automatico"])
             with store.connect(_db(db_dir)) as conn:
-                filas = conn.execute("SELECT COUNT(*) AS n FROM configuracion_contenedor").fetchone()["n"]
+                modo = store.get_modo_contenedor(conn, "homeassistant")
 
-        check("modo-contenedor sobre un crítico devuelve error", codigo == 1)
-        check("no escribe ninguna fila (FR-006)", filas == 0)
+        check("modo-contenedor --automatico sobre un crítico termina en 0 (3.0.0)", codigo == 0)
+        check("se persiste automatico", modo == "automatico")
 
 
 def test_cli_modo_contenedor_rechaza_never_restart() -> None:
@@ -256,25 +256,25 @@ def test_cli_comprobar_contenedores_escribe_snapshot() -> None:
 # ── Contenedores críticos (specs/022-clasificacion-remediacion/) ────────
 
 
-def test_cli_modo_contenedor_automatico_critico_error_legible() -> None:
+def test_cli_modo_contenedor_never_restart_error_legible() -> None:
     with tempfile.TemporaryDirectory() as db_dir:
         with patch.object(store, "db_path", return_value=_db(db_dir)), \
-             patch.object(_homelab_bridge, "docker_critical", return_value={"homeassistant"}), \
-             patch.object(_homelab_bridge, "docker_never_restart", return_value=set()):
+             patch.object(_homelab_bridge, "docker_critical", return_value=set()), \
+             patch.object(_homelab_bridge, "docker_never_restart", return_value={"frigate"}):
             import io
             import sys as _sys
             buf = io.StringIO()
             viejo_stderr = _sys.stderr
             _sys.stderr = buf
             try:
-                codigo = cli.main(["modo-contenedor", "homeassistant", "--automatico"])
+                codigo = cli.main(["modo-contenedor", "frigate", "--automatico"])
             finally:
                 _sys.stderr = viejo_stderr
 
-        check("modo-contenedor --automatico sobre un crítico devuelve error (hallazgo E1)", codigo == 1)
+        check("modo-contenedor --automatico sobre NEVER_RESTART devuelve error (hallazgo E1)", codigo == 1)
         check(
             "el mensaje es legible, no una traza cruda de Python",
-            "homeassistant" in buf.getvalue() and "Traceback" not in buf.getvalue(),
+            "frigate" in buf.getvalue() and "Traceback" not in buf.getvalue(),
         )
 
 
@@ -288,7 +288,7 @@ def test_cli_modo_contenedor_manual_critico_se_acepta() -> None:
                 modo = store.get_modo_contenedor(conn, "homeassistant")
 
         check("modo-contenedor --manual sobre un crítico termina en 0", codigo == 0)
-        check("se persiste como manual, sin efecto real sobre la evaluación", modo == "manual")
+        check("se persiste como manual", modo == "manual")
 
 
 def test_cli_contenedores_incluir_criticos() -> None:
@@ -313,8 +313,9 @@ def test_cli_contenedores_incluir_criticos() -> None:
             codigo_sin_flag = cli.main(["contenedores"])
 
         check("contenedores --incluir-criticos termina en 0", codigo_con_flag == 0)
-        check("con el flag, homeassistant aparece con modo null",
-              "homeassistant — modo null (crítico)" in salida_con_flag)
+        check("con el flag, homeassistant aparece con su modo real y la marca de crítico",
+              "homeassistant — modo manual (crítico)" in salida_con_flag)
+        check("frigate (NEVER_RESTART) no aparece", "frigate" not in salida_con_flag)
         check("con el flag, jellyfin_audio (no crítico) sigue apareciendo con su modo real",
               "jellyfin_audio — modo manual" in salida_con_flag)
         check("sin el flag, sigue funcionando igual que 021", codigo_sin_flag == 0)

@@ -871,11 +871,44 @@ def test_comprobar_reiniciar_contenedor_incluye_criticos_como_pendiente() -> Non
                 creados = acciones.comprobar_reiniciar_contenedor(conn, conn)
 
         check("un crítico caído sí se evalúa (FR-009, ya no excluido)", len(creados) == 1)
-        check("crea pendiente, nunca ejecutado directamente (FR-008/FR-010)",
+        check("un crítico sin fila de modo empieza en manual ⇒ pendiente",
               creados[0].estado == "pendiente")
-        check("modo_en_deteccion siempre manual para un crítico", creados[0].modo_en_deteccion == "manual")
-        check("nunca se llama a restart_container para un crítico desde comprobar_reiniciar_contenedor",
-              mock_restart.called is False)
+        check("modo_en_deteccion manual (el de la tabla, por defecto)", creados[0].modo_en_deteccion == "manual")
+        check("en manual no se llama a restart_container", mock_restart.called is False)
+
+
+def test_comprobar_reiniciar_contenedor_critico_en_automatico_se_reinicia() -> None:
+    """Constitución 3.0.0: un crítico en modo automático se reinicia sin
+    aprobación, por la misma rama (y el mismo cortacircuito) que un no
+    crítico."""
+    with tempfile.TemporaryDirectory() as db_dir:
+        with patch.object(acciones.bridge, "docker_critical", return_value={"test-critico"}), \
+             patch.object(acciones.bridge, "docker_never_restart", return_value=set()), \
+             patch.object(store.bridge, "docker_never_restart", return_value=set()), \
+             patch.object(acciones.bridge, "listar_contenedores", return_value=[
+                 {"name": "test-critico", "running": False, "healthy": False},
+             ]), \
+             patch.object(acciones.diagnostico_evidencia, "congelar_vivo", return_value=_episodio("test-critico")), \
+             patch.object(acciones.diagnostico_gasto, "hay_presupuesto", return_value=True), \
+             patch.object(acciones.diagnostico_gasto, "registrar_coste", return_value=0.001), \
+             patch.object(acciones, "diagnostico_llamar_llm_model", return_value={
+                 "choices": [{"message": {"content": json.dumps(
+                     {"accion_aplica": "reiniciar_contenedor", "razonamiento": "prueba crítico caído"}
+                 )}}],
+                 "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+             }), \
+             patch.object(acciones.bridge, "recent_restart_attempts", return_value=0), \
+             patch.object(acciones.bridge, "breaker_decision", return_value=(True, "")), \
+             patch.object(acciones.bridge, "declarar_correccion_ia"), \
+             patch.object(acciones.bridge, "restart_container", return_value=True) as mock_restart:
+            with store.connect(_db(db_dir)) as conn:
+                store.set_modo_contenedor(conn, "test-critico", "automatico")
+                creados = acciones.comprobar_reiniciar_contenedor(conn, conn)
+
+        check("un crítico en automático se evalúa", len(creados) == 1)
+        check("y se reinicia sin aprobación (estado ejecutado)", creados[0].estado == "ejecutado")
+        check("modo_en_deteccion automatico", creados[0].modo_en_deteccion == "automatico")
+        check("restart_container llamado una vez", mock_restart.call_count == 1)
 
 
 def test_comprobar_reiniciar_contenedor_nunca_evalua_never_restart() -> None:
@@ -942,10 +975,10 @@ def test_escribir_snapshot_incluye_bloque_contenedores() -> None:
         por_nombre = {c["nombre"]: c for c in payload["contenedores"]}
 
         check("3 contenedores en el bloque", len(payload["contenedores"]) == 3)
-        check("homeassistant: crítico, manual, modo null",
+        check("homeassistant: crítico, ia, con su modo real (manual por defecto)",
               por_nombre["homeassistant"]["critico"] is True
-              and por_nombre["homeassistant"]["clasificacion"] == "manual"
-              and por_nombre["homeassistant"]["modo"] is None)
+              and por_nombre["homeassistant"]["clasificacion"] == "ia"
+              and por_nombre["homeassistant"]["modo"] == "manual")
         check("frigate: never_restart, manual, modo null",
               por_nombre["frigate"]["never_restart"] is True
               and por_nombre["frigate"]["clasificacion"] == "manual"

@@ -88,8 +88,8 @@ rompa. Es el Principio XI de la constitución (Reproducibilidad Diferida).
 - **No reemplaza `docker_monitor.py`.** Sigue siendo quien reinicia contenedores.
   El agente añade diagnóstico y, para causas ya diagnosticadas, remediación
   reversible — nunca sustituye la remediación existente.
-- **Ninguna acción sobre contenedores críticos** sin aprobación humana explícita
-  (lista del monitor, ver constitución).
+- **Contenedores críticos:** desde la constitución 3.0.0 (2026-10-11) admiten modo
+  automático como los demás; solo NEVER_RESTART (`frigate`) queda excluido.
 - **Repo público, saneado.** Se nombra el software, no la topología: nada de
   nombres de entidades ligadas a dispositivos de seguridad física, IPs,
   credenciales. Ver la decisión "Repositorio público" en `BRIEFING.md`.

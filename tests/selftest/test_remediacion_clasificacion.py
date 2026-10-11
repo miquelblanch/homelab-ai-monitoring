@@ -9,20 +9,18 @@ from remediacion import clasificacion
 from tests.selftest import check
 
 
-def test_clasificar_contenedor_critico_es_manual_con_cualquier_modo() -> None:
+def test_clasificar_contenedor_critico_es_ia_con_cualquier_modo() -> None:
+    """Desde la constitución 3.0.0 un crítico se clasifica igual que un
+    no crítico: decide la IA, y el modo solo dice si espera aprobación."""
     criticos = {"homeassistant"}
     never_restart: set[str] = set()
     check(
-        "crítico en modo automático (si lo hubiera) ⇒ manual",
-        clasificacion.clasificar_contenedor("homeassistant", criticos, never_restart, "automatico") == "manual",
+        "crítico en modo automático ⇒ ia",
+        clasificacion.clasificar_contenedor("homeassistant", criticos, never_restart, "automatico") == "ia",
     )
     check(
-        "crítico en modo manual ⇒ manual",
-        clasificacion.clasificar_contenedor("homeassistant", criticos, never_restart, "manual") == "manual",
-    )
-    check(
-        "crítico sin modo (None) ⇒ manual",
-        clasificacion.clasificar_contenedor("homeassistant", criticos, never_restart, None) == "manual",
+        "crítico en modo manual ⇒ ia",
+        clasificacion.clasificar_contenedor("homeassistant", criticos, never_restart, "manual") == "ia",
     )
 
 
@@ -43,7 +41,7 @@ def test_clasificar_contenedor_never_restart_es_manual() -> None:
     criticos: set[str] = set()
     never_restart = {"frigate"}
     check(
-        "NEVER_RESTART ⇒ manual, igual que un crítico (FR-007)",
+        "NEVER_RESTART ⇒ manual (FR-007)",
         clasificacion.clasificar_contenedor("frigate", criticos, never_restart, None) == "manual",
     )
 

@@ -32,8 +32,8 @@ Garantías de 019 (contracts/cli.md), válidas para `rotar_log`:
 Garantías añadidas por 021 (contracts/cli.md), válidas para
 `reiniciar_contenedor`:
 6. DeepSeek nunca elige fuera de la lista cerrada de acciones (FR-003).
-7. Ningún contenedor crítico ni `frigate` recibe una evaluación, una
-   propuesta, ni un cambio de modo (FR-006).
+7. `frigate` (NEVER_RESTART) no recibe una evaluación, una propuesta,
+   ni un cambio de modo (FR-006). Los críticos sí, ver 11.
 8. Un fallo de la llamada a DeepSeek nunca se registra como "ninguna
    acción aplica" — estado `sin_evaluar`, distinto de `sin_accion`
    (FR-015).
@@ -44,17 +44,18 @@ Garantías añadidas por 021 (contracts/cli.md), válidas para
 
 Garantías añadidas por 022 (specs/022-clasificacion-remediacion/,
 contracts/cli.md), válidas para contenedores críticos:
-11. `comprobar-contenedores` ya SÍ evalúa contenedores críticos
-    (FR-009) — pero siempre con modo forzado a "manual"; nunca los
-    ejecuta sin aprobación explícita (FR-008/FR-010). `frigate`
+11. `comprobar-contenedores` evalúa los contenedores críticos (FR-009)
+    y, desde la constitución 3.0.0 (2026-10-11), con su modo real de
+    `configuracion_contenedor`: en "automatico" se reinician sin
+    aprobación, con el mismo cortacircuito que los demás. `frigate`
     (NEVER_RESTART) sigue totalmente excluido, sin cambios (FR-007).
-12. `modo-contenedor CONTENEDOR --automatico` sigue rechazado para un
-    crítico (ahora vía la guarda de `store.set_modo_contenedor`, no
-    solo en este módulo) — `--manual` sobre un crítico se acepta sin
-    efecto real. Sobre `frigate` (NEVER_RESTART), ambos se rechazan.
-13. `contenedores --incluir-criticos` añade los críticos a la lista,
-    con `modo: null` — nunca mezclados con el modo real de los no
-    críticos.
+12. `modo-contenedor CONTENEDOR --automatico` se acepta para un
+    crítico desde 3.0.0. Sobre `frigate` (NEVER_RESTART), ambos modos
+    se rechazan (y `store.set_modo_contenedor` rechaza también el
+    automático como segunda capa).
+13. `contenedores` lista todos menos NEVER_RESTART, críticos incluidos
+    con su modo real; `--incluir-criticos` se conserva por
+    compatibilidad y solo añade la marca «(crítico)».
 
 Garantías añadidas por 026 (contracts/cli.md), válidas para
 `reiniciar_agente`:
@@ -111,12 +112,12 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("tipos", help="Lista los tipos de acción que existen y su modo actual — solo lectura.")
     contenedores_parser = subparsers.add_parser(
         "contenedores",
-        help="Lista los contenedores no críticos con su modo actual — solo lectura (021).",
+        help="Lista los contenedores (salvo NEVER_RESTART) con su modo actual — solo lectura (021).",
     )
     contenedores_parser.add_argument(
         "--incluir-criticos",
         action="store_true",
-        help="Añade también los contenedores críticos, con modo null (022, contracts/cli.md).",
+        help="Marca los contenedores críticos con «(crítico)» (desde 3.0.0 ya se listan siempre).",
     )
     subparsers.add_parser(
         "agentes",
@@ -348,22 +349,17 @@ def _run_contenedores(incluir_criticos: bool = False) -> int:
     nombres = tuple(
         c["name"]
         for c in bridge.listar_contenedores()
-        if c.get("name") and c["name"] not in criticos and c["name"] not in never_restart
+        if c.get("name") and c["name"] not in never_restart
     )
     with store.connect() as conn:
         modos = store.listar_modos_contenedor(conn, nombres)
 
-    if not modos and not (incluir_criticos and criticos):
-        print("sin contenedores no críticos conocidos (¿docker_monitor.py disponible?)")
+    if not modos:
+        print("sin contenedores conocidos (¿docker_monitor.py disponible?)")
         return 0
     for contenedor, modo in modos:
-        print(f"{contenedor} — modo {modo}")
-    if incluir_criticos:
-        # 022, contracts/cli.md: los críticos no tienen modo configurable
-        # — se listan aparte, con "null", nunca mezclados con listar_modos_contenedor
-        # (que solo conoce configuracion_contenedor, sin fila para ellos).
-        for contenedor in sorted(criticos):
-            print(f"{contenedor} — modo null (crítico)")
+        marca = " (crítico)" if incluir_criticos and contenedor in criticos else ""
+        print(f"{contenedor} — modo {modo}{marca}")
     return 0
 
 
@@ -383,10 +379,8 @@ def _run_modo_contenedor(contenedor: str, automatico: bool) -> int:
         try:
             store.set_modo_contenedor(conn, contenedor, nuevo_modo)
         except ValueError as e:
-            # store.set_modo_contenedor ya rechaza "automatico" para un
-            # crítico (FR-008, guarda de escritura, research.md §2 de
-            # 022) — "manual" sobre un crítico sí se acepta, sin efecto
-            # real sobre la evaluación (evaluar_contenedor la fuerza).
+            # Modo inválido, o NEVER_RESTART en la guarda de escritura
+            # de store.set_modo_contenedor (segunda capa tras la de arriba).
             print(str(e), file=sys.stderr)
             return 1
     print(f"{contenedor} → modo {nuevo_modo}")

@@ -1,7 +1,29 @@
 <!--
 ## Sync Impact Report
 
-**Version change**: 2.0.0 → 2.1.0
+**Version change**: 2.1.0 → 3.0.0
+**Principles modified**: **Principio VII (Un Actor por Acción)** — el párrafo
+"Análisis sin acción, para contenedores críticos" (2.1.0) pasa a ser "Contenedores
+críticos (desde 3.0.0)": un contenedor crítico admite modo "automático" igual que
+cualquier otro, y `remediacion` puede reiniciarlo sin aprobación cuando su modo lo
+permite, con el mismo cortacircuito. Redefinición incompatible con 2.1.0 (que
+prohibía expresamente cualquier interruptor que lo permitiera), de ahí MAJOR.
+**Motivo**: la garantía se apoyaba en la regla 3 del `CLAUDE.md` general del
+homelab ("no reiniciar contenedores críticos sin confirmación explícita"), que
+Miquel derogó el 2026-10-09; y el 2026-10-11 pidió expresamente aplicar la
+remediación automática a todos los contenedores, críticos incluidos. Cambio hecho
+directamente por Claude a petición de Miquel (`AskUserQuestion`, 2026-10-11), fuera
+del flujo de Spec Kit, sin spec propio.
+**Sin cambios**: `docker_monitor.py` sigue siendo el único mecanismo de vigilancia y
+aviso de los críticos; NEVER_RESTART sigue totalmente excluido; el cortacircuito y la
+verificación real tras el reinicio aplican igual a críticos y no críticos. El modo de
+un crítico empieza en "manual" (como cualquier contenedor nuevo) y solo Miquel lo
+cambia.
+**Deferred TODOs**: None
+
+---
+
+**Version change (histórico)**: 2.0.0 → 2.1.0
 **Principles added**: None (nuevo párrafo dentro de un principio existente,
 no un principio nuevo — de ahí MINOR, no MAJOR)
 **Principles modified**: **Principio VII (Un Actor por Acción)** — añadido un
@@ -141,19 +163,18 @@ explícita, no implícita: un fallo persistente de la nueva capa para evaluar o 
 alarma (Principio I) — nunca un silencio indistinguible de "sigue vigilado" cuando ya no
 lo está. El spec que hace la cesión DEBE declarar esa contrapartida explícitamente.
 
-**Análisis sin acción, para contenedores críticos (desde el feature 022).** Que
-`docker_monitor.py` sea el único actor de vigilancia y aviso de un contenedor crítico no
-impide que una capa de remediación con su propio diagnóstico (Principio IV) *analice* ese
-mismo contenedor y *proponga* una acción de la lista cerrada — mientras esa propuesta
-nunca se ejecute sin aprobación humana explícita, no hay dos actores compitiendo por la
-misma responsabilidad: uno vigila y avisa (`docker_monitor.py`, sin ningún cambio), el
-otro analiza y propone, nunca ejecuta (`remediacion`/DeepSeek). Para un contenedor
-crítico no existe ni puede existir un modo "automático": toda propuesta de `remediacion`
-sobre un contenedor crítico es siempre una sugerencia pendiente de que Miquel la apruebe
-explícitamente ese día — la misma exigencia que ya impone la regla 3 del `CLAUDE.md`
-general del homelab ("no reiniciar contenedores críticos sin confirmación explícita").
-Ningún interruptor, configuración, ni comportamiento por defecto puede convertir esa
-aprobación en automática para un contenedor de la lista de críticos.
+**Contenedores críticos (desde 3.0.0).** Que `docker_monitor.py` sea el único actor de
+vigilancia y aviso de un contenedor crítico no impide que una capa de remediación con su
+propio diagnóstico (Principio IV) lo analice y actúe sobre él: uno vigila y avisa
+(`docker_monitor.py`, sin ningún cambio), el otro decide y, si su modo lo permite,
+ejecuta (`remediacion`). Un contenedor crítico tiene modo configurable como cualquier
+otro: empieza en "manual" y solo Miquel lo pasa a "automático". En automático se
+reinicia sin aprobación, con el mismo cortacircuito y la misma verificación real que un
+no crítico. La lista de críticos ya no limita la acción: sirve para que
+`docker_monitor.py` avise de su caída. Solo NEVER_RESTART sigue excluido de cualquier
+análisis y acción. (De 2.1.0 a 3.0.0 un crítico solo admitía propuestas pendientes de
+aprobación; esa restricción se apoyaba en una regla del homelab derogada el
+2026-10-09.)
 
 **Rationale**: Si el agente sustituyera al monitor y fallara sin que nadie se enterase, se
 perdería la remediación que lleva meses funcionando sin ayuda de nadie — el motivo
@@ -161,10 +182,10 @@ original de este principio. Acotar la garantía a los críticos permite que una 
 remediación más inteligente (que sí diagnostica antes de actuar, Principio IV) asuma
 progresivamente responsabilidades sobre componentes no críticos, siempre que ceder esa
 responsabilidad no cree un punto ciego nuevo: de ahí que la contrapartida del aviso
-persistente no sea opcional. Que un contenedor sea crítico protege la ejecución (nunca se
-reinicia sin aprobación), no el análisis: negarle también el análisis dejaría a los
-componentes más sensibles del homelab como los únicos sin ninguna propuesta razonada
-cuando fallan, justo lo contrario de lo que motivó este proyecto.
+persistente no sea opcional. Los componentes más sensibles del homelab son también los
+que más cuesta tener caídos: dejarlos como los únicos que esperan a una persona para
+volver sería justo lo contrario de lo que motivó este proyecto. El cortacircuito y el
+modo por contenedor son la protección frente a un reinicio en bucle.
 
 ### VIII. Registro de Acciones e Hipótesis
 
@@ -288,12 +309,10 @@ vigilado" cuando ya no lo está (FR-019 de 021).
 
 El feature 022 (`specs/022-clasificacion-remediacion/`) extiende la evaluación de
 DeepSeek a los contenedores **críticos** — antes totalmente excluidos de cualquier
-análisis de `remediacion`. La distinción de Principio VII entre vigilar/avisar y
-analizar/proponer (ver el principio) es lo que permite esta extensión sin volver a acotar
-la garantía de 021: `docker_monitor.py` sigue siendo, sin ningún cambio, el único
-mecanismo de vigilancia y aviso de los críticos, y ningún contenedor de esa lista puede
-tener un modo "automático" — toda propuesta de DeepSeek sobre un crítico espera siempre
-la aprobación explícita de Miquel.
+análisis de `remediacion`. Desde la versión 3.0.0 de esta constitución (2026-10-11) un
+crítico admite también modo "automático": `docker_monitor.py` sigue siendo, sin ningún
+cambio, el único mecanismo de vigilancia y aviso de los críticos, pero la ejecución ya no
+exige la aprobación explícita de Miquel cuando el modo del contenedor es automático.
 
 Los dos candidatos que quedaban aquí como fuera de alcance —relays que escribían su log en
 `/tmp`, y contenedores sin healthcheck— se resolvieron el 2026-08-13 mediante intervención
@@ -329,4 +348,4 @@ principio, sobra. Si un principio no tiene componente, falta.
 cada ciclo de implementación. La línea base (Principio IX) DEBE actualizarse cuando se
 establezca un nuevo conjunto de evaluación validado.
 
-**Version**: 2.1.0 | **Ratified**: 2026-08-02 | **Last Amended**: 2026-08-14
+**Version**: 3.0.0 | **Ratified**: 2026-08-02 | **Last Amended**: 2026-10-11

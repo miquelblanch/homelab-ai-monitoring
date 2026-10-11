@@ -16,13 +16,13 @@ def clasificar_contenedor(
     never_restart: set[str],
     modo: str | None,
 ) -> str:
-    """"manual" si `nombre` está en `criticos` o `never_restart` — el
-    modo se ignora en ese caso (FR-006/FR-007): un contenedor crítico
-    siempre es Manual, tenga o no una propuesta real de DeepSeek
-    detrás. Si no, "ia" siempre (FR-004) — con independencia de `modo`,
-    que aquí solo distingue si la ejecución final es automática o
-    espera aprobación, no quién decide."""
-    if nombre in criticos or nombre in never_restart:
+    """"manual" si `nombre` está en `never_restart` (FR-007). Si no,
+    "ia" siempre (FR-004), sea crítico o no (desde la constitución
+    3.0.0, 2026-10-11, un crítico admite modo automático) — con
+    independencia de `modo`, que aquí solo distingue si la ejecución
+    final es automática o espera aprobación, no quién decide.
+    `criticos` se conserva en la firma por compatibilidad."""
+    if nombre in never_restart:
         return "manual"
     return "ia"
 

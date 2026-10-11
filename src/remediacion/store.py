@@ -377,20 +377,17 @@ def listar_modos_contenedor(
 
 
 def set_modo_contenedor(conn: sqlite3.Connection, contenedor: str, modo: str) -> None:
-    """Cambia el modo de `contenedor`. Guarda de escritura (FR-008,
-    specs/022-clasificacion-remediacion/, research.md §2): un
-    contenedor crítico nunca admite modo "automatico", ni siquiera si
-    el llamador (cli.py) no lo hubiera rechazado ya — dos capas
-    independientes de protección para la garantía NO NEGOCIABLE, no
-    una sola. `"manual"` sobre un crítico sí se acepta sin error: no
-    tiene efecto real (la tabla nunca se consulta para evaluarlo,
-    `evaluar_contenedor` fuerza el modo en código — research.md §1),
-    pero no hay ninguna razón para que falle un comando que no cambia
-    nada peligroso."""
+    """Cambia el modo de `contenedor`. Desde la constitución 3.0.0
+    (2026-10-11) un contenedor crítico admite modo "automatico" igual
+    que cualquier otro: Miquel derogó la regla 3 del CLAUDE.md general
+    ("no reiniciar críticos sin confirmación") el 2026-10-09. La única
+    guarda que queda es NEVER_RESTART (`frigate`): nunca admite
+    "automatico", ni siquiera si el llamador (cli.py) no lo hubiera
+    rechazado ya."""
     if modo not in ("manual", "automatico"):
         raise ValueError(f"modo inválido: {modo!r}")
-    if modo == "automatico" and contenedor in bridge.docker_critical():
-        raise ValueError(f"{contenedor} es crítico — no admite modo automático")
+    if modo == "automatico" and contenedor in bridge.docker_never_restart():
+        raise ValueError(f"{contenedor} es NEVER_RESTART — no admite modo automático")
     ahora = _now_iso()
     conn.execute(
         "INSERT INTO configuracion_contenedor (contenedor, modo, actualizado_en) "

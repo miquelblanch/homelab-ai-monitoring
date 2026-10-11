@@ -344,7 +344,7 @@ def _snapshot_contenedores(conn: sqlite3.Connection) -> list[dict]:
         try:
             es_critico = nombre in criticos
             es_never_restart = nombre in never_restart
-            modo = None if (es_critico or es_never_restart) else get_modo_contenedor(conn, nombre)
+            modo = None if es_never_restart else get_modo_contenedor(conn, nombre)
             contenedores.append({
                 "nombre": nombre,
                 "critico": es_critico,
@@ -577,10 +577,11 @@ def evaluar_contenedor(
     `modo_forzado` (specs/022-clasificacion-remediacion/, research.md
     §1): si no es `None`, se usa en vez de `get_modo_contenedor(...)`
     — la tabla `configuracion_contenedor` no se consulta en absoluto
-    para este contenedor. El llamador (`comprobar_reiniciar_contenedor`)
-    pasa `modo_forzado="manual"` para un contenedor crítico — nunca
-    lee ni admite que sea `"automatico"` para él (FR-008, Principio
-    VII). El llamador sigue siendo responsable de excluir NEVER_RESTART
+    para este contenedor. Desde la constitución 3.0.0 el llamador
+    (`comprobar_reiniciar_contenedor`) ya no lo usa para los críticos:
+    su modo sale de la tabla como el de cualquier otro contenedor. Se
+    conserva para pruebas y usos puntuales. El llamador sigue siendo
+    responsable de excluir NEVER_RESTART
     (FR-007) — esta función nunca lo comprueba porque nunca debería
     recibirlo."""
     modo = modo_forzado if modo_forzado is not None else get_modo_contenedor(conn_remediacion, contenedor)
@@ -676,10 +677,10 @@ def comprobar_reiniciar_contenedor(
     ya NO se excluyen — FR-009), se queda con los que no están
     `running and healthy`, salta los que ya tienen un intento
     `pendiente`/`sin_evaluar` reciente (FR-008 de 019, mismo criterio
-    "no duplicar"), y evalúa el resto. Para un contenedor crítico, el
-    modo se fuerza siempre a `"manual"` (FR-008/FR-010 de 022) — nunca
-    se consulta ni se admite `"automatico"` para él."""
-    criticos = bridge.docker_critical()
+    "no duplicar"), y evalúa el resto. Desde la constitución 3.0.0
+    (2026-10-11) un contenedor crítico se trata igual que los demás:
+    su modo sale de `configuracion_contenedor` y, en "automatico", se
+    reinicia sin aprobación, con el mismo cortacircuito."""
     never_restart = bridge.docker_never_restart()
     creados: list[IntentoReinicio] = []
 
@@ -691,10 +692,7 @@ def comprobar_reiniciar_contenedor(
             continue
         if intento_reciente_pendiente_o_sin_evaluar(conn_remediacion, nombre):
             continue
-        modo_forzado = "manual" if nombre in criticos else None
-        creados.append(
-            evaluar_contenedor(conn_remediacion, conn_diagnostico, nombre, modo_forzado=modo_forzado)
-        )
+        creados.append(evaluar_contenedor(conn_remediacion, conn_diagnostico, nombre))
 
     return creados
 

@@ -358,21 +358,32 @@ def test_localizar_intento_agente_id_inexistente_devuelve_none() -> None:
 # ── Contenedores críticos (specs/022-clasificacion-remediacion/) ────────
 
 
-def test_set_modo_contenedor_rechaza_automatico_para_critico() -> None:
+def test_set_modo_contenedor_acepta_automatico_para_critico() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         path = _db(tmp)
-        with patch.object(store.bridge, "docker_critical", return_value={"homeassistant"}):
+        with patch.object(store.bridge, "docker_critical", return_value={"homeassistant"}), \
+             patch.object(store.bridge, "docker_never_restart", return_value=set()):
+            with store.connect(path) as conn:
+                store.set_modo_contenedor(conn, "homeassistant", "automatico")
+                modo = store.get_modo_contenedor(conn, "homeassistant")
+        check("automático sobre un crítico se acepta (constitución 3.0.0)", modo == "automatico")
+
+
+def test_set_modo_contenedor_rechaza_automatico_para_never_restart() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _db(tmp)
+        with patch.object(store.bridge, "docker_never_restart", return_value={"frigate"}):
             with store.connect(path) as conn:
                 lanzo = False
                 try:
-                    store.set_modo_contenedor(conn, "homeassistant", "automatico")
+                    store.set_modo_contenedor(conn, "frigate", "automatico")
                 except ValueError:
                     lanzo = True
                 filas = conn.execute(
                     "SELECT COUNT(*) AS n FROM configuracion_contenedor"
                 ).fetchone()["n"]
 
-        check("automático sobre un crítico lanza ValueError (FR-008)", lanzo is True)
+        check("automático sobre NEVER_RESTART lanza ValueError (segunda capa)", lanzo is True)
         check("no persiste ninguna fila", filas == 0)
 
 
@@ -389,7 +400,7 @@ def test_set_modo_contenedor_acepta_manual_para_critico() -> None:
 def test_set_modo_contenedor_no_critico_sin_cambios() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         path = _db(tmp)
-        with patch.object(store.bridge, "docker_critical", return_value=set()):
+        with patch.object(store.bridge, "docker_never_restart", return_value=set()):
             with store.connect(path) as conn:
                 store.set_modo_contenedor(conn, "jellyfin_audio", "automatico")
                 modo = store.get_modo_contenedor(conn, "jellyfin_audio")
