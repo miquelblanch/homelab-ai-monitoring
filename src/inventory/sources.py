@@ -44,7 +44,7 @@ HERMES_CRON_JOBS = Path(
         str(Path.home() / ".hermes/profiles/bautista/cron/jobs.json"),
     )
 )
-HERMES_GATEWAY_LABEL = "ai.hermes.gateway-bautista"
+HERMES_GATEWAY_LABEL = "ai.hermes.gateway"
 BESZEL_HOSTS_JSON = Path(
     os.environ.get(
         "BESZEL_HOSTS_JSON",
