@@ -466,12 +466,21 @@ def intento_reciente_pendiente_o_sin_evaluar(conn: sqlite3.Connection, contenedo
     resolver — mismo criterio de "no duplicar" que pendiente_existente()
     de rotar_log, ampliado a sin_evaluar (que tampoco es un desenlace
     final)."""
+    # Con caducidad (antifragilidad, 2026-10-26): sin ella, un «sin_evaluar» por una respuesta mal formada de
+    # DeepSeek excluía el contenedor PARA SIEMPRE (homelab-dashboard, audiobookshelf y jellyfin_video llevaban así
+    # desde el 27-ago). «sin_evaluar» vale 1 h y «pendiente» (de aprobación) 24 h.
     row = conn.execute(
-        "SELECT 1 FROM intentos_reinicio WHERE contenedor = ? "
-        "AND estado IN ('pendiente', 'sin_evaluar') LIMIT 1",
-        (contenedor,),
+        "SELECT 1 FROM intentos_reinicio WHERE contenedor = ? AND ("
+        "(estado = 'sin_evaluar' AND creado_en >= ?) OR (estado = 'pendiente' AND creado_en >= ?)) LIMIT 1",
+        (contenedor, _hace(hours=1), _hace(hours=24)),
     ).fetchone()
     return row is not None
+
+
+def _hace(**kw) -> str:
+    """Marca ISO (UTC, con zona) de hace `kw` — mismo formato que `creado_en`."""
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) - timedelta(**kw)).isoformat()
 
 
 def listar_pendientes_reinicio(conn: sqlite3.Connection) -> list[IntentoReinicio]:
