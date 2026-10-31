@@ -8,8 +8,10 @@ Uso:
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import pkgutil
+from unittest.mock import patch
 
 FAILURES: list[str] = []
 
@@ -27,14 +29,25 @@ def run_all() -> int:
 
     import tests.selftest as _pkg
 
-    for _, modname, _ in pkgutil.iter_modules(_pkg.__path__):
-        if not modname.startswith("test_"):
-            continue
-        module = importlib.import_module(f"tests.selftest.{modname}")
-        print(modname)
-        for name in sorted(dir(module)):
-            if name.startswith("test_"):
-                getattr(module, name)()
+    # 2026-10-31: una autocomprobación de comprobar-contenedores mandó a
+    # Telegram de verdad un «ℹ️ remediación — couchdb: … prueba: healthcheck
+    # mal configurado». Durante el selftest ningún módulo puede leer las
+    # credenciales de Telegram: todo aviso falla en silencio (False).
+    with contextlib.ExitStack() as pila:
+        for ruta in ("_homelab_bridge_common", "inventory._homelab_bridge", "remediacion._homelab_bridge"):
+            try:
+                modulo = importlib.import_module(ruta)
+            except ImportError:
+                continue
+            pila.enter_context(patch.object(modulo, "telegram_credentials", return_value=("", "")))
+        for _, modname, _ in pkgutil.iter_modules(_pkg.__path__):
+            if not modname.startswith("test_"):
+                continue
+            module = importlib.import_module(f"tests.selftest.{modname}")
+            print(modname)
+            for name in sorted(dir(module)):
+                if name.startswith("test_"):
+                    getattr(module, name)()
 
     if FAILURES:
         print(f"\n{len(FAILURES)} fallo(s): {', '.join(FAILURES)}")
