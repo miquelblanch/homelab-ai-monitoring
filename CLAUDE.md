@@ -56,7 +56,9 @@ sistémico (ver `BRIEFING.md` para el detalle de cada uno):
    Investigado en `BARRIDO-2026-08-07.md`: encontrado y arreglado un fallo
    silencioso real en `recordatorios_hoy()` (un `""` que significaba dos
    cosas distintas). Cerrado por `specs/003-latidos-beszel-calendario/`
-   (User Story 1): latido propio de `bautista-calendar.sh`.
+   (User Story 1): latido propio de `fermin-calendar.sh` (entonces
+   `bautista-calendar.sh`: el agente Hermes se llama Fermín desde el
+   2026-10-29).
 
 ## Datos disponibles para el agente
 
@@ -85,11 +87,13 @@ rompa. Es el Principio XI de la constitución (Reproducibilidad Diferida).
   cuatro casos conocidos uno por uno — se trata de recorrer todo lo que compone
   el homelab y comprobar, de cada pieza, si tiene estado esperado declarado, si
   se vigila, y si un fallo llegaría al dashboard (Principio XIII).
-- **No reemplaza `docker_monitor.py`.** Sigue siendo quien reinicia contenedores.
-  El agente añade diagnóstico y, para causas ya diagnosticadas, remediación
-  reversible — nunca sustituye la remediación existente.
+- **No reemplaza `docker_monitor.py`.** Sigue vigilando contenedores y es el
+  mecanismo independiente de reserva. Desde el feature 021, la decisión de
+  reiniciar un contenedor la toma la remediación de este repo (con evidencia y
+  verificación); el modelo es OpenAI con DeepSeek de reserva desde el 2026-10-01.
 - **Contenedores críticos:** desde la constitución 3.0.0 (2026-10-11) admiten modo
-  automático como los demás; solo NEVER_RESTART (`frigate`) queda excluido.
+  automático como los demás. NEVER_RESTART está vacío desde el 2026-10-31 (su
+  último miembro, `frigate`, va siempre en marcha).
 - **Repo público, saneado.** Se nombra el software, no la topología: nada de
   nombres de entidades ligadas a dispositivos de seguridad física, IPs,
   credenciales. Ver la decisión "Repositorio público" en `BRIEFING.md`.

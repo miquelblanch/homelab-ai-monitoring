@@ -1,9 +1,9 @@
 # Homelab Diagnostic Agent
 
 Caso de estudio público de **Spec-Driven Development (SDD)** aplicado a un
-problema real: la monitorización de un homelab doméstico de ~40 contenedores.
+problema real: la monitorización de un homelab doméstico de ~50 contenedores.
 No es una demo — es el desarrollo real, con sus especificaciones, sus
-correcciones y sus errores, de un sistema que hoy vigila ~800 componentes
+correcciones y sus errores, de un sistema que hoy vigila ~1.050 componentes
 reales sin ninguna brecha de cobertura conocida.
 
 > Este repo es autocontenido: no depende de ningún fichero privado para
@@ -70,8 +70,15 @@ medir cómo de bien funciona el método para construirlo.
 El proyecto tiene dos frentes. El primero está cerrado. Del segundo,
 el diagnóstico está cerrado en los 10 orígenes, y la remediación
 automática tiene ya tres tipos de acción real en producción — dos de
-ellos decididos por DeepSeek con evidencia real, no por una condición
-fija.
+ellos decididos por un modelo de lenguaje con evidencia real, no por una
+condición fija.
+
+El modelo es OpenAI (`gpt-6-luna`) desde el 2026-10-01, con DeepSeek
+(`deepseek-v4-flash`) de reserva si la cuenta principal falla (saldo,
+clave). Hasta entonces era solo DeepSeek, y por eso los specs y los
+nombres de algunas features lo citan; el código usa nombres genéricos
+(`llm_model`) para que un cambio de proveedor no obligue a renombrar
+nada.
 
 ### Frente 1 — Cobertura sistemática (cerrado)
 
@@ -90,13 +97,15 @@ real:
 | [`006-central-alarmas`](specs/006-central-alarmas/) | Pestaña única que unifica los 10 orígenes de alarma del homelab, con explicación y remediación sugerida en texto — sin IA, sin ejecutar nada |
 
 Resultado medible: la primera ejecución real encontró 385 brechas sobre
-830 componentes. Hoy, cero.
+830 componentes. Hoy, cero sobre unos 1.050: cada componente nuevo
+—un contenedor, una cámara, un servicio— entra en el inventario solo, y
+aparece como brecha hasta que alguien declara su estado esperado.
 
 ### Frente 2 — Diagnóstico (cerrado, los 10 orígenes) y remediación (tres acciones reales)
 
 **Diagnóstico**: ante un episodio de cualquiera de los 10 orígenes de
 alarma del homelab, un motor (`src/diagnostico/`) reúne su evidencia
-real, pide a DeepSeek varias hipótesis de causa probable ya
+real, pide al modelo varias hipótesis de causa probable ya
 contrastadas contra esa evidencia, y registra cada una — nunca inventa
 una causa sin respaldo (principios IV, VIII, XI). Doce features, del
 primer origen (contenedor) hasta el décimo (latido de monitores) y su
@@ -121,21 +130,24 @@ superficie en el dashboard:
 acciones reversibles con rollback escrito, la corrección de una causa
 conocida (Principios V y VI de la constitución). Empezó en v1 con una
 condición determinista (`rotar_log`), pero desde el feature 021 la
-decisión de si actuar la toma DeepSeek, evidencia real en mano —
+decisión de si actuar la toma el modelo, evidencia real en mano —
 nunca inventa una acción nueva, solo elige dentro de la lista cerrada
 ya aprobada. Interruptor manual/automático por tipo de acción (y,
 para contenedores, también por unidad individual) que Miquel controla
 siempre desde el CLI, con cortacircuito compartido de 3 intentos en
-6 horas. `docker_monitor.py` sigue siendo, además, el único mecanismo
-independiente que remedia contenedores **críticos** — Principio VII,
-acotado a ellos en 021 — esta capa no lo sustituye para esos.
+6 horas. Desde la constitución 3.0.0 (2026-10-11) los contenedores
+**críticos** también admiten modo automático en esta capa, como los
+demás: antes solo `docker_monitor.py` podía actuar sobre ellos
+(Principio VII, acotado a críticos en 021), y esta capa se limitaba a
+proponer. La lista `NEVER_RESTART` sigue existiendo, vacía desde el
+2026-10-31.
 
 | Feature | Qué cierra |
 |---|---|
 | [`019-remediacion-automatica`](specs/019-remediacion-automatica/) | Primer tipo de acción real, `rotar_log` — rota (nunca borra) un log que supera un umbral, sobre una lista cerrada de 17 logs reales, con interruptor manual/automático por tipo de acción que Miquel controla siempre desde el CLI. Retención de 4 rotaciones archivadas por log |
 | [`020-visor-remediacion`](specs/020-visor-remediacion/) | Primera superficie visual del Frente 2 de remediación — sección de solo lectura en el dashboard con el estado de los 17 logs y sus totales, sin ningún control de acción |
-| [`021-remediacion-contenedores`](specs/021-remediacion-contenedores/) | Segundo tipo de acción, `reiniciar_contenedor` — para los 26 contenedores no críticos, DeepSeek decide con evidencia real si reiniciar resuelve el caso, en vez de la condición fija que tenía `docker_monitor.py`, que deja de decidir por su cuenta para estos (Principio VII acotado a críticos, constitución v2.0.0) |
-| [`022-clasificacion-remediacion`](specs/022-clasificacion-remediacion/) | Columna de remediación (manual/automática/IA) por componente en el Inventario, y estado real de la remediación en curso en Alarmas; DeepSeek pasa a evaluar también los contenedores críticos — siempre propuesta pendiente de aprobación, nunca ejecución automática |
+| [`021-remediacion-contenedores`](specs/021-remediacion-contenedores/) | Segundo tipo de acción, `reiniciar_contenedor` — para los 26 contenedores no críticos de entonces, el modelo decide con evidencia real si reiniciar resuelve el caso, en vez de la condición fija que tenía `docker_monitor.py`, que deja de decidir por su cuenta para estos (Principio VII acotado a críticos, constitución v2.0.0) |
+| [`022-clasificacion-remediacion`](specs/022-clasificacion-remediacion/) | Columna de remediación (manual/automática/IA) por componente en el Inventario, y estado real de la remediación en curso en Alarmas; el modelo pasa a evaluar también los contenedores críticos — entonces siempre como propuesta pendiente de aprobación; desde la constitución 3.0.0 admiten modo automático |
 | [`023-evidencia-por-origen`](specs/023-evidencia-por-origen/) | Refactor: parte el fichero único de evidencia de diagnóstico (1.864 líneas, los 10 orígenes mezclados) en un paquete por origen |
 | [`024-consolidar-bridge-homelab`](specs/024-consolidar-bridge-homelab/) | Refactor: consolida los tres puentes casi idénticos hacia los scripts privados del homelab (diagnóstico/inventario/remediación) en dos módulos compartidos |
 | [`025-consolidar-parseo-deepseek`](specs/025-consolidar-parseo-deepseek/) | Refactor: un único parseo de la respuesta de DeepSeek (incluido el respaldo para cuando el modelo deja la respuesta en el campo de razonamiento) compartido entre el diagnóstico de episodios y la remediación de contenedores |
@@ -167,7 +179,8 @@ src/diagnostico/                   El motor de diagnóstico (features 007-017), 
 src/remediacion/                   Remediación automática (features 019-026) — rotar_log,
                                     reiniciar_contenedor, reiniciar_agente
 tests/selftest/                    Autocomprobaciones de los tres paquetes — sin tocar
-                                    datos reales, sin llamar a DeepSeek, sin tocar logs reales
+                                    datos reales, sin llamar al modelo, sin tocar logs reales
+                                    y sin poder enviar nada a Telegram
 ```
 
 ## El inventario de cobertura
@@ -194,17 +207,17 @@ PYTHONPATH=src python3 -m inventory.cli --selftest
 ## El motor de diagnóstico
 
 Congela evidencia real de un episodio (métricas, logs, estado del
-componente — nunca inventada) para uno de los 10 orígenes, pide a
-DeepSeek varias hipótesis de causa probable ya contrastadas contra esa
+componente — nunca inventada) para uno de los 10 orígenes, pide al
+modelo varias hipótesis de causa probable ya contrastadas contra esa
 evidencia, y registra cada hipótesis y la conclusión final. Nunca
 ejecuta ni propone una acción correctiva — es estrictamente
-diagnóstico (Frente 2, mitad de remediación sin empezar). Un límite de
-gasto diario compartido protege las llamadas a DeepSeek entre los 10
+diagnóstico; actuar es cosa de la remediación, más abajo. Un límite de
+gasto diario compartido protege las llamadas al modelo entre los 10
 orígenes.
 
 ```bash
 # Congelar evidencia real de un contenedor caído ahora mismo, y diagnosticarlo
-# — solo tiene sentido dentro del homelab real, con sus credenciales de DeepSeek
+# — solo tiene sentido dentro del homelab real, con las credenciales del modelo
 PYTHONPATH=src python3 -m diagnostico.cli congelar --vivo CONTENEDOR
 PYTHONPATH=src python3 -m diagnostico.cli diagnosticar EPISODIO_ID
 PYTHONPATH=src python3 -m diagnostico.cli mostrar EPISODIO_ID
@@ -214,7 +227,7 @@ PYTHONPATH=src python3 -m diagnostico.cli mostrar EPISODIO_ID
 # (agente y latido son los únicos sin modo diferido — no existe ninguna
 # fuente histórica real que consultar, ver specs/016 y specs/017)
 
-# Autocomprobación de la lógica pura — no toca DeepSeek, Docker, HA ni
+# Autocomprobación de la lógica pura — no toca el modelo, Docker, HA ni
 # ninguna otra fuente real
 PYTHONPATH=src python3 -m diagnostico.cli --selftest
 ```
@@ -230,7 +243,7 @@ Ejecuta, dentro de una lista cerrada de acciones reversibles con
 rollback escrito, la corrección de una causa ya diagnosticada — nunca
 inventa una acción nueva ni actúa fuera de esa lista (Principios V y
 VI). Tres tipos de acción hoy: `rotar_log` (condición fija de
-tamaño), y `reiniciar_contenedor`/`reiniciar_agente` (DeepSeek decide,
+tamaño), y `reiniciar_contenedor`/`reiniciar_agente` (el modelo decide,
 evidencia real en mano, si la acción aplica al caso concreto). Cada
 tipo —y cada contenedor individual— tiene su propio interruptor
 manual/automático controlado siempre desde el CLI, y un cortacircuito
@@ -243,7 +256,7 @@ PYTHONPATH=src python3 -m remediacion.cli contenedores
 PYTHONPATH=src python3 -m remediacion.cli agentes
 
 # Evaluar ahora mismo — solo tiene sentido dentro del homelab real,
-# con sus credenciales de DeepSeek
+# con las credenciales del modelo
 PYTHONPATH=src python3 -m remediacion.cli comprobar
 PYTHONPATH=src python3 -m remediacion.cli comprobar-contenedores
 PYTHONPATH=src python3 -m remediacion.cli comprobar-agentes
