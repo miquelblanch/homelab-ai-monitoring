@@ -322,7 +322,7 @@ def _extraer_contenido_y_tokens(respuesta: dict) -> tuple[dict, int, int]:
     `reasoning_content` y nunca la vuelve a escribir en `content`, pese
     a `finish_reason: "stop"` — el mismo síntoma que el CLAUDE.md general
     del homelab ya documenta para el backend local de los crons de
-    Bautista (`qwen/qwen3.5-9b`), aquí en el propio DeepSeek de la nube.
+    Fermín (`qwen/qwen3.5-9b`), aquí en el propio DeepSeek de la nube.
     Sin este respaldo, esas respuestas —completas y válidas, solo en el
     campo equivocado— se descartaban como "inconsistentes" y quemaban
     gasto real sin producir ningún diagnóstico.

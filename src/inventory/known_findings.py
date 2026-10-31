@@ -18,7 +18,7 @@ KNOWN_FINDINGS: dict[tuple[str, str], str] = {
     # Nextcloud no llegan por Telegram" — causa real encontrada y cerrada el
     # 2026-08-09, más profunda que las dos correcciones de
     # BARRIDO-2026-08-07 (el "" silencioso, los healthchecks): la cuenta de
-    # automatización (admin_nc) usada por bautista-calendar.sh no tenía
+    # automatización (admin_nc) usada por fermin-calendar.sh no tenía
     # NINGÚN calendario propio (`occ dav:list-calendars admin_nc` → "no
     # calendars") — el calendario real, "Personal", pertenece a miquel_nc y
     # nunca se había compartido. El mecanismo llevaba reportando "sin

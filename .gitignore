@@ -13,3 +13,9 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+
+# Copias de seguridad locales y bases de datos (2026-10-31)
+*.pre-*
+*.db
+*.db-wal
+*.db-shm

@@ -41,7 +41,7 @@ BACKUP_HEARTBEAT = Path(
 HERMES_CRON_JOBS = Path(
     os.environ.get(
         "HERMES_CRON_JOBS",
-        str(Path.home() / ".hermes/profiles/bautista/cron/jobs.json"),
+        str(Path.home() / ".hermes/profiles/fermin/cron/jobs.json"),
     )
 )
 HERMES_GATEWAY_LABEL = "ai.hermes.gateway"
@@ -209,7 +209,7 @@ def launchagent_components() -> list[RawComponente]:
         ):
             continue
         if label == HERMES_GATEWAY_LABEL:
-            # El agente Hermes/Bautista es su propio componente (FR-006).
+            # El agente Hermes/Fermín es su propio componente (FR-006).
             continue
         items.append(
             RawComponente(
@@ -315,6 +315,15 @@ ENTIDAD_HA_FRIGATE_SIN_ESTADO_DE_REPOSO = {
     "sensor.camara_cocina_review_status",
     "sensor.camara_salon_review_status",
 }
+
+# 2026-10-31: por sufijo y no por nombre, para que valga para cualquier
+# cámara nueva sin escribir aquí su identificador (repo público: nada de
+# nombres ligados a dispositivos de seguridad física).
+#   - sensor.*_review_status (Frigate): igual que la lista de arriba.
+#   - select.*_move_to_preset / *_patrol_mode (cámaras Tapo con movimiento):
+#     sin presets guardados están siempre «unavailable»/«unknown». La salud
+#     de la cámara ya la vigilan sus otras entidades.
+ENTIDAD_HA_SUFIJOS_SIN_ESTADO_DE_REPOSO = ("_review_status", "_move_to_preset", "_patrol_mode")
 
 # feature 004: FALLBACK, no fuente de verdad — entidad_ha_frigate() usa
 # esto solo si ha_monitor.CHECKS todavía no tiene las 33 entradas de
@@ -502,7 +511,7 @@ def external_host_components() -> list[RawComponente]:
     ]
 
 
-# ── FR-006: Hermes/Bautista y el canal de Telegram, por separado ────────
+# ── FR-006: Hermes/Fermín y el canal de Telegram, por separado ────────
 
 
 def hermes_and_telegram_components() -> list[RawComponente]:
@@ -516,7 +525,7 @@ def hermes_and_telegram_components() -> list[RawComponente]:
         RawComponente(
             componente=Componente(
                 categoria="hermes",
-                nombre_actual="Agente Hermes/Bautista",
+                nombre_actual="Agente Hermes/Fermín",
                 identificador_estable=HERMES_GATEWAY_LABEL,
             ),
             meta={"launchagent_cargado": hermes_activo},

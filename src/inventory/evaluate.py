@@ -10,7 +10,7 @@ LaunchAgents, relays socat, velocidad (speedtest-tracker), un panel de
 Home Assistant y un panel "Estado de los monitores" (latido real de
 docker_monitor.py, ha_monitor.py, dns_pi_monitor.py, verify_backups.py,
 telegram_monitor.py, heartbeat.py transitivo, backup diario y los dos
-LaunchAgents de Hermes/Bautista). El panel de HA solo muestra las ~15
+LaunchAgents de Hermes/Fermín). El panel de HA solo muestra las ~15
 entidades que `ha_monitor.py` vigila una a una (mismo criterio que
 "vigilado" para esa categoría), no las ~300 restantes del registro. Los
 hosts externos (Kuma, AdGuard) tienen sitio desde feature 002
@@ -36,6 +36,7 @@ from .sources import (
     ENTIDAD_HA_DISPOSITIVOS_NORMALMENTE_APAGADOS,
     ENTIDAD_HA_EXCEPCIONES_SEGURIDAD,
     ENTIDAD_HA_FRIGATE_SIN_ESTADO_DE_REPOSO,
+    ENTIDAD_HA_SUFIJOS_SIN_ESTADO_DE_REPOSO,
     ENTIDAD_HA_PENDIENTE_CONFIRMAR,
     RawComponente,
     entidad_ha_frigate,
@@ -143,6 +144,12 @@ def is_intentional(raw: RawComponente) -> bool:
         # detectando de verdad, solo sin eventos que revisar todavía.
         if c.nombre_actual in ENTIDAD_HA_FRIGATE_SIN_ESTADO_DE_REPOSO:
             return True
+        # 2026-10-31: review_status de cualquier cámara y selectores de
+        # preset/patrulla — ver ENTIDAD_HA_SUFIJOS_SIN_ESTADO_DE_REPOSO.
+        if c.nombre_actual.startswith(("sensor.", "select.")) and c.nombre_actual.endswith(
+            ENTIDAD_HA_SUFIJOS_SIN_ESTADO_DE_REPOSO
+        ):
+            return True
         # feature 006: dominios cuyo `state` no representa sano/roto —
         # ver _ENTIDAD_HA_DOMINIOS_SIN_SALUD.
         if c.nombre_actual.split(".", 1)[0] in _ENTIDAD_HA_DOMINIOS_SIN_SALUD:
@@ -193,12 +200,12 @@ def _vigilancia_integracion(raw: RawComponente) -> tuple[bool, bool, str | None,
     if nombre.startswith("Relay: "):
         return True, True, "dump_socat_status.py", "si"
     if nombre.startswith("Recordatorios de Nextcloud"):
-        # Desde feature 003 (2026-08-09), bautista-calendar.sh registra su
+        # Desde feature 003 (2026-08-09), fermin-calendar.sh registra su
         # propio latido al final de cada ejecución (con o sin eventos) —
         # mismo patrón de comprobación que el resto de latidos de este
         # fichero, no una suposición.
         vigilado, mecanismo = _vigilancia_por_heartbeat(
-            "bautista-calendar", "bautista-calendar.sh (latido propio)", 108000,
+            "fermin-calendar", "fermin-calendar.sh (latido propio)", 108000,
         )
         return True, vigilado, mecanismo, ("si" if vigilado else "no")
     if nombre.startswith("Backup diario"):
@@ -294,9 +301,9 @@ def evaluate_component(
         vigilado = bool(raw.meta.get("launchagent_cargado"))
         declarado, mecanismo, llega = (
             True,
-            "amsterdam9.bautista.heartbeat" if vigilado else None,
+            "amsterdam9.fermin.heartbeat" if vigilado else None,
             # Panel "Estado de los monitores" desde 2026-08-08: muestra el
-            # estado launchctl de ambos LaunchAgents de Hermes/Bautista.
+            # estado launchctl de ambos LaunchAgents de Hermes/Fermín.
             "si",
         )
     elif c.categoria == "telegram":

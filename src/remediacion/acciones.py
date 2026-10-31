@@ -72,7 +72,7 @@ UMBRAL_ROTACION_BYTES_DEFAULT = int(
 # los LaunchAgents `amsterdam9.*` en ~/Library/Logs (StandardOutPath/
 # StandardErrorPath, confirmado por grep directo sobre los .plist
 # reales — no una lista aproximada de `ls`). Excluye
-# `~/.hermes/profiles/bautista/logs/`, ya cubierta por
+# `~/.hermes/profiles/fermin/logs/`, ya cubierta por
 # `rotate_hermes_logs.sh` (mecanismo distinto, research.md §7).
 # Ninguno pertenece a un componente crítico (spec.md Assumptions,
 # FR-012) — todos son logs de monitores/automatizaciones, no de los

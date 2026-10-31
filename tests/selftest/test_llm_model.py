@@ -272,7 +272,7 @@ def test_construir_prompt_inventario_menciona_origen_nuevo() -> None:
     013)."""
     snapshot = {
         "inventario_ejecucion_id": 19,
-        "inventario_hallazgo": {"categoria": "hermes", "nombre_actual": "Agente Hermes/Bautista"},
+        "inventario_hallazgo": {"categoria": "hermes", "nombre_actual": "Agente Hermes/Fermín"},
         "inventario_brecha": {"tipo": "no_llega_a_dashboard"},
     }
     prompt = llm_model.construir_prompt(snapshot, es_critico=False)
@@ -338,7 +338,7 @@ def test_diagnosticar_episodio_inventario_no_dispara_ningun_rechazo_de_otro_orig
             episodio_id = store.insert_episodio(
                 conn,
                 Episodio(
-                    componente="Agente Hermes/Bautista", origen="inventario", es_critico=False,
+                    componente="Agente Hermes/Fermín", origen="inventario", es_critico=False,
                     en_vivo=True, ventana_inicio="a", ventana_fin="b",
                     snapshot_evidencia={
                         "inventario_ejecucion_id": 19,

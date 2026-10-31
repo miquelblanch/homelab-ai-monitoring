@@ -50,13 +50,13 @@ def _hallazgo_inv_brecha(ejecucion_id: int, componente_id: int) -> Hallazgo:
 
 def _construir_inventario_fake(conn_inv: sqlite3.Connection) -> dict:
     """Tres ejecuciones: run1 sana (ancla real), run2 introduce una
-    brecha real de 'Agente Hermes/Bautista' y una de
+    brecha real de 'Agente Hermes/Fermín' y una de
     'condicion_incumplida' aparte, run3 la mantiene (misma
     `primera_ejecucion_id` que run2, imitando lo que haría
     `populate_brechas()` en producción). Mismo patrón de construcción a
     mano que `tests/selftest/test_diff.py`."""
     hermes = inv_store.insert_componente(
-        conn_inv, Componente(categoria="hermes", nombre_actual="Agente Hermes/Bautista")
+        conn_inv, Componente(categoria="hermes", nombre_actual="Agente Hermes/Fermín")
     )
     sano = inv_store.insert_componente(
         conn_inv, Componente(categoria="contenedor", nombre_actual="beszel")
@@ -76,7 +76,7 @@ def _construir_inventario_fake(conn_inv: sqlite3.Connection) -> dict:
         conn_inv,
         Brecha(
             hallazgo_id=h_hermes2, tipo="no_llega_a_dashboard",
-            primera_ejecucion_id=run2, contexto="Agente Hermes/Bautista sin llegar al dashboard",
+            primera_ejecucion_id=run2, contexto="Agente Hermes/Fermín sin llegar al dashboard",
         ),
     )
     inv_store.insert_hallazgo(conn_inv, _hallazgo_inv_ok(run2, sano))
@@ -113,8 +113,8 @@ def test_hallazgo_y_brecha_de_componente() -> None:
         with inv_store.connect(Path(tmp) / "inventario.db") as conn_inv:
             runs = _construir_inventario_fake(conn_inv)
 
-            con_brecha = inventario._hallazgo_de_componente(conn_inv, runs["run2"], "Agente Hermes/Bautista")
-            brecha = inventario._brecha_de_componente(conn_inv, runs["run2"], "Agente Hermes/Bautista")
+            con_brecha = inventario._hallazgo_de_componente(conn_inv, runs["run2"], "Agente Hermes/Fermín")
+            brecha = inventario._brecha_de_componente(conn_inv, runs["run2"], "Agente Hermes/Fermín")
             sano = inventario._brecha_de_componente(conn_inv, runs["run2"], "beszel")
             inexistente = inventario._hallazgo_de_componente(conn_inv, runs["run2"], "no existe")
 
@@ -172,9 +172,9 @@ def test_congelar_inventario_vivo_arma_snapshot_con_brecha_real() -> None:
 
         with patch.object(inv_store, "db_path", return_value=Path(tmp_inv) / "inventario.db"):
             with store.connect(_diag_db(tmp_db)) as conn:
-                episodio = inventario.congelar_inventario_vivo(conn, "Agente Hermes/Bautista")
+                episodio = inventario.congelar_inventario_vivo(conn, "Agente Hermes/Fermín")
 
-        check("componente = nombre_actual", episodio.componente == "Agente Hermes/Bautista")
+        check("componente = nombre_actual", episodio.componente == "Agente Hermes/Fermín")
         check("origen = inventario", episodio.origen == "inventario")
         check("es_critico siempre False para inventario", episodio.es_critico is False)
         check("en_vivo=True", episodio.en_vivo is True)
@@ -223,10 +223,10 @@ def test_congelar_inventario_historico_reproducible_y_ancla_correctamente() -> N
 
         with patch.object(inv_store, "db_path", return_value=Path(tmp_inv) / "inventario.db"):
             with store.connect(_diag_db(tmp_db)) as conn:
-                e1 = inventario.congelar_inventario_historico(conn, "Agente Hermes/Bautista", runs["run3"])
-                e2 = inventario.congelar_inventario_historico(conn, "Agente Hermes/Bautista", runs["run3"])
+                e1 = inventario.congelar_inventario_historico(conn, "Agente Hermes/Fermín", runs["run3"])
+                e2 = inventario.congelar_inventario_historico(conn, "Agente Hermes/Fermín", runs["run3"])
                 inexistente = inventario.congelar_inventario_historico(
-                    conn, "Agente Hermes/Bautista", 999999
+                    conn, "Agente Hermes/Fermín", 999999
                 )
 
         check(
@@ -236,7 +236,7 @@ def test_congelar_inventario_historico_reproducible_y_ancla_correctamente() -> N
         check("cada congelado es un episodio propio", e1.id != e2.id)
         check(
             "componente = NOMBRE solo, nunca incluye la ejecución (research.md §3)",
-            e1.componente == "Agente Hermes/Bautista",
+            e1.componente == "Agente Hermes/Fermín",
         )
         check(
             "ejecución pedida (run3) da comparación anclada a run1, no a run3-1 (run2)",
@@ -245,7 +245,7 @@ def test_congelar_inventario_historico_reproducible_y_ancla_correctamente() -> N
         check(
             "EJECUCION_ID inexistente congela igual, con evidencia vacía",
             inexistente.snapshot_evidencia["inventario_hallazgo"] is None
-            and inexistente.componente == "Agente Hermes/Bautista",
+            and inexistente.componente == "Agente Hermes/Fermín",
         )
 
 

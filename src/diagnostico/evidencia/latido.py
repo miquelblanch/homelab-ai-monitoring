@@ -38,7 +38,7 @@ MONITOR_JOBS = [
     ("verify-backups", "Verificación de backups", 108000),
     ("telegram-monitor", "Canal de Telegram", 900),
     ("beszel-hosts", "Estado de hosts externos (Beszel)", 900),
-    ("bautista-calendar", "Recordatorios de Nextcloud (calendario)", 108000),
+    ("fermin-calendar", "Recordatorios de Nextcloud (calendario)", 108000),
     ("inventario-cobertura", "Inventario de cobertura (homelab-ai-monitoring)", 108000),
 ]
 
