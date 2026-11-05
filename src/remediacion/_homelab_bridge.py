@@ -172,7 +172,9 @@ def listar_agentes_conocidos() -> list[dict]:
             "pid": pid,
             "exit_code": exit_code,
             "running": pid != "-",
-            "requiere_sudo": label.startswith("com.homeassistant."),
+            # 2026-11-05: casi todos los relés com.homeassistant.* pasaron a LaunchAgents de usuario; requiere
+            # sudo solo el que de verdad es un LaunchDaemon root (sudoers: amsterdam9-remediacion-relays).
+            "requiere_sudo": os.path.exists(f"/Library/LaunchDaemons/{label}.plist"),
         })
     return agentes
 
