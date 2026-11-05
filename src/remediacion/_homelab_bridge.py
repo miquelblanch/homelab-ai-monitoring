@@ -51,6 +51,19 @@ try:
 except ImportError:
     _docker_monitor = None
 
+# Raíces en vivo (#271, 2026-11-06): el mapa de dependencias del homelab aplicado al estado de ahora. Vive fuera
+# de este repositorio (homelab-ai-raices/vivo.py); sin él, todo devuelve «no sé» y la remediación sigue como antes.
+_RAICES_DIR = "/Volumes/FastData/homelab/homelab-ai-raices"
+_RAICES_MODO = Path("/Volumes/FastData/homelab/data/remediacion_raices_modo")
+_RAICES_REGISTRO = Path("/Volumes/FastData/homelab/data/remediacion_raices.jsonl")
+try:
+    import sys as _sys
+    if _RAICES_DIR not in _sys.path:
+        _sys.path.insert(0, _RAICES_DIR)
+    import vivo as _raices_vivo  # type: ignore[import-not-found]
+except ImportError:
+    _raices_vivo = None
+
 
 # ── Contenedores (specs/021-remediacion-contenedores/) ──────────────────
 
@@ -253,3 +266,50 @@ def declarar_correccion_ia(origen: str, tipo: str, componente: str, nota: str) -
         return True
     except Exception:
         return False
+
+
+# ── Raíces (#271) ──────────────────────────────────────────────────────
+
+
+def raices_mapa():
+    """El mapa de dependencias fresco (≤ 6 h) o None."""
+    if _raices_vivo is None:
+        return None
+    try:
+        return _raices_vivo.cargar()
+    except Exception:
+        return None
+
+
+def raices_volumenes_ausentes() -> set[str]:
+    if _raices_vivo is None:
+        return set()
+    try:
+        return _raices_vivo.volumenes_ausentes_mac()
+    except Exception:
+        return set()
+
+
+def raices_explicar(nodo: str) -> str:
+    if _raices_vivo is None:
+        return nodo
+    return _raices_vivo.explicar(nodo)
+
+
+def raices_modo() -> str:
+    """'observar' (por defecto: solo anota lo que haría distinto) o 'activo' (no reinicia lo que no puede arrancar).
+    Se cambia escribiendo la palabra en data/remediacion_raices_modo, sin tocar código."""
+    try:
+        modo = _RAICES_MODO.read_text().strip()
+    except OSError:
+        return "observar"
+    return modo if modo in ("observar", "activo") else "observar"
+
+
+def raices_anotar(registro: dict) -> None:
+    """Una línea por decisión en data/remediacion_raices.jsonl (para revisar el modo observar)."""
+    try:
+        with _RAICES_REGISTRO.open("a") as f:
+            f.write(__import__("json").dumps(registro, ensure_ascii=False) + "\n")
+    except OSError:
+        pass

@@ -684,7 +684,9 @@ def comprobar_reiniciar_contenedor(
     never_restart = bridge.docker_never_restart()
     creados: list[IntentoReinicio] = []
 
-    for c in bridge.listar_contenedores():
+    contenedores = bridge.listar_contenedores()
+    candidatos: list[str] = []
+    for c in contenedores:
         nombre = c.get("name")
         if not nombre or nombre in never_restart:
             continue
@@ -692,7 +694,32 @@ def comprobar_reiniciar_contenedor(
             continue
         if intento_reciente_pendiente_o_sin_evaluar(conn_remediacion, nombre):
             continue
-        creados.append(evaluar_contenedor(conn_remediacion, conn_diagnostico, nombre))
+        candidatos.append(nombre)
+
+    # #271 (2026-11-06): Raíces. (1) Lo de abajo primero: si caen una base de datos y su aplicación, la base de
+    # datos se reinicia antes. (2) No se reinicia lo que no puede arrancar porque le falta algo de debajo (un
+    # disco desmontado, otro contenedor caído): en modo «observar» solo se anota; en «activo», se salta y se
+    # reintenta en la pasada siguiente, cuando la causa ya esté resuelta. Sin mapa fresco, como antes.
+    mapa = bridge.raices_mapa()
+    if mapa is not None and len(candidatos) > 1:
+        candidatos = mapa.ordenar(candidatos)
+    caidos = {c.get("name") for c in contenedores if c.get("name") and not c.get("running")}
+    ausentes = bridge.raices_volumenes_ausentes() if mapa is not None else set()
+    modo_raices = bridge.raices_modo()
+
+    for nombre in candidatos:
+        causa = mapa.causa(nombre, caidos - {nombre}, ausentes) if mapa is not None else None
+        if causa:
+            bridge.raices_anotar({"ts": time.time(), "contenedor": nombre, "causa": causa,
+                                  "explicacion": bridge.raices_explicar(causa), "modo": modo_raices,
+                                  "accion": "saltado" if modo_raices == "activo" else "habria_saltado",
+                                  "orden": candidatos})
+            if modo_raices == "activo":
+                continue
+        intento = evaluar_contenedor(conn_remediacion, conn_diagnostico, nombre)
+        creados.append(intento)
+        if intento.estado == "ejecutado":
+            caidos.discard(nombre)   # ya está en marcha: lo que dependía de él puede arrancar
 
     return creados
 
