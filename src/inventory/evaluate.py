@@ -38,6 +38,8 @@ from .sources import (
     ENTIDAD_HA_FRIGATE_SIN_ESTADO_DE_REPOSO,
     ENTIDAD_HA_SUFIJOS_SIN_ESTADO_DE_REPOSO,
     ENTIDAD_HA_PENDIENTE_CONFIRMAR,
+    ENTIDAD_HA_DERIVADAS,
+    ENTIDAD_HA_PLATAFORMAS_VIGILADAS_POR_PADRE,
     RawComponente,
     entidad_ha_frigate,
 )
@@ -110,6 +112,24 @@ def is_declaration_stale(last_reviewed_at: date | None, today: date | None = Non
     return (hoy - last_reviewed_at).days > DECLARACION_CADUCA_DIAS
 
 
+def se_renueva_sola(ev: EvaluacionParcial) -> bool:
+    """2026-11-07 (Miquel, tras caducar a la vez las 175 declaraciones del
+    8-ago): una declaración caducada se da por revisada sola cuando hay
+    prueba real de que sigue cumpliéndose — el componente está vigilado por
+    un mecanismo que hoy funciona y un fallo llegaría al dashboard
+    (Principio II, salud por resultado). Las que no lo cumplen siguen
+    caducadas y salen como brecha: esas son las que de verdad hay que
+    mirar (Principio III). Las intencionadas no se renuevan solas: no son
+    brecha y no hay resultado que lo pruebe; se revisan a mano
+    (`inventory.cli --revisar`)."""
+    return (
+        ev.estado_declarado_status == "caducada"
+        and ev.esta_vigilado
+        and ev.llega_a_dashboard == "si"
+        and not ev.es_intencionado
+    )
+
+
 def is_intentional(raw: RawComponente) -> bool:
     """FR-012: intencionadamente no vigilado — no es una brecha."""
     c = raw.componente
@@ -137,6 +157,13 @@ def is_intentional(raw: RawComponente) -> bool:
         # Miquel: el check de ha_monitor.py para estas dos entidades se
         # retiró a la vez que se añadió esta regla.
         if raw.meta.get("platform") == "jellyfin":
+            return True
+        # 2026-11-07: la caldera (mypyllant) se vigila por un check padre en
+        # ha_monitor.py, y los ayudantes derivados por su origen — ver
+        # ENTIDAD_HA_PLATAFORMAS_VIGILADAS_POR_PADRE y ENTIDAD_HA_DERIVADAS.
+        if raw.meta.get("platform") in ENTIDAD_HA_PLATAFORMAS_VIGILADAS_POR_PADRE:
+            return True
+        if c.nombre_actual in ENTIDAD_HA_DERIVADAS:
             return True
         # 2026-08-10: "review_status" de Frigate no tiene valor de reposo
         # distinto de "unknown" — ver ENTIDAD_HA_FRIGATE_SIN_ESTADO_DE_REPOSO.

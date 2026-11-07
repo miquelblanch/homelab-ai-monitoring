@@ -159,6 +159,29 @@ def update_componente_visto(
     )
 
 
+def marcar_revisado(conn: sqlite3.Connection, componente_id: int, dia: date) -> None:
+    """Da por revisada la declaración de un componente (2026-11-07): sola,
+    cuando hay prueba real de que se cumple, o a mano con `cli --revisar`."""
+    conn.execute(
+        "UPDATE componentes SET last_reviewed_at = ? WHERE id = ?",
+        (dia.isoformat(), componente_id),
+    )
+
+
+def revisar_por_nombre(conn: sqlite3.Connection, nombre: str, dia: date) -> list[str]:
+    """Revisión manual: marca como revisados hoy los componentes cuyo
+    nombre actual es exactamente `nombre`. Devuelve «[categoría] nombre» de
+    cada uno (vacío si no hay ninguno)."""
+    filas = conn.execute(
+        "SELECT id, categoria, nombre_actual FROM componentes WHERE nombre_actual = ?",
+        (nombre,),
+    ).fetchall()
+    for f in filas:
+        marcar_revisado(conn, f["id"], dia)
+    conn.commit()
+    return [f"[{f['categoria']}] {f['nombre_actual']}" for f in filas]
+
+
 def insert_hallazgo(conn: sqlite3.Connection, h: Hallazgo) -> int:
     cur = conn.execute(
         """INSERT INTO hallazgos
@@ -267,6 +290,11 @@ def save_run(
             last_reviewed_at = None  # evaluate_component ya lo trata como "recién declarado"
 
         ev = evaluate.evaluate_component(raw, last_reviewed_at)
+        if existing is not None and evaluate.se_renueva_sola(ev):
+            # 2026-11-07: caducada pero con prueba real de que se cumple
+            # (vigilada y llega al dashboard) → revisión renovada hoy.
+            marcar_revisado(conn, componente_id, hoy)
+            ev = evaluate.evaluate_component(raw, hoy)
         es_brecha = evaluate.es_brecha(ev)
         if es_brecha:
             total_brechas += 1

@@ -2,6 +2,7 @@
 
 Uso:
     python3 -m inventory.cli [--gaps] [--since RUN_ID] [--no-telegram] [--no-dashboard] [--selftest]
+    python3 -m inventory.cli --revisar NOMBRE [--revisar NOMBRE ...]
 
 Garantías (contracts/cli.md), válidas para cualquier combinación de flags:
 1. Nunca modifica el homelab (FR-016).
@@ -45,6 +46,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="No escribir el JSON del dashboard (sí persiste y envía Telegram).",
     )
     parser.add_argument(
+        "--revisar",
+        metavar="NOMBRE",
+        action="append",
+        default=None,
+        help=(
+            "Dar por revisada hoy la declaración de un componente (nombre exacto, "
+            "repetible) y salir sin recorrer el homelab. Las que se cumplen con "
+            "prueba real ya se renuevan solas en cada ejecución."
+        ),
+    )
+    parser.add_argument(
         "--selftest",
         action="store_true",
         help=(
@@ -62,12 +74,36 @@ def main(argv: list[str] | None = None) -> int:
     if args.selftest:
         return _run_selftest()
 
+    if args.revisar:
+        return _run_revisar(args.revisar)
+
     return _run_default(
         gaps_only=args.gaps,
         since_run_id=args.since,
         send_telegram=not args.no_telegram,
         write_dashboard=not args.no_dashboard,
     )
+
+
+def _run_revisar(nombres: list[str]) -> int:
+    """`--revisar NOMBRE`: revisión manual de una declaración (2026-11-07).
+    Solo toca la base del inventario, nunca el homelab (FR-016). Código 1
+    si algún nombre no existe, para que no pase desapercibido."""
+    from datetime import date
+
+    from . import store
+
+    falta = False
+    with store.connect() as conn:
+        for nombre in nombres:
+            hechos = store.revisar_por_nombre(conn, nombre, date.today())
+            if hechos:
+                for h in hechos:
+                    print(f"✅ revisado hoy: {h}")
+            else:
+                falta = True
+                print(f"⚠️  ningún componente se llama exactamente «{nombre}»", file=sys.stderr)
+    return 1 if falta else 0
 
 
 def _run_selftest() -> int:

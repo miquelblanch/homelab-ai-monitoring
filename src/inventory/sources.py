@@ -325,6 +325,20 @@ ENTIDAD_HA_FRIGATE_SIN_ESTADO_DE_REPOSO = {
 #     de la cámara ya la vigilan sus otras entidades.
 ENTIDAD_HA_SUFIJOS_SIN_ESTADO_DE_REPOSO = ("_review_status", "_move_to_preset", "_patrol_mode")
 
+# 2026-11-07: caldera por la nube de Vaillant (integración «mypyllant»). Su
+# salud la vigila ha_monitor.py con un check padre (la calefacción
+# disponible) y dos hijos (avería y presión): si la nube cae, un solo aviso.
+# El resto de sus ~40 entidades (horarios, curva, firmware, consumos...) no
+# tienen un estado esperado propio, igual que las sesiones de Jellyfin.
+ENTIDAD_HA_PLATAFORMAS_VIGILADAS_POR_PADRE = {"mypyllant"}
+
+# 2026-11-07: ayudantes calculados a partir de otra entidad que ya está
+# vigilada — no tienen salud propia: si falla su origen, avisa el origen.
+ENTIDAD_HA_DERIVADAS = {
+    "switch.calefaccion_encendida",                                   # de la calefacción
+    "sensor.cocina_sal_descalcificador_sal_descalcificador_media_1_h",  # media de 1 h del sensor de sal
+}
+
 # feature 004: FALLBACK, no fuente de verdad — entidad_ha_frigate() usa
 # esto solo si ha_monitor.CHECKS todavía no tiene las 33 entradas de
 # Frigate (antes de desplegar la historia de Frigate de ese feature). En
