@@ -261,6 +261,9 @@ def _vigilancia_entidad_ha(raw: RawComponente) -> tuple[bool, bool, str | None]:
     resultado = bridge.ha_monitor_check_result(entity_id)
     if resultado is None:
         return True, False, "ha_monitor.py"
+    if not resultado.get("ok") and resultado.get("padre_ok") is False:
+        # Hijo de un check caído: lo cubre la alarma del padre, no es una brecha propia.
+        return True, True, "ha_monitor.py"
     return True, bool(resultado.get("ok")), "ha_monitor.py"
 
 

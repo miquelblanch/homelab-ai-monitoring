@@ -92,7 +92,14 @@ def ha_monitor_check_result(entity_id: str) -> dict | None:
         if state_file is None:
             return None
         state = json.loads(Path(state_file).read_text())
-        return state.get(check_id)
+        resultado = state.get(check_id)
+        # Si el check depende de un «padre» (p. ej. un relé de un microcontrolador), se
+        # añade si el padre está bien: con el padre caído, el fallo del hijo ya lo cubre
+        # la alarma del padre y no es una brecha propia.
+        if resultado and resultado.get("padre"):
+            resultado = dict(resultado,
+                             padre_ok=state.get(resultado["padre"], {}).get("ok", True))
+        return resultado
     except Exception:
         return None
 
